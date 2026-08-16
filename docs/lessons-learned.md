@@ -74,3 +74,37 @@ schriftlich festgehalten waren. Der Code musste zurückgenommen werden.
 Zweifel vorher klären, ob ausführbarer Code gemeint ist oder der Rahmen darum.
 Für dieses Repository gilt die Reihenfolge aus [`roadmap.md`](roadmap.md):
 Entscheidung dokumentieren, dann bauen.
+
+---
+
+## 2026-08-16 — Die JS-Werkzeugkette bricht woanders, als sie meldet
+
+**Kontext:** Aufbau des Frontend-Gerüsts (Schritt 1 der Roadmap) mit pnpm,
+Vite und ESLint 9.
+
+**Problem:** Zwei Stellen, an denen ein grün aussehender Schritt einen späteren
+kaputt macht:
+
+1. **pnpm führt Postinstall-Skripte seit Version 10 nicht mehr automatisch aus.**
+   `pnpm install` meldet den Fund nur als beiläufige Warnung („Ignored build
+   scripts: esbuild"), der Exit-Code ist 0. Ohne dieses Postinstall fehlt die
+   esbuild-Binary, und der Fehler taucht erst bei `vite build` auf — also in
+   einem anderen Schritt, im Zweifel erst in der CI. Behoben mit
+   `pnpm.onlyBuiltDependencies` in `web/package.json`.
+
+2. **`eslint-plugin-react-hooks` v7 exportiert zwei Config-Formate nebeneinander.**
+   `configs['recommended-latest']` ist noch die alte eslintrc-Form mit `plugins`
+   als Array; die Flat-Config liegt unter `configs.flat['recommended-latest']`.
+   Wer die naheliegende Variante nimmt, bekommt eine Fehlermeldung über das
+   Flat-Config-Format, die nicht sagt, welches Plugin schuld ist.
+
+**Konsequenz:**
+
+- Nach jeder Änderung an den Frontend-Abhängigkeiten **einmal wirklich bauen**,
+  nicht nur installieren. `just check-web` deckt genau das ab.
+- Warnungen von `pnpm install` lesen, auch wenn der Exit-Code 0 ist.
+- Bei ESLint-Plugins prüfen, ob es einen `configs.flat`-Zweig gibt, bevor man
+  den Top-Level-Export einbindet.
+
+**Belege:** `web/package.json`, `web/eslint.config.js` (Kommentar an der Stelle),
+PR #2.

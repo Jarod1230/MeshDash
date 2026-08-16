@@ -91,6 +91,10 @@ Nach einer Änderung mitziehen — das ist Teil der Aufgabe, nicht optional:
 ## Arbeitsweise
 
 - Branch von `main`, Namensschema in `docs/conventions.md`. Nie direkt auf `main`.
+- **Jede Änderung geht über einen Pull Request** — ausnahmslos, auch reine
+  Doku-Commits und Einzeiler. Der PR ist die Übersicht über das, was passiert
+  ist; ein lokal durchgereichter Commit fehlt darin. Also: nie vorschlagen,
+  einen Branch lokal zu mergen.
 - Conventional Commits.
 - Vor dem Melden von Fertigstellung: `just check`. Das ist genau das, was die CI
   fährt — Format, Clippy, Rust-Tests, Frontend-Lint/Typen/Tests/Build und die

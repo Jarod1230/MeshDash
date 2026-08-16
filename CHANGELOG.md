@@ -12,6 +12,10 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Selbsttätige Wiederverbindung im `Link`: Ein abgezogenes USB-Kabel oder ein
+  neu startender Node beendet den Dienst nicht mehr. Die Wartezeit zwischen
+  Versuchen wächst und ist gedeckelt; ein Kommando, das während der Störung
+  abgesetzt wird, wird nach der Wiederverbindung bedient statt abgewiesen.
 - `Link`-Aktor in `meshdash-core`: nimmt Kommandos entgegen, ordnet die
   Antworten des Node den Anfragen zu und verteilt alles Unaufgeforderte an
   Interessenten. Bleibt ein Node stumm, läuft das Kommando in eine

@@ -72,6 +72,8 @@ pub struct MockTransport {
     connected: bool,
     sent: SentFrames,
     connect_count: usize,
+    failing_connects: usize,
+    rejected_connects: usize,
 }
 
 impl MockTransport {
@@ -95,6 +97,21 @@ impl MockTransport {
         self.sent.clone()
     }
 
+    /// Makes the next `count` connection attempts fail before one succeeds.
+    ///
+    /// Stands in for a node that is unplugged, still booting, or not yet
+    /// reachable over the network — the situation a reconnect strategy exists
+    /// for. Without it, retry behaviour cannot be observed at all.
+    pub fn failing_connects(mut self, count: usize) -> Self {
+        self.failing_connects = count;
+        self
+    }
+
+    /// How often a connection attempt was rejected.
+    pub fn rejected_connects(&self) -> usize {
+        self.rejected_connects
+    }
+
     /// How often [`Transport::connect`] succeeded — the reconnect counter.
     pub fn connect_count(&self) -> usize {
         self.connect_count
@@ -115,6 +132,14 @@ impl MockTransport {
 #[async_trait::async_trait]
 impl Transport for MockTransport {
     async fn connect(&mut self) -> Result<(), TransportError> {
+        if self.failing_connects > 0 {
+            self.failing_connects -= 1;
+            self.rejected_connects += 1;
+            return Err(TransportError::Disconnected {
+                reason: "mock refuses this connection attempt".into(),
+            });
+        }
+
         self.connected = true;
         self.connect_count += 1;
         Ok(())
@@ -249,6 +274,23 @@ mod tests {
 
         transport.connect().await.unwrap();
         assert_eq!(transport.recv().await.unwrap(), vec![0xAA]);
+    }
+
+    #[tokio::test]
+    async fn rejects_the_configured_number_of_connection_attempts() {
+        let mut transport = MockTransport::new(vec![emit(&[0x01])]).failing_connects(2);
+
+        assert!(transport.connect().await.is_err());
+        assert!(transport.connect().await.is_err());
+        transport.connect().await.unwrap();
+
+        assert_eq!(transport.rejected_connects(), 2);
+        assert_eq!(
+            transport.connect_count(),
+            1,
+            "only the successful one counts"
+        );
+        assert_eq!(transport.recv().await.unwrap(), vec![0x01]);
     }
 
     #[tokio::test]

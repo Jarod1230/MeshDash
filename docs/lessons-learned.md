@@ -259,3 +259,45 @@ hinausgehen:
 **Belege:** Abschnitte „Opcodes" und „Protokollversionen" in
 [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md),
 mit Verweis auf `MyMesh.cpp` und die Verzweigungen auf `app_target_ver`.
+
+---
+
+## 2026-08-16 — Backoff gehört an den Verlust, nicht an den Fehlversuch
+
+**Kontext:** Wiederverbindung im `Link`. Der Backoff war an das Öffnen der
+Verbindung geknüpft: Scheitert `connect`, wird gewartet und die Wartezeit
+verdoppelt. Gelingt `connect`, geht es sofort weiter.
+
+**Problem:** Der Fall „Verbinden **gelingt**, die Verbindung stirbt aber sofort
+danach" war dabei nicht abgedeckt. Dann lief:
+
+```
+connect ok → lesen → Fehler → connect ok → lesen → Fehler → …
+```
+
+ohne jede Wartezeit dazwischen — eine Endlosschleife bei voller CPU-Last. Im
+Test fiel das sofort auf, weil der Testablauf den Executor blockierte und
+**alle** Tests des Crates gleichzeitig hingen, nicht nur der neue. Der erste
+Verdacht galt deshalb dem Testaufbau, nicht dem Produktionscode.
+
+In Betrieb wäre es ein defektes Kabel oder ein Node in einer Neustartschleife
+gewesen — also genau der Fall, für den es die Wiederverbindung überhaupt gibt.
+
+**Konsequenz:**
+
+1. **Gewartet wird nach jedem Verbindungsverlust, nicht nur nach einem
+   gescheiterten Verbindungsversuch.** Ein erfolgreiches `connect` ist keine
+   funktionierende Verbindung.
+2. **Die Wartezeit wird nur zurückgesetzt, wenn tatsächlich etwas übertragen
+   wurde.** Sonst setzt eine flatternde Verbindung den Backoff bei jedem
+   Durchlauf zurück und wächst nie — die Deckelung liefe ins Leere.
+3. **Hängen alle Tests eines Crates gleichzeitig, ist die Ursache oft eine
+   Endlosschleife ohne `await`**, nicht der zuletzt geänderte Test. Bei einem
+   einzelnen Ausführungsstrang blockiert eine solche Schleife alles.
+4. Ein Test, der beim Umbau plötzlich hängt statt fehlzuschlagen, prüft
+   womöglich noch das alte Verhalten. Hier wartete einer auf das Ende des
+   Aktors — das es nach der Änderung bewusst nicht mehr gibt.
+
+**Belege:** `Interruption::Disconnected { made_progress }` in
+`crates/meshdash-core/src/link.rs`, Tests `keeps_running_when_the_connection_dies`
+und `backs_off_further_with_every_failed_attempt`.

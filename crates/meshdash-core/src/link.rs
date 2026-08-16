@@ -43,12 +43,46 @@ pub struct LinkConfig {
     /// an operating choice: long enough for a busy node, short enough that a
     /// silent one does not block the queue forever.
     pub response_timeout: Duration,
+
+    /// How to behave when the connection is gone.
+    pub reconnect: ReconnectConfig,
 }
 
 impl Default for LinkConfig {
     fn default() -> Self {
         Self {
             response_timeout: Duration::from_secs(5),
+            reconnect: ReconnectConfig::default(),
+        }
+    }
+}
+
+/// How persistently to reopen a connection that went away.
+///
+/// A pulled USB cable or a rebooting node must not end the service, so the link
+/// keeps trying — but backs off, so a node that stays away does not turn into a
+/// busy loop.
+#[derive(Debug, Clone)]
+pub struct ReconnectConfig {
+    /// Wait before the first retry.
+    pub initial_delay: Duration,
+
+    /// Upper bound for the wait, however often reconnecting fails.
+    pub max_delay: Duration,
+
+    /// What the delay is multiplied by after each failed attempt.
+    pub factor: u32,
+}
+
+impl Default for ReconnectConfig {
+    fn default() -> Self {
+        // Operating choices, not protocol values: fast enough that a brief
+        // unplug is barely noticed, slow enough that an absent node costs
+        // almost nothing.
+        Self {
+            initial_delay: Duration::from_millis(500),
+            max_delay: Duration::from_secs(30),
+            factor: 2,
         }
     }
 }
@@ -130,6 +164,7 @@ where
         commands: commands_rx,
         pushes: pushes_tx,
         config,
+        pending: None,
     };
 
     (handle, tokio::spawn(actor.run()))
@@ -141,6 +176,25 @@ struct Actor<T> {
     commands: mpsc::Receiver<Request>,
     pushes: broadcast::Sender<Vec<u8>>,
     config: LinkConfig,
+    /// A command that arrived while the link was down. Held rather than
+    /// rejected, so a brief unplug does not turn into a failed request.
+    pending: Option<Request>,
+}
+
+/// Why the serving loop stopped.
+enum Interruption {
+    /// The connection died; reopening it is worth a try.
+    Disconnected {
+        /// Whether a frame was actually exchanged before it died.
+        ///
+        /// Decides whether the backoff starts over. A connection that opens
+        /// and immediately collapses — a failing cable, a node stuck in a
+        /// reboot loop — must not reset it, or reconnecting becomes a busy
+        /// loop that costs a CPU core and achieves nothing.
+        made_progress: bool,
+    },
+    /// Every handle is gone, so there is nobody left to serve.
+    NoHandlesLeft,
 }
 
 impl<T> Actor<T>
@@ -148,9 +202,50 @@ where
     T: Transport,
 {
     async fn run(mut self) {
-        if let Err(error) = self.transport.connect().await {
-            tracing::warn!(%error, "link could not open its transport");
-            return;
+        let mut delay = self.config.reconnect.initial_delay;
+
+        loop {
+            if let Err(error) = self.transport.connect().await {
+                tracing::warn!(%error, ?delay, "link could not connect, retrying");
+                if !self.wait_before_retry(delay).await {
+                    break;
+                }
+                delay = self.next_delay(delay);
+                continue;
+            }
+
+            match self.serve_until_disconnected().await {
+                Interruption::NoHandlesLeft => break,
+                Interruption::Disconnected { made_progress } => {
+                    // A connection that carried traffic earns a fresh budget;
+                    // one that collapsed straight away does not.
+                    if made_progress {
+                        delay = self.config.reconnect.initial_delay;
+                    }
+
+                    // Wait even though opening worked: without this, a link
+                    // that dies immediately would be reopened without pause.
+                    if !self.wait_before_retry(delay).await {
+                        break;
+                    }
+                    delay = self.next_delay(delay);
+                }
+            }
+        }
+
+        let _ = self.transport.disconnect().await;
+    }
+
+    /// Serves callers until the connection dies or nobody is left.
+    async fn serve_until_disconnected(&mut self) -> Interruption {
+        let mut made_progress = false;
+
+        // A command that waited out the outage goes first.
+        if let Some(request) = self.pending.take() {
+            match self.serve(request).await {
+                Ok(()) => made_progress = true,
+                Err(()) => return Interruption::Disconnected { made_progress },
+            }
         }
 
         loop {
@@ -161,11 +256,11 @@ where
 
                 command = self.commands.recv() => {
                     let Some(request) = command else {
-                        // Every handle is gone; nobody can ask for anything.
-                        break;
+                        return Interruption::NoHandlesLeft;
                     };
-                    if self.serve(request).await.is_err() {
-                        break;
+                    match self.serve(request).await {
+                        Ok(()) => made_progress = true,
+                        Err(()) => return Interruption::Disconnected { made_progress },
                     }
                 }
 
@@ -173,17 +268,50 @@ where
                 // await sits between reading bytes and handing them over.
                 frame = self.transport.recv() => {
                     match frame {
-                        Ok(frame) => self.dispatch_unprompted(frame),
+                        Ok(frame) => {
+                            made_progress = true;
+                            self.dispatch_unprompted(frame);
+                        }
                         Err(error) => {
                             tracing::info!(%error, "link transport ended while idle");
-                            break;
+                            return Interruption::Disconnected { made_progress };
                         }
                     }
                 }
             }
         }
+    }
 
-        let _ = self.transport.disconnect().await;
+    /// Waits out the backoff. Returns `false` if nobody is left to serve.
+    ///
+    /// Keeps listening while waiting, for two reasons: a command that arrives
+    /// now should be served after reconnecting rather than rejected, and an
+    /// actor whose handles are all gone must stop instead of retrying forever.
+    async fn wait_before_retry(&mut self, delay: Duration) -> bool {
+        let deadline = tokio::time::sleep(delay);
+        tokio::pin!(deadline);
+
+        loop {
+            tokio::select! {
+                () = &mut deadline => return true,
+
+                // Only take a command while no other one is held; further
+                // commands stay queued until this one has been served.
+                command = self.commands.recv(), if self.pending.is_none() => {
+                    match command {
+                        Some(request) => self.pending = Some(request),
+                        None => return false,
+                    }
+                }
+            }
+        }
+    }
+
+    /// The next backoff delay, never above the configured ceiling.
+    fn next_delay(&self, current: Duration) -> Duration {
+        current
+            .saturating_mul(self.config.reconnect.factor)
+            .min(self.config.reconnect.max_delay)
     }
 
     /// Sends one command and waits for its answer, forwarding pushes meanwhile.
@@ -340,6 +468,7 @@ mod tests {
         let transport = MockTransport::new(vec![Step::Drop("silent".into())]);
         let config = LinkConfig {
             response_timeout: Duration::from_millis(50),
+            ..LinkConfig::default()
         };
         let (link, _task) = spawn(transport, config);
 
@@ -380,18 +509,126 @@ mod tests {
         assert!(matches!(error, Err(LinkError::Transport(_))));
     }
 
+    /// A reconnect config with tiny delays, for tests that use paused time.
+    fn brisk_reconnect() -> LinkConfig {
+        LinkConfig {
+            reconnect: ReconnectConfig {
+                initial_delay: Duration::from_millis(10),
+                max_delay: Duration::from_millis(80),
+                factor: 2,
+            },
+            ..LinkConfig::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn carries_on_after_the_cable_is_pulled() {
+        // Drops once, then serves again — as after replugging.
+        let transport = MockTransport::new(idle_after(vec![
+            Step::Drop("cable pulled".into()),
+            emit(u8::from(Response::Ok)),
+        ]));
+        let (link, _task) = spawn(transport, brisk_reconnect());
+
+        let answer = link.request(frame(u8::from(Command::AppStart))).await;
+
+        // The command in flight when the link died still fails...
+        assert!(answer.is_err());
+
+        // ...but the link itself recovers and serves the next one.
+        let answer = link
+            .request(frame(u8::from(Command::GetDeviceTime)))
+            .await
+            .unwrap();
+        assert_eq!(Response::from(answer[0]), Response::Ok);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn backs_off_further_with_every_failed_attempt() {
+        // Three refusals, so two delays are applied before success.
+        let transport =
+            MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))])).failing_connects(3);
+        let (link, _task) = spawn(transport, brisk_reconnect());
+
+        let started = tokio::time::Instant::now();
+        let answer = link
+            .request(frame(u8::from(Command::AppStart)))
+            .await
+            .unwrap();
+        let waited = started.elapsed();
+
+        assert_eq!(Response::from(answer[0]), Response::Ok);
+        // 10 + 20 + 40 ms of backoff, rather than 3 × 10 ms.
+        assert!(
+            waited >= Duration::from_millis(70),
+            "delays must grow, waited only {waited:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn never_waits_longer_than_the_cap() {
+        // Enough refusals that an uncapped backoff would run away.
+        let transport =
+            MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))])).failing_connects(6);
+        let (link, _task) = spawn(transport, brisk_reconnect());
+
+        let started = tokio::time::Instant::now();
+        link.request(frame(u8::from(Command::AppStart)))
+            .await
+            .unwrap();
+        let waited = started.elapsed();
+
+        // Capped at 80 ms: 10+20+40+80+80+80 = 310 ms. Doubling unchecked
+        // would already be 630 ms here.
+        assert!(
+            waited < Duration::from_millis(400),
+            "backoff must be capped, waited {waited:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stops_when_every_handle_is_gone() {
+        let transport = MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))]));
+        let (link, task) = spawn(transport, brisk_reconnect());
+
+        drop(link);
+
+        // Without this the actor would reconnect forever with nobody to serve.
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("actor must stop when nobody holds a handle")
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn refuses_commands_once_the_actor_has_stopped() {
         let transport = MockTransport::new(vec![Step::Drop("gone".into())]);
-        let (link, task) = spawn(transport, LinkConfig::default());
+        let (link, task) = spawn(transport, brisk_reconnect());
 
-        // Let the actor finish after its transport died.
-        let _ = link.request(frame(u8::from(Command::AppStart))).await;
-        task.await.unwrap();
+        // A lost connection no longer ends the actor — that is the point of
+        // reconnecting — so end it from the outside to reach the closed state.
+        task.abort();
+        let _ = task.await;
 
         assert!(matches!(
             link.request(frame(u8::from(Command::AppStart))).await,
             Err(LinkError::Closed)
         ));
+    }
+
+    #[tokio::test]
+    async fn keeps_running_when_the_connection_dies() {
+        let transport = MockTransport::new(vec![Step::Drop("gone".into())]);
+        let (link, task) = spawn(transport, brisk_reconnect());
+
+        let _ = link.request(frame(u8::from(Command::AppStart))).await;
+
+        // Still alive and retrying, rather than having given up.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), task)
+                .await
+                .is_err(),
+            "a dropped connection must not end the link"
+        );
     }
 }

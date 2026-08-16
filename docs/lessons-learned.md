@@ -48,9 +48,10 @@ synchronisiert. Wer die Marker vertauscht, baut einen, der nie etwas findet.
 
 1. **Framing ist transportabhängig.** BLE und Serial/TCP sind getrennt zu
    behandeln. Nicht das eine aus dem anderen ableiten.
-2. **Vor Schritt 2 der Roadmap** ist die Richtung der Marker an echter Hardware
-   oder am Firmware-Quellcode zu verifizieren. Es sind zwei Bytes — aber sie
-   blockieren alles Weitere.
+2. ~~**Vor Schritt 2 der Roadmap** ist die Richtung der Marker an echter Hardware
+   oder am Firmware-Quellcode zu verifizieren.~~ **Erledigt am 2026-08-16** am
+   Firmware-Quellcode — und die in diesem Eintrag als „plausibler" bezeichnete
+   Variante B war die **falsche**. Siehe den Eintrag weiter unten.
 3. Ein `Unknown(u8)`-Fallback für jeden Opcode-Bereich ist Pflicht, kein
    Komfort. Die Doku ist nachweislich unvollständig.
 4. Der Recherchestand mit Quellen liegt in
@@ -108,3 +109,43 @@ kaputt macht:
 
 **Belege:** `web/package.json`, `web/eslint.config.js` (Kommentar an der Stelle),
 PR #2.
+
+---
+
+## 2026-08-16 — Die plausiblere Quelle war die falsche
+
+**Kontext:** Auflösung der offenen Framing-Frage aus dem ersten Eintrag oben.
+Die Recherche hatte zwei einander widersprechende Marker-Richtungen ergeben und
+Variante B als „ausführlicher und plausibler" eingestuft — mit dem ausdrücklichen
+Zusatz, dass plausibel nicht verifiziert heißt.
+
+**Problem:** Verifiziert wurde am Firmware-Quellcode. Ergebnis: **Variante A ist
+richtig**, App → Radio ist `0x3C`, Radio → App ist `0x3E`. Die ausführlichere,
+detailreichere, überzeugender formulierte Darstellung war schlicht falsch.
+
+Hätte jemand nach Plausibilität entschieden statt nach Beleg, wäre ein Decoder
+entstanden, der auf einem Bytestrom **nie** synchronisiert — und der Fehler wäre
+erst beim ersten Hardwaretest aufgefallen, weit entfernt von seiner Ursache.
+
+**Konsequenz:**
+
+1. **Ausführlichkeit ist kein Wahrheitskriterium.** Bei widersprüchlichen
+   Quellen entscheidet nicht die überzeugendere Darstellung, sondern die
+   höhere Verifikationsstufe. Notfalls bleibt die Frage offen.
+2. **Der Firmware-Quellcode war in zwanzig Minuten gelesen.** Die Hürde, eine
+   Frage auf Stufe `SOURCE` zu klären, wurde vorher deutlich überschätzt: Zwei
+   Dateien im Repository `meshcore-dev/MeshCore` unter `src/helpers/` haben alle
+   vier offenen Framing-Fragen beantwortet. Das ist billiger als jede weitere
+   Runde Dokumentationsvergleich — **erst den Quellcode, dann die Doku.**
+3. **Die Firmware ist die Node-Seite, MeshDash die App-Seite.** Beim Lesen von
+   `writeFrame()`/`checkRecvFrame()` sind Sende- und Empfangsrichtung
+   spiegelverkehrt zu unserer. Eine naheliegende Fehlerquelle beim Übernehmen.
+4. Referenzimplementierungen haben Schutzmaßnahmen, die die Firmware nicht hat
+   (Längen-Plausibilität beim Resync, Überspringen von Konsolenmüll vor dem
+   Marker). Sie zusätzlich zu lesen lohnt sich, auch wenn der Quellcode die
+   Frage schon beantwortet hat.
+
+**Belege:** Abschnitt „Framing" in
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md)
+mit Commit-genauen Links auf `ArduinoSerialInterface.cpp`,
+`SerialWifiInterface.cpp`, `BaseSerialInterface.h` und `serial_cx.py`.

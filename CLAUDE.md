@@ -13,8 +13,10 @@ bereit. Ausgeliefert wird ein einzelnes Binary mit eingebettetem Frontend.
 **Projektstand: Gerüst steht (Schritt 1 der Roadmap erledigt).**
 Der Cargo-Workspace mit fünf leeren Crates, das Frontend-Gerüst und die CI
 bauen grün durch. **Funktionalität gibt es noch keine** — kein Protokoll-Codec,
-keine Datenbank, keine Route, kein Modul. Als Nächstes ist Schritt 2 dran, und
-der ist blockiert, bis das Serial-Framing verifiziert ist (siehe unten).
+keine Datenbank, keine Route, kein Modul. Als Nächstes ist Schritt 2 dran: das
+Serial- und TCP-Framing ist seit dem 2026-08-16 am Firmware-Quellcode
+verifiziert und damit nicht mehr blockiert. **Die Opcodes sind es nicht** — für
+sie gilt Regel 1 unten unverändert.
 
 ## Wo was steht
 

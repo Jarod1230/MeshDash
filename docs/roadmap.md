@@ -28,20 +28,23 @@ Die fehleranfälligste Schicht, deshalb früh und mit Tests.
 - [x] Frame-Codec: Serial-Framing kodieren und dekodieren, inklusive Teil-Frames
       — `frame::encode` und `frame::Decoder`, 20 Unit-Tests
 - Opcode-Tabellen mit `Unknown(u8)`-Fallback und **Quellenangabe je Wert**
+      — Werte recherchiert und belegt, noch nicht in Code gegossen
 - Kodierung der Kommandos, Dekodierung der Antworten und Pushes, die belegt sind
 - Unit-Tests gegen feste Byte-Arrays; Round-Trip-Tests
 - Offene Punkte aus [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md)
   abarbeiten oder ausdrücklich als offen markieren
 
-**Vorbedingung erfüllt (2026-08-16).** Das Serial- und TCP-Framing ist am
-Firmware-Quellcode verifiziert: Marker-Richtung, Zählweise des Längenfelds,
-Rahmengröße und die Abwesenheit einer Prüfsumme stehen belegt in
-[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
-Schritt 2 ist damit nicht mehr blockiert.
+**Vorbedingungen erfüllt (2026-08-16).** Am Firmware-Quellcode verifiziert und
+belegt in [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md):
 
-**Weiterhin ungeprüft sind die Opcodes.** Sie stehen auf Stufe `DOKU`. Für die
-Frame-Ebene darf jetzt gebaut werden; jeder einzelne Opcode-Wert braucht nach
-wie vor einen Beleg oder bleibt `Unknown(u8)`.
+- Framing für Serial und TCP — Marker-Richtung, Zählweise des Längenfelds,
+  Rahmengröße, keine Prüfsumme.
+- Sämtliche Opcode-Werte für Kommandos, Antworten, Pushes und Fehlercodes.
+
+**Offen sind die Payload-Aufteilungen.** Wer ein Feld auspackt, verifiziert es
+vorher einzeln — die Opcode-Liste zu kennen heißt nicht, die Nutzlast zu kennen.
+Der `Unknown(u8)`-Fallback bleibt Pflicht, weil künftige Firmware mehr kennt als
+diese Tabelle.
 
 ## Schritt 3 — Transport und Link
 

@@ -90,8 +90,10 @@ kaputt macht:
    `pnpm install` meldet den Fund nur als beiläufige Warnung („Ignored build
    scripts: esbuild"), der Exit-Code ist 0. Ohne dieses Postinstall fehlt die
    esbuild-Binary, und der Fehler taucht erst bei `vite build` auf — also in
-   einem anderen Schritt, im Zweifel erst in der CI. Behoben mit
-   `pnpm.onlyBuiltDependencies` in `web/package.json`.
+   einem anderen Schritt, im Zweifel erst in der CI. ~~Behoben mit
+   `pnpm.onlyBuiltDependencies` in `web/package.json`.~~ **Überholt seit
+   pnpm 11**, siehe den letzten Eintrag dieser Datei — die Einstellung steht
+   jetzt als `allowBuilds` in `web/pnpm-workspace.yaml`.
 
 2. **`eslint-plugin-react-hooks` v7 exportiert zwei Config-Formate nebeneinander.**
    `configs['recommended-latest']` ist noch die alte eslintrc-Form mit `plugins`
@@ -149,3 +151,44 @@ erst beim ersten Hardwaretest aufgefallen, weit entfernt von seiner Ursache.
 [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md)
 mit Commit-genauen Links auf `ArduinoSerialInterface.cpp`,
 `SerialWifiInterface.cpp`, `BaseSerialInterface.h` und `serial_cx.py`.
+
+---
+
+## 2026-08-16 — Eine gepinnte CI-Version verbirgt einen kaputten Arbeitsplatz
+
+**Kontext:** `just check` sollte vor einer Fertigmeldung laufen. Der Rust-Teil
+war grün, `check-web` brach ab — auf einem Stand, den die CI als grün meldet.
+
+**Problem:** Die CI war auf `pnpm/action-setup` mit `version: 10` gepinnt,
+lokal war pnpm 11 installiert. Dazwischen liegen zwei Brüche:
+
+1. **pnpm 11 liest das `pnpm`-Feld in `package.json` nicht mehr.** Es meldet das
+   als Warnung und ignoriert den Inhalt.
+2. **`onlyBuiltDependencies` gibt es in pnpm 11 nicht mehr.** Es wurde zusammen
+   mit vier verwandten Optionen durch eine `allowBuilds`-Map ersetzt. Die
+   Einstellung ließ sich also nicht bloß verschieben, sie musste übersetzt
+   werden.
+
+Ergebnis: `pnpm install` brach mit `ERR_PNPM_IGNORED_BUILDS` ab, und damit jeder
+Frontend-Schritt. Die CI merkte nichts davon, weil sie eine Version fuhr, für
+die die alte Schreibweise noch galt. Der Fehler war nicht neu — er war nur
+unsichtbar, solange niemand lokal ein aktuelles pnpm hatte.
+
+**Konsequenz:**
+
+1. **Eine gepinnte Werkzeugversion in der CI ist eine Aussage über die
+   Vergangenheit, kein Beleg für den aktuellen Stand.** Grüne CI bei rotem
+   Arbeitsplatz heißt: Die Versionen sind auseinandergelaufen, nicht: Der
+   Arbeitsplatz ist falsch eingerichtet.
+2. **Version in CI und Einstellungsformat gehören zusammen gepflegt.** Die CI
+   fährt jetzt pnpm 11, passend zu `allowBuilds` in `web/pnpm-workspace.yaml`.
+   Ein Kommentar an beiden Stellen sagt das.
+3. Beim nächsten pnpm-Sprung zuerst prüfen, ob Einstellungen *umbenannt* wurden
+   — nicht nur, ob sie *umgezogen* sind. Bei diesem Sprung war beides der Fall.
+4. Offen und bewusst nicht mitgemacht: ein `packageManager`-Feld würde die
+   Version an einer einzigen Stelle festlegen und dieses Auseinanderlaufen
+   künftig verhindern. Das ist ein eigener Vorschlag, kein Teil dieser Behebung.
+
+**Belege:** [pnpm 11 Breaking Changes](https://pnpm.io/blog/releases/11.0) —
+Entfall des `pnpm`-Felds und Ersatz von `onlyBuiltDependencies` durch
+`allowBuilds`; `web/pnpm-workspace.yaml`, `.github/workflows/ci.yml`.

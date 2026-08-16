@@ -1,0 +1,8 @@
+# pnpm settings. Since pnpm 11 the `pnpm` field in package.json is ignored,
+# and `onlyBuiltDependencies` was replaced by the `allowBuilds` map.
+# See docs/lessons-learned.md.
+#
+# esbuild ships a platform binary from a postinstall script. Without this,
+# `pnpm install` aborts and `vite build` would fail on a missing binary.
+allowBuilds:
+  esbuild: true

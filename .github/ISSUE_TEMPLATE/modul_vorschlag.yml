@@ -1,0 +1,67 @@
+name: Modul-Vorschlag
+description: Ein neues Feature vorschlagen (Features sind in MeshDash Module)
+labels: ["modul", "diskussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fachlichkeit wird in MeshDash als **Modul** gebaut — siehe
+        [module-system.md](../blob/main/docs/module-system.md).
+        Der Zuschnitt wird vor der Umsetzung geklärt, nicht im Review.
+
+  - type: input
+    id: name
+    attributes:
+      label: Modulname
+      description: Kleinbuchstaben, ein Wort. Wird zu Tabellenpräfix und Routenpfad.
+      placeholder: "z.B. alerts"
+    validations:
+      required: true
+
+  - type: textarea
+    id: frage
+    attributes:
+      label: Welche Frage beantwortet das Modul?
+      description: >
+        Eine Frage, die ein Mesh-Betreiber tatsächlich hat. Wenn sich das Modul
+        nicht als eine solche Frage formulieren lässt, ist der Zuschnitt
+        vermutlich falsch.
+      placeholder: "z.B. Welcher meiner Repeater ist seit wann nicht mehr erreichbar?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: daten
+    attributes:
+      label: Welche Daten besitzt das Modul?
+      description: Welche eigenen Tabellen legt es an?
+    validations:
+      required: true
+
+  - type: textarea
+    id: events
+    attributes:
+      label: Welche Ereignisse verarbeitet es, welche veröffentlicht es?
+      description: >
+        Module koppeln ausschließlich über den Event-Bus, nicht über direkte
+        Aufrufe oder fremde Tabellen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: protokoll
+    attributes:
+      label: Braucht es Daten, die wir noch nicht vom Node bekommen?
+      description: >
+        Falls ja: welche? Fehlt der zugehörige Opcode noch, gehört das nach
+        docs/research/meshcore-companion-protocol.md und blockiert dieses Modul.
+
+  - type: checkboxes
+    id: unabhaengigkeit
+    attributes:
+      label: Unabhängigkeit
+      options:
+        - label: Das Modul funktioniert auch dann, wenn andere Module abgeschaltet sind
+          required: true
+        - label: Es greift nicht auf Tabellen anderer Module zu
+          required: true

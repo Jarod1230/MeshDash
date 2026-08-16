@@ -1,0 +1,72 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie erwartet
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden. Bitte **keine Sicherheitslücken** hier eintragen —
+        dafür gibt es [SECURITY.md](../blob/main/SECURITY.md).
+
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Was passiert
+      description: Was beobachtest du, und was hättest du stattdessen erwartet?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduktion
+    attributes:
+      label: Wie nachvollziehbar
+      description: Schritt für Schritt.
+      placeholder: |
+        1. ...
+        2. ...
+        3. Fehler tritt auf
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logausgabe
+      description: >
+        Möglichst mit `RUST_LOG=meshdash=debug`. Bitte vorher auf Tokens,
+        Passwörter, Nachrichteninhalte und Positionsdaten durchsehen.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: MeshDash-Version oder Commit
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Anbindung an den Node
+      options:
+        - Serial (USB)
+        - TCP (WiFi)
+        - Mock
+        - Weiß nicht / nicht zutreffend
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Node-Hardware und Firmware-Version
+      description: >
+        Bei Protokollproblemen der wichtigste Hinweis überhaupt — das Verhalten
+        unterscheidet sich zwischen Firmware-Versionen.
+      placeholder: "z.B. Heltec V3, MeshCore Companion 1.x.y"
+
+  - type: input
+    id: umgebung
+    attributes:
+      label: Betriebssystem und Plattform
+      placeholder: "z.B. Raspberry Pi OS 64-bit auf Pi 4"

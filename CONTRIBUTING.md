@@ -25,6 +25,9 @@ Wer das ändern möchte: über ein Issue, nicht per Pull Request.
 1. Branch von `main` erstellen. Namensschema in [`docs/conventions.md`](docs/conventions.md).
 2. Änderungen committen — Conventional Commits, siehe ebenfalls `conventions.md`.
 3. Pull Request gegen `main` öffnen. Die PR-Vorlage bitte ausfüllen, nicht löschen.
+   **Das gilt ausnahmslos**, auch für Doku-Änderungen und Einzeiler: Die PRs sind
+   die Übersicht darüber, was im Projekt passiert ist. Ein lokal durchgereichter
+   Commit taucht dort nicht auf.
 4. Was in `main` landet, muss bauen und die Tests bestehen. Sobald es CI gibt,
    ist das Pflicht-Gate.
 

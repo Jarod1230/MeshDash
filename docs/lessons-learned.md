@@ -192,3 +192,31 @@ unsichtbar, solange niemand lokal ein aktuelles pnpm hatte.
 **Belege:** [pnpm 11 Breaking Changes](https://pnpm.io/blog/releases/11.0) —
 Entfall des `pnpm`-Felds und Ersatz von `onlyBuiltDependencies` durch
 `allowBuilds`; `web/pnpm-workspace.yaml`, `.github/workflows/ci.yml`.
+
+---
+
+## 2026-08-16 — Clippy nimmt Tests nicht von selbst aus
+
+**Kontext:** Die ersten Tests des Projekts entstanden, für den Frame-Codec in
+`meshdash-proto`. Ein Test darf und soll `unwrap()` verwenden: Wenn die
+Erwartung bricht, ist der Panic genau das gewünschte Ergebnis.
+
+**Problem:** Der Workspace setzt `unwrap_used` und `expect_used` auf `warn`,
+und die CI fährt `-D warnings`. Ein Kommentar in der `Cargo.toml` behauptete,
+Tests seien „über die eigenen Test-Ausnahmen des Werkzeugs" ausgenommen. Das
+stimmt nicht: Clippy prüft Testcode genauso, solange nicht
+`allow-unwrap-in-tests` in einer `clippy.toml` steht — und die gab es nicht.
+
+Aufgefallen ist es erst jetzt, weil vorher schlicht kein Test existierte. Die
+Konfiguration sah ein halbes Projekt lang richtig aus, ohne je zu greifen.
+
+**Konsequenz:**
+
+1. `clippy.toml` mit `allow-unwrap-in-tests` und `allow-expect-in-tests` liegt
+   jetzt im Wurzelverzeichnis, der irreführende Kommentar in `Cargo.toml` ist
+   korrigiert.
+2. **Eine Lint-Regel ist erst belegt, wenn Code existiert, der sie auslösen
+   würde.** Bei Konfiguration, die auf künftigen Code zielt, gilt dasselbe wie
+   bei Protokollwerten: unbewiesen ist nicht bewiesen.
+
+**Belege:** `clippy.toml`, `[workspace.lints.clippy]` in `Cargo.toml`.

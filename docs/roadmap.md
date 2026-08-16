@@ -25,7 +25,8 @@ Ziel war: `cargo build` und `pnpm build` laufen durch, auch wenn sie noch nichts
 
 Die fehleranfälligste Schicht, deshalb früh und mit Tests.
 
-- Frame-Codec: Serial-Framing kodieren und dekodieren, inklusive Teil-Frames
+- [x] Frame-Codec: Serial-Framing kodieren und dekodieren, inklusive Teil-Frames
+      — `frame::encode` und `frame::Decoder`, 20 Unit-Tests
 - Opcode-Tabellen mit `Unknown(u8)`-Fallback und **Quellenangabe je Wert**
 - Kodierung der Kommandos, Dekodierung der Antworten und Pushes, die belegt sind
 - Unit-Tests gegen feste Byte-Arrays; Round-Trip-Tests

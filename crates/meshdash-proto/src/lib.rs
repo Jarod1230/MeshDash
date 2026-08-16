@@ -19,3 +19,5 @@
 //! Never guess an opcode, offset or field width. A wrong guess raises no error
 //! — it silently writes wrong data. Every value needs a source, cited at the
 //! value itself. Unknown opcodes must round-trip, not be dropped.
+
+pub mod frame;

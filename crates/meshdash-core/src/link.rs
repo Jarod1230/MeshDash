@@ -3,7 +3,9 @@
 //! A companion node answers commands one at a time, in order, and there is no
 //! request tag to match an answer to its question. The link makes that
 //! manageable: callers hand over a command and await their answer, while
-//! everything the node says on its own is broadcast to whoever is listening.
+//! everything the node says on its own goes to the [`crate::event::EventBus`].
+//! Whether the connection is up is reported there too — for a dashboard that is
+//! the first thing worth showing.
 //!
 //! # How an answer is recognised
 //!
@@ -24,12 +26,11 @@ use std::time::Duration;
 use meshdash_proto::opcode;
 use meshdash_transport::{Transport, TransportError};
 use tokio::{
-    sync::{broadcast, mpsc, oneshot},
+    sync::{mpsc, oneshot},
     task::JoinHandle,
 };
 
-/// How many pushes are buffered for a slow subscriber before it misses some.
-const PUSH_BUFFER: usize = 256;
+use crate::event::{AppEvent, EventBus};
 
 /// How many commands may wait to be sent before callers are made to wait.
 const COMMAND_QUEUE: usize = 32;
@@ -110,10 +111,12 @@ struct Request {
 }
 
 /// A cheap, cloneable handle to a running link.
+///
+/// Only for sending commands — what the node says on its own goes to the
+/// [`EventBus`], so that modules have a single place to listen.
 #[derive(Debug, Clone)]
 pub struct LinkHandle {
     commands: mpsc::Sender<Request>,
-    pushes: broadcast::Sender<Vec<u8>>,
 }
 
 impl LinkHandle {
@@ -132,37 +135,27 @@ impl LinkHandle {
         // A dropped sender means the actor died before answering.
         answer.await.map_err(|_| LinkError::Closed)?
     }
-
-    /// Listens to everything the node says unprompted.
-    ///
-    /// Only frames arriving **after** this call are delivered — there is no
-    /// backlog, so anything the node said earlier is gone. Subscribe before the
-    /// link gets busy if that matters.
-    ///
-    /// A subscriber that falls too far behind loses the oldest frames rather
-    /// than stalling the link.
-    pub fn subscribe(&self) -> broadcast::Receiver<Vec<u8>> {
-        self.pushes.subscribe()
-    }
 }
 
 /// Starts a link over `transport` and returns its handle plus the actor task.
-pub fn spawn<T>(transport: T, config: LinkConfig) -> (LinkHandle, JoinHandle<()>)
+///
+/// Everything the node reports goes to `events`, including when the connection
+/// opens and closes — the state modules need in order to show whether the mesh
+/// is reachable at all.
+pub fn spawn<T>(transport: T, config: LinkConfig, events: EventBus) -> (LinkHandle, JoinHandle<()>)
 where
     T: Transport + 'static,
 {
     let (commands_tx, commands_rx) = mpsc::channel(COMMAND_QUEUE);
-    let (pushes_tx, _) = broadcast::channel(PUSH_BUFFER);
 
     let handle = LinkHandle {
         commands: commands_tx,
-        pushes: pushes_tx.clone(),
     };
 
     let actor = Actor {
         transport,
         commands: commands_rx,
-        pushes: pushes_tx,
+        events,
         config,
         pending: None,
     };
@@ -174,7 +167,7 @@ where
 struct Actor<T> {
     transport: T,
     commands: mpsc::Receiver<Request>,
-    pushes: broadcast::Sender<Vec<u8>>,
+    events: EventBus,
     config: LinkConfig,
     /// A command that arrived while the link was down. Held rather than
     /// rejected, so a brief unplug does not turn into a failed request.
@@ -214,7 +207,14 @@ where
                 continue;
             }
 
-            match self.serve_until_disconnected().await {
+            self.events.publish(AppEvent::NodeConnected);
+
+            let interruption = self.serve_until_disconnected().await;
+            self.events.publish(AppEvent::NodeDisconnected {
+                reason: "connection to the node ended".to_owned(),
+            });
+
+            match interruption {
                 Interruption::NoHandlesLeft => break,
                 Interruption::Disconnected { made_progress } => {
                     // A connection that carried traffic earns a fresh budget;
@@ -380,10 +380,9 @@ where
         }
     }
 
-    /// Sends a push to every subscriber, if there is any.
+    /// Puts a push on the bus for whoever is interested.
     fn broadcast(&self, frame: Vec<u8>) {
-        // An error only means nobody is listening, which is not a problem.
-        let _ = self.pushes.send(frame);
+        self.events.publish(AppEvent::Push { payload: frame });
     }
 }
 
@@ -411,7 +410,7 @@ mod tests {
     async fn answers_a_command_with_the_nodes_reply() {
         let transport = MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))]));
         let sent = transport.sent_frames();
-        let (link, _task) = spawn(transport, LinkConfig::default());
+        let (link, _task) = spawn(transport, LinkConfig::default(), EventBus::new());
 
         let answer = link
             .request(frame(u8::from(Command::GetDeviceTime)))
@@ -426,14 +425,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn announces_that_the_node_is_reachable() {
+        let transport = MockTransport::new(idle_after(vec![]));
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+
+        let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
+
+        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+    }
+
+    #[tokio::test]
+    async fn announces_that_the_node_is_gone() {
+        let transport = MockTransport::new(vec![Step::Drop("cable pulled".into())]);
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+
+        let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
+
+        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            AppEvent::NodeDisconnected { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn puts_pushes_on_the_bus() {
+        let transport = MockTransport::new(idle_after(vec![emit(u8::from(Push::Advert))]));
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+
+        let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
+
+        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(
+            events.recv().await.unwrap(),
+            AppEvent::Push {
+                payload: vec![u8::from(Push::Advert)]
+            }
+        );
+    }
+
+    #[tokio::test]
     async fn forwards_a_push_that_arrives_while_a_command_is_waiting() {
         // The node announces a message before answering the command.
         let transport = MockTransport::new(idle_after(vec![
             emit(u8::from(Push::MsgWaiting)),
             emit(u8::from(Response::Ok)),
         ]));
-        let (link, _task) = spawn(transport, LinkConfig::default());
-        let mut pushes = link.subscribe();
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+        let (link, _task) = spawn(transport, LinkConfig::default(), bus);
 
         let answer = link
             .request(frame(u8::from(Command::AppStart)))
@@ -445,21 +488,15 @@ mod tests {
             Response::Ok,
             "the push must not be mistaken for the answer"
         );
+
+        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
         assert_eq!(
-            Push::from(pushes.recv().await.unwrap()[0]),
-            Push::MsgWaiting
+            events.recv().await.unwrap(),
+            AppEvent::Push {
+                payload: vec![u8::from(Push::MsgWaiting)]
+            },
+            "the push must reach the bus even though a command was in flight"
         );
-    }
-
-    #[tokio::test]
-    async fn broadcasts_pushes_that_arrive_unprompted() {
-        let transport = MockTransport::new(idle_after(vec![emit(u8::from(Push::Advert))]));
-        let (link, _task) = spawn(transport, LinkConfig::default());
-        // Safe before the first await: the actor has not run yet, so nothing
-        // has been broadcast that this subscriber could miss.
-        let mut pushes = link.subscribe();
-
-        assert_eq!(Push::from(pushes.recv().await.unwrap()[0]), Push::Advert);
     }
 
     #[tokio::test]
@@ -470,7 +507,7 @@ mod tests {
             response_timeout: Duration::from_millis(50),
             ..LinkConfig::default()
         };
-        let (link, _task) = spawn(transport, config);
+        let (link, _task) = spawn(transport, config, EventBus::new());
 
         let error = link
             .request(frame(u8::from(Command::GetBattAndStorage)))
@@ -488,7 +525,7 @@ mod tests {
             emit(u8::from(Response::Ok)),
             emit(u8::from(Response::SelfInfo)),
         ]));
-        let (link, _task) = spawn(transport, LinkConfig::default());
+        let (link, _task) = spawn(transport, LinkConfig::default(), EventBus::new());
 
         // Both are in flight at once; the node answers them in order.
         let first = link.request(frame(u8::from(Command::AppStart)));
@@ -502,7 +539,7 @@ mod tests {
     #[tokio::test]
     async fn reports_a_dropped_connection_to_the_waiting_caller() {
         let transport = MockTransport::new(vec![Step::Drop("cable pulled".into())]);
-        let (link, _task) = spawn(transport, LinkConfig::default());
+        let (link, _task) = spawn(transport, LinkConfig::default(), EventBus::new());
 
         let error = link.request(frame(u8::from(Command::AppStart))).await;
 
@@ -528,7 +565,7 @@ mod tests {
             Step::Drop("cable pulled".into()),
             emit(u8::from(Response::Ok)),
         ]));
-        let (link, _task) = spawn(transport, brisk_reconnect());
+        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
 
         let answer = link.request(frame(u8::from(Command::AppStart))).await;
 
@@ -548,7 +585,7 @@ mod tests {
         // Three refusals, so two delays are applied before success.
         let transport =
             MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))])).failing_connects(3);
-        let (link, _task) = spawn(transport, brisk_reconnect());
+        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
 
         let started = tokio::time::Instant::now();
         let answer = link
@@ -570,7 +607,7 @@ mod tests {
         // Enough refusals that an uncapped backoff would run away.
         let transport =
             MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))])).failing_connects(6);
-        let (link, _task) = spawn(transport, brisk_reconnect());
+        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
 
         let started = tokio::time::Instant::now();
         link.request(frame(u8::from(Command::AppStart)))
@@ -589,7 +626,7 @@ mod tests {
     #[tokio::test]
     async fn stops_when_every_handle_is_gone() {
         let transport = MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))]));
-        let (link, task) = spawn(transport, brisk_reconnect());
+        let (link, task) = spawn(transport, brisk_reconnect(), EventBus::new());
 
         drop(link);
 
@@ -603,7 +640,7 @@ mod tests {
     #[tokio::test]
     async fn refuses_commands_once_the_actor_has_stopped() {
         let transport = MockTransport::new(vec![Step::Drop("gone".into())]);
-        let (link, task) = spawn(transport, brisk_reconnect());
+        let (link, task) = spawn(transport, brisk_reconnect(), EventBus::new());
 
         // A lost connection no longer ends the actor — that is the point of
         // reconnecting — so end it from the outside to reach the closed state.
@@ -619,7 +656,7 @@ mod tests {
     #[tokio::test]
     async fn keeps_running_when_the_connection_dies() {
         let transport = MockTransport::new(vec![Step::Drop("gone".into())]);
-        let (link, task) = spawn(transport, brisk_reconnect());
+        let (link, task) = spawn(transport, brisk_reconnect(), EventBus::new());
 
         let _ = link.request(frame(u8::from(Command::AppStart))).await;
 

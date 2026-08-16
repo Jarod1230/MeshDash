@@ -12,6 +12,9 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Event-Bus in `meshdash-core`. Der `Link` meldet dort, ob der Node erreichbar
+  ist und was er von sich aus schickt — die Grundlage dafür, dass mehrere
+  Module dieselben Ereignisse unabhängig voneinander verarbeiten können.
 - Konfiguration in `meshdash-core`: `meshdash.toml` und Umgebungsvariablen mit
   Präfix `MESHDASH_`, mit Voreinstellungen für alles. MeshDash startet ohne
   Konfigurationsdatei, lauscht standardmäßig nur auf localhost und weist

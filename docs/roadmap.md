@@ -68,7 +68,8 @@ diese Tabelle.
 - [x] Konfiguration aus TOML und Umgebungsvariablen — `config::Config`,
       Voreinstellungen so gewählt, dass MeshDash ohne Datei startet
 - SQLite-Anbindung, Migrationsablauf über Modulgrenzen hinweg
-- Event-Bus
+- [x] Event-Bus — `event::{EventBus, AppEvent}`; der `Link` meldet dort
+      Verbindungsstatus und Pushes, statt einen eigenen Verteilweg zu haben
 - `Module`-Trait und Registry — der Vertrag aus [`module-system.md`](module-system.md)
 
 ## Schritt 5 — Server (`meshdash-server`)

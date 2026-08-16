@@ -12,6 +12,10 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- `Transport`-Trait und Mock-Transport in `meshdash-transport` (Beginn von
+  Schritt 3 der Roadmap). Der Mock spielt ein Skript ab und kann
+  Verbindungsabbrüche nachstellen, sodass sich Wiederverbindung ohne Hardware
+  prüfen lässt.
 - Opcode-Tabellen in `meshdash-proto`: Kommandos, Antworten, Pushes,
   Fehlercodes und Statistiktypen als Aufzählungstypen, jeweils mit
   `Unknown`-Fallback, damit ein Node mit neuerer Firmware nichts verliert.

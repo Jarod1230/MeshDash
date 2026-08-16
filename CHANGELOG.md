@@ -12,6 +12,9 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Opcode-Tabellen in `meshdash-proto`: Kommandos, Antworten, Pushes,
+  Fehlercodes und Statistiktypen als Aufzählungstypen, jeweils mit
+  `Unknown`-Fallback, damit ein Node mit neuerer Firmware nichts verliert.
 - Frame-Codec für Serial und TCP in `meshdash-proto` (Teil von Schritt 2 der
   Roadmap): Kodieren ausgehender Frames und ein Decoder, der Frames aus einem
   beliebig gestückelten Bytestrom zusammensetzt, Konsolenausgaben vor dem

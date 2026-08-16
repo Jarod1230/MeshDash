@@ -55,8 +55,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-# Guardrails from docs/conventions.md. `unwrap`/`expect` stay allowed in tests
-# via the tool's own test exemptions; these fire on library and binary code.
+# Guardrails from docs/conventions.md. These fire on library and binary code;
+# tests are exempted via `allow-unwrap-in-tests` in clippy.toml, which clippy
+# needs explicitly — it does not skip tests by itself.
 unwrap_used = "warn"
 expect_used = "warn"
 

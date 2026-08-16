@@ -12,6 +12,11 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Frame-Codec für Serial und TCP in `meshdash-proto` (Teil von Schritt 2 der
+  Roadmap): Kodieren ausgehender Frames und ein Decoder, der Frames aus einem
+  beliebig gestückelten Bytestrom zusammensetzt, Konsolenausgaben vor dem
+  Marker verwirft und nach einer unplausiblen Längenangabe wieder
+  aufsynchronisiert. Opcodes gibt es noch keine.
 - Gerüst (Schritt 1 der Roadmap): Cargo-Workspace mit den fünf Crates
   `proto`, `transport`, `core`, `modules`, `server` samt verdrahteter
   Abhängigkeitsrichtung; Frontend-Gerüst mit React 19, Vite, TypeScript,

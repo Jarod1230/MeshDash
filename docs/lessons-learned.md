@@ -232,7 +232,7 @@ Muster wie zuvor beim Framing.
 hinausgehen:
 
 1. **Die Dokumentation war nicht nur lückenhaft, sondern in Namen falsch.**
-   Sie kannte 9 Kommandos, die Firmware definiert 44. Und sie nannte Konstanten,
+   Sie kannte 9 Kommandos, die Firmware definiert 58. Und sie nannte Konstanten,
    die es so nicht gibt: `RESP_CODE_ERROR` heißt `RESP_CODE_ERR`,
    `CMD_GET_BATTERY` heißt `CMD_GET_BATT_AND_STORAGE`, `PUSH_CODE_ACK` heißt
    `PUSH_CODE_SEND_CONFIRMED`. Die **Zahlenwerte** stimmten durchweg — wer nach

@@ -27,8 +27,8 @@ Die fehleranfälligste Schicht, deshalb früh und mit Tests.
 
 - [x] Frame-Codec: Serial-Framing kodieren und dekodieren, inklusive Teil-Frames
       — `frame::encode` und `frame::Decoder`, 20 Unit-Tests
-- Opcode-Tabellen mit `Unknown(u8)`-Fallback und **Quellenangabe je Wert**
-      — Werte recherchiert und belegt, noch nicht in Code gegossen
+- [x] Opcode-Tabellen mit `Unknown(u8)`-Fallback und **Quellenangabe je Wert**
+      — `opcode::{Command, Response, Push, ErrorCode, StatsType}`
 - Kodierung der Kommandos, Dekodierung der Antworten und Pushes, die belegt sind
 - Unit-Tests gegen feste Byte-Arrays; Round-Trip-Tests
 - Offene Punkte aus [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md)

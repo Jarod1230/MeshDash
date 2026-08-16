@@ -21,3 +21,4 @@
 //! value itself. Unknown opcodes must round-trip, not be dropped.
 
 pub mod frame;
+pub mod opcode;

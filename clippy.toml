@@ -1,0 +1,6 @@
+# `unwrap_used` and `expect_used` are warnings for library and binary code
+# (see [workspace.lints.clippy] in Cargo.toml). Clippy does not exempt tests on
+# its own — that needs these two settings. In a test, a panic on a broken
+# expectation is the point, and forcing error handling there only adds noise.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

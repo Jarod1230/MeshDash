@@ -111,6 +111,15 @@ Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
 
+- **Serielle Ports auflisten — ginge ohne `libudev`.** Heute muss der Gerätepfad
+  in die Konfiguration geschrieben werden, weil `tokio-serial` bewusst ohne
+  dessen `libudev`-Merkmal eingebunden ist (Begründung in
+  [`development.md`](development.md)). Für eine Portauswahl in der Oberfläche
+  braucht es die Systembibliothek aber nicht: Unter Linux genügt ein Blick in
+  `/dev/serial/by-id/`, unter macOS auf `/dev/cu.*`. Das ist ein
+  Verzeichnislisting. Festgehalten, damit die Frage später nicht auf
+  „`libudev` einbinden oder keine Portliste" verengt wird — es gibt einen
+  dritten Weg.
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

@@ -6,12 +6,18 @@
 | --- | --- | --- |
 | Rust | stable, ≥ 1.85 | Backend |
 | Node.js | 22 LTS | Frontend |
-| pnpm | 9 oder neuer | Paketverwaltung Frontend |
+| pnpm | **11 oder neuer** | Paketverwaltung Frontend |
 | Docker | optional | Auslieferung, Testumgebung |
 
 Rust am besten über [rustup](https://rustup.rs/). Die Toolchain ist über
 `rust-toolchain.toml` festgeschrieben — ein `cargo build` im Repository genügt,
 rustup holt den Rest.
+
+**pnpm 11 ist Mindestanforderung, nicht Empfehlung.** Die Einstellung, die
+esbuild sein Postinstall erlaubt, heißt dort `allowBuilds` und steht in
+`web/pnpm-workspace.yaml`. Ältere pnpm-Versionen lesen sie nicht, überspringen
+das Postinstall und lassen `vite build` an einer fehlenden Binary scheitern.
+Hintergrund in [`lessons-learned.md`](lessons-learned.md).
 
 ### Zugriff auf die serielle Schnittstelle (Linux)
 
@@ -37,9 +43,12 @@ just check     # alles, was auch die CI prüft
 [`just`](https://github.com/casey/just) ist optional (`cargo install just`);
 alle Rezepte stehen im Klartext im [`justfile`](../justfile).
 
-**Was schon geht:** Der Workspace baut, das Frontend baut, die CI ist grün.
+**Was schon geht:** Der Workspace baut, das Frontend baut, die CI ist grün, und
+`meshdash-proto` beherrscht die Frame-Ebene des Companion-Protokolls — mit
+Unit-Tests, die ohne Hardware laufen.
 **Was noch nicht geht:** alles Fachliche — der Server gibt beim Start nur seine
-Version aus, die Modul-Registry ist leer. Siehe [`roadmap.md`](roadmap.md).
+Version aus, die Modul-Registry ist leer, und über der Frame-Ebene gibt es noch
+keine Opcodes. Siehe [`roadmap.md`](roadmap.md).
 
 ## Arbeitsabläufe
 

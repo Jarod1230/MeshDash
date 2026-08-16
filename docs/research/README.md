@@ -27,4 +27,5 @@ MeshCore. Getrennt von der Architekturdokumentation gehalten, weil hier
 ## Bestand
 
 - [`meshcore-companion-protocol.md`](meshcore-companion-protocol.md) —
-  Wire-Format und Opcodes des Companion-Protokolls
+  Wire-Format und Opcodes des Companion-Protokolls. Das Framing für Serial und
+  TCP steht auf Stufe `SOURCE`, sämtliche Opcodes weiterhin auf `DOKU`.

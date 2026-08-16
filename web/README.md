@@ -24,13 +24,15 @@ pnpm build      # Typprüfung + Produktionsbuild nach dist/
 web/
 ├── src/
 │   ├── app/          Shell: Layout, Navigation, Routing, Theme
-│   ├── lib/          API-Client, WebSocket, gemeinsame Hilfen   (noch leer)
-│   ├── ui/           modulunabhängige Bausteine                 (noch leer)
 │   └── modules/      je Unterverzeichnis ein Modul
 │       ├── index.ts  die Registry
 │       └── types.ts  das Modul-Manifest
 └── ...
 ```
+
+Vorgesehen, aber noch nicht angelegt: `src/lib/` für API-Client, WebSocket und
+gemeinsame Hilfen, `src/ui/` für modulunabhängige Bausteine. Beide entstehen,
+sobald es etwas hineinzulegen gibt.
 
 Jedes Frontend-Modul entspricht einem Backend-Modul gleichen Namens und
 exportiert ein Manifest mit Routen, Navigationseinträgen und optionalen

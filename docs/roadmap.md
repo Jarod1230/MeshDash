@@ -55,7 +55,11 @@ diese Tabelle.
 - [x] Mock-Transport, der Frames aus einem Skript liefert — **gehört in diesen
       Schritt, nicht später**; inklusive nachgestellter Verbindungsabbrüche
 - Reconnect mit Backoff; ein abgezogenes USB-Kabel darf den Dienst nicht beenden
-- `Link`-Aktor: Kommando-Warteschlange, Antwortkorrelation, Push-Verteilung
+- [x] `Link`-Aktor: Kommando-Warteschlange, Antwortkorrelation, Push-Verteilung
+      — liegt in `meshdash-core`, nicht im Transport-Crate: Pushes von Antworten
+      zu unterscheiden ist Protokollwissen, und der Transport hat davon
+      keines. So steht es auch im Schichtbild in
+      [`architecture.md`](architecture.md).
 
 ## Schritt 4 — Kern (`meshdash-core`)
 

@@ -247,6 +247,21 @@ opcode_enum! {
     }
 }
 
+/// Lowest opcode value the radio uses for unsolicited messages.
+///
+/// Source: the `PUSH_CODE_*` defines start at `0x80` while every `RESP_CODE_*`
+/// stays below it — `examples/companion_radio/MyMesh.cpp`, commit `d929643`.
+pub const FIRST_PUSH_OPCODE: u8 = 0x80;
+
+/// Tells an unsolicited message apart from a reply, by its opcode byte.
+///
+/// This is what makes correlation possible at all: the protocol carries no
+/// request tag, so a caller waiting for an answer has to know which arriving
+/// frames are meant for it and which are the node talking on its own.
+pub fn is_push(opcode: u8) -> bool {
+    opcode >= FIRST_PUSH_OPCODE
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +386,40 @@ mod tests {
         assert_eq!(Push::from(0x8B), Push::TelemetryResponse);
         // gaps in the history a dashboard must not miss
         assert_eq!(Push::from(0x8F), Push::ContactDeleted);
+    }
+
+    #[test]
+    fn tells_pushes_apart_from_replies() {
+        // Every defined response is a reply...
+        for reply in [0u8, 1, 13, 28] {
+            assert!(!is_push(reply), "{reply} is a response opcode");
+        }
+        // ...and every defined push is not.
+        for push in [0x80u8, 0x83, 0x90] {
+            assert!(is_push(push), "{push:#04x} is a push opcode");
+        }
+    }
+
+    #[test]
+    fn splits_the_opcode_range_exactly_at_the_boundary() {
+        assert!(!is_push(FIRST_PUSH_OPCODE - 1));
+        assert!(is_push(FIRST_PUSH_OPCODE));
+    }
+
+    #[test]
+    fn agrees_with_the_enum_tables_on_every_byte() {
+        // A byte must not decode as a known push and a known response at once.
+        for byte in 0..=u8::MAX {
+            let known_push = !matches!(Push::from(byte), Push::Unknown(_));
+            let known_response = !matches!(Response::from(byte), Response::Unknown(_));
+
+            if known_push {
+                assert!(is_push(byte), "{byte:#04x} decodes as a push");
+            }
+            if known_response {
+                assert!(!is_push(byte), "{byte:#04x} decodes as a response");
+            }
+        }
     }
 
     #[test]

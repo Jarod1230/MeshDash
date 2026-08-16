@@ -10,6 +10,9 @@ repository.workspace = true
 [dependencies]
 meshdash-proto.workspace = true
 meshdash-transport.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true }
+tracing.workspace = true
 
 [lints]
 workspace = true

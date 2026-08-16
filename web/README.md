@@ -1,22 +1,34 @@
 # web/
 
-Frontend. **Noch leer** — entsteht in Schritt 1 der
-[Roadmap](../docs/roadmap.md).
+Frontend. Das Gerüst steht und baut; **Funktionalität gibt es noch keine** —
+die Modul-Registry ist leer und wird ab Schritt 6 der
+[Roadmap](../docs/roadmap.md) gefüllt.
 
-Stack laut [ADR-0001](../docs/decisions/0001-tech-stack.md): React, TypeScript,
-Vite. Das gebaute Ergebnis wird ins Rust-Binary eingebettet; im
-Entwicklungsmodus läuft Vite eigenständig und leitet `/api` ans Backend weiter.
+Stack laut [ADR-0001](../docs/decisions/0001-tech-stack.md): React 19,
+TypeScript (strict), Vite, Tailwind v4. Das gebaute Ergebnis wird später ins
+Rust-Binary eingebettet; im Entwicklungsmodus läuft Vite eigenständig und
+leitet `/api` ans Backend weiter.
 
-## Geplante Struktur
+```bash
+pnpm install
+pnpm dev        # Entwicklungsserver mit Hot Reload
+pnpm lint       # ESLint
+pnpm typecheck  # tsc --noEmit
+pnpm test       # Vitest
+pnpm build      # Typprüfung + Produktionsbuild nach dist/
+```
+
+## Struktur
 
 ```
 web/
 ├── src/
 │   ├── app/          Shell: Layout, Navigation, Routing, Theme
-│   ├── lib/          API-Client, WebSocket, gemeinsame Hilfen
-│   ├── ui/           modulunabhängige Bausteine
+│   ├── lib/          API-Client, WebSocket, gemeinsame Hilfen   (noch leer)
+│   ├── ui/           modulunabhängige Bausteine                 (noch leer)
 │   └── modules/      je Unterverzeichnis ein Modul
-│       └── <modul>/  Seiten, Widgets, Typen, Manifest
+│       ├── index.ts  die Registry
+│       └── types.ts  das Modul-Manifest
 └── ...
 ```
 

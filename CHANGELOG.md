@@ -12,6 +12,11 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Gerüst (Schritt 1 der Roadmap): Cargo-Workspace mit den fünf Crates
+  `proto`, `transport`, `core`, `modules`, `server` samt verdrahteter
+  Abhängigkeitsrichtung; Frontend-Gerüst mit React 19, Vite, TypeScript,
+  Tailwind und leerer Modul-Registry; CI für Rust, Frontend und Doku-Links;
+  `justfile` für die gängigen Abläufe. Noch ohne Funktionalität.
 - Projektrahmen aufgesetzt: Architekturentwurf, Modulkonzept, Konventionen,
   Entwicklerdokumentation, Entscheidungsprotokoll (ADRs) und Glossar.
 - Recherchestand zum MeshCore-Companion-Protokoll dokumentiert, inklusive

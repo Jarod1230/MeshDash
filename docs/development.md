@@ -9,9 +9,9 @@
 | pnpm | 9 oder neuer | Paketverwaltung Frontend |
 | Docker | optional | Auslieferung, Testumgebung |
 
-Rust am besten über [rustup](https://rustup.rs/). Die Toolchain wird über
-`rust-toolchain.toml` festgeschrieben, sobald der Workspace existiert — dann
-genügt ein `cargo build` im Repository, rustup holt den Rest.
+Rust am besten über [rustup](https://rustup.rs/). Die Toolchain ist über
+`rust-toolchain.toml` festgeschrieben — ein `cargo build` im Repository genügt,
+rustup holt den Rest.
 
 ### Zugriff auf die serielle Schnittstelle (Linux)
 
@@ -30,28 +30,31 @@ entwickeln** — dafür gibt es den Mock-Transport, siehe [`testing.md`](testing
 ```bash
 git clone https://github.com/Jarod1230/MeshDash.git
 cd MeshDash
+just setup     # entspricht: cd web && pnpm install
+just check     # alles, was auch die CI prüft
 ```
 
-Mehr ist derzeit nicht zu tun: Das Repository enthält noch keinen Code.
-Was der erste Implementierungsschritt anlegt, steht in [`roadmap.md`](roadmap.md).
+[`just`](https://github.com/casey/just) ist optional (`cargo install just`);
+alle Rezepte stehen im Klartext im [`justfile`](../justfile).
 
-## Arbeitsabläufe (sobald der Code existiert)
+**Was schon geht:** Der Workspace baut, das Frontend baut, die CI ist grün.
+**Was noch nicht geht:** alles Fachliche — der Server gibt beim Start nur seine
+Version aus, die Modul-Registry ist leer. Siehe [`roadmap.md`](roadmap.md).
 
-Die folgenden Befehle sind das Ziel. Sie funktionieren, sobald Schritt 1 der
-Roadmap umgesetzt ist.
+## Arbeitsabläufe
 
 ```bash
-# Backend bauen und starten
-cargo run -p meshdash-server
+# Backend starten (gibt derzeit nur die Version aus)
+just dev-server        # cargo run -p meshdash-server
 
-# Frontend im Entwicklungsmodus (Proxy auf das Backend)
-cd web && pnpm install && pnpm dev
+# Frontend im Entwicklungsmodus, Proxy /api auf das Backend
+just dev-web           # cd web && pnpm dev
 
-# Prüfungen — dieselben, die die CI fahren wird
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cd web && pnpm lint && pnpm typecheck && pnpm test
+# Prüfungen — identisch mit der CI
+just check
+just check-rust        # fmt, clippy, cargo test
+just check-web         # lint, typecheck, test, build
+just check-docs        # interne Markdown-Links
 ```
 
 Im Entwicklungsmodus laufen zwei Prozesse: Vite liefert das Frontend mit Hot

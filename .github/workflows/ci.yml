@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain installieren
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatierung
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  web:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Abhängigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Linting
+        run: pnpm lint
+
+      - name: Typprüfung
+        run: pnpm typecheck
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  docs:
+    name: Dokumentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Interne Links prüfen
+        run: python3 scripts/check-links.py

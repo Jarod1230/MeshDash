@@ -1,0 +1,15 @@
+[package]
+name = "meshdash-core"
+description = "Configuration, storage, event bus and module registry. No domain logic."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+meshdash-proto.workspace = true
+meshdash-transport.workspace = true
+
+[lints]
+workspace = true

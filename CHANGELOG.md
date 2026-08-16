@@ -12,6 +12,8 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Serieller Transport in `meshdash-transport` für einen Node am USB-Port,
+  mit der am Firmware-Quellcode belegten Baudrate 115200 als Voreinstellung.
 - TCP-Transport in `meshdash-transport`, mit Wiederverbindung nach
   Verbindungsabbruch. Die Rahmenbildung liegt in einem Adapter, der über
   jedem Byte-Strom arbeitet — Serial wird ihn mitbenutzen.

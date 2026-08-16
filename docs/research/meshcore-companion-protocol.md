@@ -78,6 +78,12 @@ Beantwortet sind damit auch die übrigen Framing-Fragen:
 - **TCP verwendet dasselbe Framing wie Serial.** Kommentar in der Firmware:
   `use same header as serial interface so client can delimit frames`.
 
+#### Baudrate (nur USB/Serial)
+
+**115200** — `Serial.begin(115200)` in `examples/companion_radio/main.cpp`,
+MeshCore-Commit `d929643`. Gilt für die USB-Konsole des Companion-Node; TCP
+kennt naturgemäß keine Baudrate.
+
 #### Rahmengröße
 
 `MAX_FRAME_SIZE` ist in der Firmware **176** Byte

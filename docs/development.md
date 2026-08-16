@@ -31,6 +31,13 @@ sudo usermod -a -G dialout "$USER"   # bei Arch/Fedora: uucp statt dialout
 Neu anmelden, sonst greift die Gruppe nicht. **Ohne Node lässt sich trotzdem
 entwickeln** — dafür gibt es den Mock-Transport, siehe [`testing.md`](testing.md).
 
+**Keine Systembibliothek nötig.** Der serielle Transport bindet `tokio-serial`
+ohne dessen `libudev`-Merkmal ein, sodass weder lokal noch in der CI ein
+Entwicklungspaket installiert werden muss. Der Preis: Ports lassen sich nicht
+automatisch auflisten. Der Pfad kommt aus der Konfiguration, was für einen
+Dienst ohnehin die passendere Betriebsart ist. Soll später eine Oberfläche
+verfügbare Ports anbieten, ist diese Entscheidung neu zu bewerten.
+
 ## Repository einrichten
 
 ```bash

@@ -1,0 +1,61 @@
+name: Protokoll-Erkenntnis
+description: Etwas über das MeshCore-Companion-Protokoll herausgefunden
+labels: ["protokoll", "recherche"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Das Companion-Protokoll ist nur teilweise dokumentiert und die
+        veröffentlichten Quellen widersprechen sich stellenweise. Jede belegte
+        Erkenntnis ist wertvoll — auch eine, die eine bisherige Annahme
+        widerlegt.
+
+        Stand und offene Fragen:
+        [meshcore-companion-protocol.md](../blob/main/docs/research/meshcore-companion-protocol.md)
+
+  - type: textarea
+    id: erkenntnis
+    attributes:
+      label: Was hast du herausgefunden?
+      description: Opcode, Feldaufteilung, Framing-Detail, Firmware-Verhalten …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stufe
+    attributes:
+      label: Verifikationsstufe
+      description: Siehe docs/research/README.md
+      options:
+        - HARDWARE — an echter Hardware beobachtet
+        - SOURCE — im Firmware-Quellcode gelesen
+        - REFERENZ — aus einer funktionierenden Fremdimplementierung
+        - DOKU — aus veröffentlichter Dokumentation
+        - VERMUTUNG — abgeleitet, nicht belegt
+    validations:
+      required: true
+
+  - type: textarea
+    id: beleg
+    attributes:
+      label: Beleg
+      description: >
+        Link, Commit, Dateipfad im Firmware-Repository — oder ein Hexdump.
+        Ohne Beleg bleibt es eine Vermutung und darf nicht ohne Fallback in
+        den Code.
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware-Version und Hardware
+      description: Nur bei Stufe HARDWARE, dann aber wichtig.
+
+  - type: textarea
+    id: auswirkung
+    attributes:
+      label: Widerspricht das einer bisherigen Annahme?
+      description: >
+        Falls ja: welcher? Dann gehört zusätzlich ein Eintrag in
+        docs/lessons-learned.md.

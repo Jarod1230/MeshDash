@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/Jarod1230/MeshDash/security/advisories/new
+    about: Bitte nicht öffentlich als Issue — siehe SECURITY.md.
+  - name: MeshCore-Projekt
+    url: https://github.com/meshcore-dev/MeshCore
+    about: Fragen zur Firmware selbst gehören zum MeshCore-Projekt, nicht hierher.

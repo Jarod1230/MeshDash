@@ -6,10 +6,15 @@ MeshDash verbindet sich mit einem MeshCore-Companion-Node und macht daraus eine
 Web-App: Nodes und Nachbarn im Blick, Nachrichtenverlauf, Telemetrie über die Zeit,
 Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 
-> **Status: Gerüst steht, Implementierung beginnt.**
-> Cargo-Workspace, Frontend und CI bauen grün durch — aber **noch ohne
-> Funktionalität**: Es gibt keinen Protokoll-Codec, keine Datenbank und keine
-> API. Als Nächstes ist Schritt 2 in [`docs/roadmap.md`](docs/roadmap.md) dran.
+> **Status: Frühe Implementierung — die unterste Schicht entsteht.**
+> Cargo-Workspace, Frontend und CI bauen grün durch. Fertig ist der
+> **Frame-Codec** in `meshdash-proto`: Er setzt Frames aus einem Bytestrom
+> zusammen und kodiert ausgehende. Das zugrunde liegende Wire-Format ist am
+> Firmware-Quellcode verifiziert, nicht geraten.
+>
+> **Noch nicht vorhanden:** die Opcodes über der Frame-Ebene, Transport,
+> Datenbank, API und sämtliche Module. Es gibt also noch nichts zu bedienen.
+> Der Stand im Einzelnen: [`docs/roadmap.md`](docs/roadmap.md).
 
 ---
 

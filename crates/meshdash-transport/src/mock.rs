@@ -11,7 +11,48 @@
 //! protocol values are never guessed. It proves the shape of our own logic,
 //! not the behaviour of a real node.
 
+use std::sync::{Arc, Mutex};
+
 use crate::{Transport, TransportError};
+
+/// A view of what a [`MockTransport`] was told to send.
+///
+/// Cloning it shares the same record, so a test can keep watching after the
+/// transport itself has been handed to an actor and is out of reach.
+#[derive(Debug, Clone, Default)]
+pub struct SentFrames(Arc<Mutex<Vec<Vec<u8>>>>);
+
+impl SentFrames {
+    /// The frames recorded so far, in order.
+    pub fn snapshot(&self) -> Vec<Vec<u8>> {
+        self.lock().clone()
+    }
+
+    /// How many frames were sent.
+    pub fn len(&self) -> usize {
+        self.lock().len()
+    }
+
+    /// Whether nothing has been sent yet.
+    pub fn is_empty(&self) -> bool {
+        self.lock().is_empty()
+    }
+
+    /// Appends a frame to the record.
+    fn record(&self, frame: &[u8]) {
+        self.lock().push(frame.to_vec());
+    }
+
+    /// Takes the lock, recovering from a poisoned mutex.
+    ///
+    /// A panic in another test thread must not turn every later assertion into
+    /// a second, confusing panic — the record itself is still intact.
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<Vec<u8>>> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
 
 /// One step in a mock script.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +70,7 @@ pub struct MockTransport {
     script: Vec<Step>,
     position: usize,
     connected: bool,
-    sent: Vec<Vec<u8>>,
+    sent: SentFrames,
     connect_count: usize,
 }
 
@@ -43,8 +84,15 @@ impl MockTransport {
     }
 
     /// Frames the caller has sent, in order.
-    pub fn sent(&self) -> &[Vec<u8>] {
-        &self.sent
+    pub fn sent(&self) -> Vec<Vec<u8>> {
+        self.sent.snapshot()
+    }
+
+    /// A handle to the send record that outlives moving this transport.
+    ///
+    /// Needed to observe an actor that has taken ownership of the transport.
+    pub fn sent_frames(&self) -> SentFrames {
+        self.sent.clone()
     }
 
     /// How often [`Transport::connect`] succeeded — the reconnect counter.
@@ -74,7 +122,7 @@ impl Transport for MockTransport {
 
     async fn send(&mut self, frame: &[u8]) -> Result<(), TransportError> {
         self.require_connection()?;
-        self.sent.push(frame.to_vec());
+        self.sent.record(frame);
         Ok(())
     }
 
@@ -136,7 +184,24 @@ mod tests {
         transport.send(&[0x16, 0x03]).await.unwrap();
         transport.send(&[0x0A]).await.unwrap();
 
-        assert_eq!(transport.sent(), &[vec![0x16, 0x03], vec![0x0A]]);
+        assert_eq!(transport.sent(), vec![vec![0x16, 0x03], vec![0x0A]]);
+    }
+
+    #[tokio::test]
+    async fn keeps_the_send_record_observable_after_giving_the_transport_away() {
+        let mut transport = MockTransport::new(vec![]);
+        let record = transport.sent_frames();
+        assert!(record.is_empty());
+
+        // Hand the transport to something that owns it from now on.
+        let owner = tokio::spawn(async move {
+            transport.connect().await.unwrap();
+            transport.send(&[0x14]).await.unwrap();
+        });
+        owner.await.unwrap();
+
+        assert_eq!(record.len(), 1);
+        assert_eq!(record.snapshot(), vec![vec![0x14]]);
     }
 
     #[tokio::test]

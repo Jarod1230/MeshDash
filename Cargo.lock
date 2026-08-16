@@ -127,6 +127,9 @@ version = "0.1.0"
 dependencies = [
  "meshdash-proto",
  "meshdash-transport",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -10,7 +10,7 @@ Zuschnitt, begründet in [`../docs/architecture.md`](../docs/architecture.md):
 | --- | --- | --- | --- |
 | `meshdash-proto` | Companion-Protokoll: Framing, Opcodes, Kodierung. **Keine I/O.** | — | Frame-Ebene fertig, Opcodes offen |
 | `meshdash-transport` | Serial, TCP, Mock, später BLE. Verbindung und Reconnect. **Kein Protokollwissen.** | `proto` | Trait, Mock, TCP und Serial fertig; Link offen |
-| `meshdash-core` | Konfiguration, SQLite, Event-Bus, Modul-Registry. **Keine Fachlichkeit.** | `proto`, `transport` | leer |
+| `meshdash-core` | Konfiguration, SQLite, Event-Bus, Modul-Registry. **Keine Fachlichkeit.** | `proto`, `transport` | `Link`-Aktor fertig, Rest offen |
 | `meshdash-modules` | Alle fachlichen Module. | `core` | leer |
 | `meshdash-server` | Axum, WebSocket, Auth, eingebettetes Frontend. | alle | gibt die Version aus |
 

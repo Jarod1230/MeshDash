@@ -12,6 +12,10 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- `Link`-Aktor in `meshdash-core`: nimmt Kommandos entgegen, ordnet die
+  Antworten des Node den Anfragen zu und verteilt alles Unaufgeforderte an
+  Interessenten. Bleibt ein Node stumm, läuft das Kommando in eine
+  Zeitüberschreitung, statt die Warteschlange zu blockieren.
 - Serieller Transport in `meshdash-transport` für einen Node am USB-Port,
   mit der am Firmware-Quellcode belegten Baudrate 115200 als Voreinstellung.
 - TCP-Transport in `meshdash-transport`, mit Wiederverbindung nach

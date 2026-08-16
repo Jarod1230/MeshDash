@@ -6,11 +6,13 @@
 //!
 //! # Scaffolding only
 //!
-//! Nothing is implemented yet. Step 2 of `docs/roadmap.md` fills this in, and
-//! it is **blocked**: the serial framing is not verified. The published
-//! documentation contradicts itself on the direction markers, and the BLE
-//! description does not transfer to a byte stream. See
-//! `docs/research/meshcore-companion-protocol.md`.
+//! Nothing is implemented yet. Step 2 of `docs/roadmap.md` fills this in.
+//!
+//! The serial and TCP framing is verified against the firmware source and is
+//! no longer a blocker: frames are `[marker: u8][len: u16 LE][payload]`, the
+//! marker is `0x3C` app-to-radio and `0x3E` radio-to-app, `len` counts the
+//! payload only, and there is no checksum. The **opcodes are still
+//! unverified**. See `docs/research/meshcore-companion-protocol.md`.
 //!
 //! # Rule for this crate
 //!

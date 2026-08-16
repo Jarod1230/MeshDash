@@ -12,6 +12,10 @@ meshdash-proto.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true }
+# Deliberately without the `libudev` feature, which is not enabled by default:
+# it would add a system library to every Linux build just to enumerate ports,
+# and we open a port by path from the configuration. See docs/development.md.
+tokio-serial.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

@@ -220,3 +220,42 @@ Konfiguration sah ein halbes Projekt lang richtig aus, ohne je zu greifen.
    bei Protokollwerten: unbewiesen ist nicht bewiesen.
 
 **Belege:** `clippy.toml`, `[workspace.lints.clippy]` in `Cargo.toml`.
+
+---
+
+## 2026-08-16 — Eine falsch gestellte Frage bleibt unbeantwortbar
+
+**Kontext:** Anheben der Opcodes von Stufe `DOKU` auf `SOURCE`, nach demselben
+Muster wie zuvor beim Framing.
+
+**Problem:** Zwei Dinge, die über den bereits notierten Vorrang des Quellcodes
+hinausgehen:
+
+1. **Die Dokumentation war nicht nur lückenhaft, sondern in Namen falsch.**
+   Sie kannte 9 Kommandos, die Firmware definiert 44. Und sie nannte Konstanten,
+   die es so nicht gibt: `RESP_CODE_ERROR` heißt `RESP_CODE_ERR`,
+   `CMD_GET_BATTERY` heißt `CMD_GET_BATT_AND_STORAGE`, `PUSH_CODE_ACK` heißt
+   `PUSH_CODE_SEND_CONFIRMED`. Die **Zahlenwerte** stimmten durchweg — wer nach
+   Namen sucht statt nach Werten, findet die Stelle im Quellcode trotzdem nicht.
+
+2. **Eine unserer offenen Fragen war falsch gestellt.** Sie lautete: „Ab welcher
+   Firmware-Version kommen die V3-Nachrichtenvarianten?" Die Antwort ist: an der
+   Firmware liegt es nicht. Die App teilt in `CMD_DEVICE_QUERY` mit, welche
+   Protokollversion sie versteht, und die Firmware richtet sich danach. Wir
+   hatten die Kontrollrichtung umgedreht angenommen und deshalb nach etwas
+   gesucht, das es nicht gibt.
+
+**Konsequenz:**
+
+1. **Offene Fragen zu Fremdsystemen enthalten Annahmen — die Annahme prüfen,
+   bevor man die Frage beantwortet.** „Ab welcher Version…" setzt voraus, dass
+   die Gegenseite entscheidet. Wäre die Frage so recherchiert worden, wie sie
+   dastand, hätte die Suche nichts ergeben und der Eintrag wäre offen geblieben.
+2. **Namen aus Dokumentation sind schwächere Belege als Zahlen.** Beim Abgleich
+   mit Quellcode nach dem Wert suchen, nicht nach der Bezeichnung.
+3. Ergänzt den Eintrag „Die plausiblere Quelle war die falsche" — dort ging es um
+   widersprüchliche Angaben, hier um unvollständige und falsch benannte.
+
+**Belege:** Abschnitte „Opcodes" und „Protokollversionen" in
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md),
+mit Verweis auf `MyMesh.cpp` und die Verzweigungen auf `app_target_ver`.

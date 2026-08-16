@@ -17,4 +17,5 @@
 //! anyway and the modularity is only claimed, not real.
 
 pub mod config;
+pub mod event;
 pub mod link;

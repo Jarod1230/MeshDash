@@ -9,7 +9,7 @@ Zuschnitt, begründet in [`../docs/architecture.md`](../docs/architecture.md):
 | Crate | Verantwortung | Darf abhängen von | Stand |
 | --- | --- | --- | --- |
 | `meshdash-proto` | Companion-Protokoll: Framing, Opcodes, Kodierung. **Keine I/O.** | — | Frame-Ebene fertig, Opcodes offen |
-| `meshdash-transport` | Serial, TCP, Mock, später BLE. Verbindung und Reconnect. **Kein Protokollwissen.** | `proto` | leer |
+| `meshdash-transport` | Serial, TCP, Mock, später BLE. Verbindung und Reconnect. **Kein Protokollwissen.** | `proto` | Trait und Mock fertig, Serial und TCP offen |
 | `meshdash-core` | Konfiguration, SQLite, Event-Bus, Modul-Registry. **Keine Fachlichkeit.** | `proto`, `transport` | leer |
 | `meshdash-modules` | Alle fachlichen Module. | `core` | leer |
 | `meshdash-server` | Axum, WebSocket, Auth, eingebettetes Frontend. | alle | gibt die Version aus |

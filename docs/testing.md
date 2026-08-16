@@ -29,9 +29,20 @@ ist damit der natürliche Kandidat.
 ### `meshdash-transport` — Mock-Transport
 
 Der Mock-Transport implementiert dasselbe `Transport`-Trait wie Serial und TCP
-und liefert Frames aus einer Skriptdatei. Er ist **Bestandteil der Architektur**,
-kein Testbehelf: Ohne ihn lässt sich weder der Link noch ein Modul prüfen, und
+und spielt ein Skript ab. Er ist **Bestandteil der Architektur**, kein
+Testbehelf: Ohne ihn lässt sich weder der Link noch ein Modul prüfen, und
 das Frontend hat keine Datenquelle.
+
+Ein Skript ist eine Folge von Schritten: `Emit` liefert einen Frame, `Drop`
+lässt die Verbindung abreißen. Nach einem `Drop` schlagen weitere Zugriffe fehl,
+bis erneut verbunden wird — dann läuft das Skript hinter der Abbruchstelle
+weiter. So lässt sich ein abgezogenes USB-Kabel nachstellen, ohne eines zu
+haben. Läuft das Skript aus, endet die Verbindung ebenfalls mit einem Fehler,
+statt auf ewig zu warten; ein Test soll hängen können, aber nicht schweigend.
+
+Skripte werden derzeit im Code zusammengesetzt. Sie aus Dateien zu laden ist
+möglich und sinnvoll, sobald es aufgezeichneten Verkehr gibt — siehe
+„Fixtures" unten.
 
 Damit prüfbar:
 

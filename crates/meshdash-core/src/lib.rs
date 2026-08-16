@@ -16,4 +16,5 @@
 //! `Module` trait. If that contract is sloppy, domain logic leaks in here
 //! anyway and the modularity is only claimed, not real.
 
+pub mod config;
 pub mod link;

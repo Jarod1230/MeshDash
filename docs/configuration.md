@@ -1,9 +1,9 @@
 # Konfiguration
 
-> **Geplant.** MeshDash liest noch keine Konfiguration — der Kern existiert
-> nicht. Dieses Dokument beschreibt die vorgesehene Oberfläche und ist beim
-> Umsetzen von Schritt 4 der [Roadmap](roadmap.md) auf den tatsächlichen Stand
-> zu bringen.
+> **Teilweise umgesetzt.** Die unten beschriebenen Optionen werden gelesen —
+> aber noch von niemandem *benutzt*: Es gibt weder Server noch Datenbank, und
+> der Link wird noch nicht aus der Konfiguration aufgebaut. Was noch fehlt,
+> steht am Ende des Dokuments.
 
 ## Quellen und Rangfolge
 
@@ -13,6 +13,14 @@ Später gewinnt:
 2. `meshdash.toml` im Arbeitsverzeichnis (Pfad über `--config` überschreibbar)
 3. Umgebungsvariablen mit Präfix `MESHDASH_`
 4. Kommandozeilenargumente
+
+Umgesetzt sind 1 bis 3. Kommandozeilenargumente gehören zum Binary und kommen
+mit Schritt 5.
+
+**Eine unbekannte Option ist ein Fehler**, kein stillschweigend ignorierter
+Eintrag. Ein verschriebenes `bnid` statt `bind` würde sonst dazu führen, dass
+der Dienst auf einer anderen Adresse lauscht als beabsichtigt — und niemand
+bekäme es mit.
 
 Umgebungsvariablen bilden die Verschachtelung mit doppeltem Unterstrich ab:
 `[server] port` wird zu `MESHDASH_SERVER__PORT`.
@@ -39,33 +47,38 @@ token = ""
 path = "data/meshdash.db"
 
 [node]
-# Anbindung an den Companion-Node: "serial", "tcp" oder "mock".
+# Anbindung an den Companion-Node: "serial" oder "tcp".
 transport = "serial"
 
 [node.serial]
 port = "/dev/ttyUSB0"
+# Am Firmware-Quellcode belegt, siehe research/meshcore-companion-protocol.md.
 baud = 115200
 
 [node.tcp]
-host = "192.168.1.50"
+host = "127.0.0.1"
 port = 5000
-
-[node.mock]
-# Skriptdatei mit Frames für Entwicklung ohne Hardware. Siehe testing.md.
-script = "fixtures/basic.jsonl"
 
 [log]
 # Entspricht RUST_LOG. Die Umgebungsvariable gewinnt.
 filter = "meshdash=info"
-
-# Module bringen ihre eigene Konfiguration unter [modules.<name>] mit.
-# Ein nicht aufgeführtes Modul läuft mit seinen Voreinstellungen.
-[modules.telemetry]
-enabled = true
-
-[modules.messages]
-enabled = true
 ```
+
+## Was noch fehlt
+
+Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
+
+- **`[modules.<name>]`** — es gibt noch keine Module. Die Sektion kommt mit
+  Schritt 6; gelesen wird sie dann vom Modul, nicht vom Kern.
+- **`[node.mock]` mit Skriptdatei** — der Mock-Transport spielt Skripte ab, die
+  im Code zusammengesetzt werden, und lädt keine Dateien. Eine Option dafür
+  anzubieten, würde eine Fähigkeit vortäuschen. Sie ergibt Sinn, sobald es
+  aufgezeichneten Verkehr unter `fixtures/` gibt — siehe
+  [`testing.md`](testing.md).
+- **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
+- **Wirkung.** Die Werte werden gelesen und geprüft, aber noch nirgends
+  verwendet: Server, Datenbank und der Aufbau des Links aus der Konfiguration
+  kommen in den Schritten 4 und 5.
 
 ## Beim Ergänzen einer Option
 

@@ -65,7 +65,8 @@ diese Tabelle.
 
 ## Schritt 4 — Kern (`meshdash-core`)
 
-- Konfiguration aus TOML und Umgebungsvariablen
+- [x] Konfiguration aus TOML und Umgebungsvariablen — `config::Config`,
+      Voreinstellungen so gewählt, dass MeshDash ohne Datei startet
 - SQLite-Anbindung, Migrationsablauf über Modulgrenzen hinweg
 - Event-Bus
 - `Module`-Trait und Registry — der Vertrag aus [`module-system.md`](module-system.md)

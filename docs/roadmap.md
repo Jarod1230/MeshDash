@@ -49,7 +49,9 @@ diese Tabelle.
 ## Schritt 3 — Transport und Link
 
 - [x] `Transport`-Trait — Frames statt Bytes, damit BLE später ohne Umbau passt
-- Serial über `tokio-serial`, TCP über `tokio::net`
+- [x] TCP über `tokio::net` — samt gemeinsamer Rahmenbildung für jeden
+      Byte-Strom, die sich Serial später teilt
+- Serial über `tokio-serial`
 - [x] Mock-Transport, der Frames aus einem Skript liefert — **gehört in diesen
       Schritt, nicht später**; inklusive nachgestellter Verbindungsabbrüche
 - Reconnect mit Backoff; ein abgezogenes USB-Kabel darf den Dienst nicht beenden

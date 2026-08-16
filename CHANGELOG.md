@@ -12,6 +12,9 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- TCP-Transport in `meshdash-transport`, mit Wiederverbindung nach
+  Verbindungsabbruch. Die Rahmenbildung liegt in einem Adapter, der über
+  jedem Byte-Strom arbeitet — Serial wird ihn mitbenutzen.
 - `Transport`-Trait und Mock-Transport in `meshdash-transport` (Beginn von
   Schritt 3 der Roadmap). Der Mock spielt ein Skript ab und kann
   Verbindungsabbrüche nachstellen, sodass sich Wiederverbindung ohne Hardware

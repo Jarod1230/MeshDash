@@ -11,6 +11,8 @@ repository.workspace = true
 meshdash-proto.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true }
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }

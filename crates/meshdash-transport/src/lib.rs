@@ -19,6 +19,8 @@
 //! `docs/roadmap.md`.
 
 pub mod mock;
+pub mod stream;
+pub mod tcp;
 
 /// Why a transport operation could not be completed.
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +36,11 @@ pub enum TransportError {
     /// The underlying device or socket failed.
     #[error("transport I/O failed")]
     Io(#[from] std::io::Error),
+
+    /// A frame could not be built, for instance because the payload exceeds
+    /// what the node accepts.
+    #[error("framing failed")]
+    Frame(#[from] meshdash_proto::frame::EncodeError),
 }
 
 /// A connection to a companion node, in whole frames.

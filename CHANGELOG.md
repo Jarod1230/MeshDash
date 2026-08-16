@@ -12,6 +12,10 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Konfiguration in `meshdash-core`: `meshdash.toml` und Umgebungsvariablen mit
+  Präfix `MESHDASH_`, mit Voreinstellungen für alles. MeshDash startet ohne
+  Konfigurationsdatei, lauscht standardmäßig nur auf localhost und weist
+  unbekannte Optionen als Fehler zurück, statt sie zu übergehen.
 - Selbsttätige Wiederverbindung im `Link`: Ein abgezogenes USB-Kabel oder ein
   neu startender Node beendet den Dienst nicht mehr. Die Wartezeit zwischen
   Versuchen wächst und ist gedeckelt; ein Kommando, das während der Störung

@@ -10,6 +10,8 @@ repository.workspace = true
 [dependencies]
 meshdash-proto.workspace = true
 meshdash-transport.workspace = true
+figment.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true }
 tracing.workspace = true
@@ -18,6 +20,9 @@ tracing.workspace = true
 # `test-util` is not part of tokio's `full`; it provides the paused clock that
 # makes backoff timing testable without actually waiting.
 tokio = { workspace = true, features = ["test-util"] }
+# `test` provides Jail, which runs a test in its own directory and environment
+# so configuration loading can be checked without touching the real ones.
+figment = { workspace = true, features = ["test"] }
 
 [lints]
 workspace = true

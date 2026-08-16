@@ -122,6 +122,18 @@ voraus und werden deshalb **nicht** verwendet — sonst braucht jeder Build und
 jeder CI-Lauf eine vorbereitete Datenbank. Stattdessen Laufzeit-Queries mit
 Tests, die tatsächlich gegen ein Schema laufen.
 
+**Migrationen werden je Modul gezählt, nicht global.** Jedes Modul führt seine
+eigene Versionsreihe ab 1; die Tabelle `_migrations` hält fest, welche Version
+je Modul angewandt wurde. Damit muss sich kein Modul mit einem anderen über
+Nummern einigen: Ein neues Modul bringt seine Migrationen mit, ohne fremde
+Historie umzunummerieren, und ein entferntes lässt die übrigen unberührt.
+Eine gemeinsame Reihe würde genau die Kopplung erzeugen, die die Modularität
+vermeiden soll.
+
+Jede Migration läuft in einer eigenen Transaktion. Schlägt eine fehl, bleibt
+kein halbes Schema zurück; die vorher angewandten bleiben gültig und
+verzeichnet.
+
 ## Abgrenzung — was MeshDash *nicht* ist
 
 Ohne diese Grenzen wird das Projekt beliebig:

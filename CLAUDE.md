@@ -10,9 +10,11 @@ spricht über Serial oder TCP mit einem MeshCore-Companion-Node, persistiert des
 Ereignisse und stellt sie einem React-Frontend als REST-API und WebSocket-Stream
 bereit. Ausgeliefert wird ein einzelnes Binary mit eingebettetem Frontend.
 
-**Projektstand: Rahmen steht, Implementierung hat noch nicht begonnen.**
-Es gibt bewusst noch kein `Cargo.toml` und kein `package.json` — der erste
-Implementierungsschritt legt beides an, siehe `docs/roadmap.md`.
+**Projektstand: Gerüst steht (Schritt 1 der Roadmap erledigt).**
+Der Cargo-Workspace mit fünf leeren Crates, das Frontend-Gerüst und die CI
+bauen grün durch. **Funktionalität gibt es noch keine** — kein Protokoll-Codec,
+keine Datenbank, keine Route, kein Modul. Als Nächstes ist Schritt 2 dran, und
+der ist blockiert, bis das Serial-Framing verifiziert ist (siehe unten).
 
 ## Wo was steht
 
@@ -90,9 +92,9 @@ Nach einer Änderung mitziehen — das ist Teil der Aufgabe, nicht optional:
 
 - Branch von `main`, Namensschema in `docs/conventions.md`. Nie direkt auf `main`.
 - Conventional Commits.
-- Vor dem Melden von Fertigstellung: bauen und Tests laufen lassen. Sobald es
-  ein `Cargo.toml` gibt, heißt das `cargo fmt --check`, `cargo clippy -- -D warnings`
-  und `cargo test`.
+- Vor dem Melden von Fertigstellung: `just check`. Das ist genau das, was die CI
+  fährt — Format, Clippy, Rust-Tests, Frontend-Lint/Typen/Tests/Build und die
+  Prüfung interner Doku-Links.
 - Tests für Protokoll-Parsing sind Pflicht, nicht Kür.
 
 ## Umgebung

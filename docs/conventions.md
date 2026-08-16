@@ -44,8 +44,8 @@ inhaltlichen Änderungen vermischt.
 
 ## Rust
 
-- `cargo fmt` ist verbindlich; `rustfmt.toml` liegt im Repository-Wurzelverzeichnis,
-  sobald der Workspace existiert.
+- `cargo fmt` ist verbindlich; die Einstellungen stehen in `rustfmt.toml` im
+  Repository-Wurzelverzeichnis.
 - `cargo clippy -- -D warnings` muss sauber sein. Ein `#[allow(…)]` braucht einen
   Kommentar mit Begründung.
 - Fehler mit `thiserror` in Bibliotheks-Crates, `anyhow` nur im Binary.

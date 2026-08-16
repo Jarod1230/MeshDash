@@ -6,17 +6,20 @@ Grundsatz: **Von unten nach oben.** Erst das Protokoll, dann der Transport, dann
 der Kern, dann Module. Umgekehrt baut man eine Oberfläche für Daten, die man
 noch nicht zuverlässig lesen kann.
 
-## Schritt 1 — Gerüst
+## Schritt 1 — Gerüst ✅ erledigt
 
-Ziel: `cargo build` und `pnpm build` laufen durch, auch wenn sie noch nichts tun.
+Ziel war: `cargo build` und `pnpm build` laufen durch, auch wenn sie noch nichts tun.
 
-- Cargo-Workspace mit den Crates aus [`architecture.md`](architecture.md)
-- `rust-toolchain.toml`, `rustfmt.toml`
-- Frontend-Gerüst: Vite, TypeScript, Tailwind, Linting
-- CI: Format, Clippy, Tests, Frontend-Build
-- `justfile` oder `Makefile` für die gängigen Abläufe
+- [x] Cargo-Workspace mit den fünf Crates aus [`architecture.md`](architecture.md),
+      Abhängigkeitsrichtung verdrahtet
+- [x] `rust-toolchain.toml`, `rustfmt.toml`, Workspace-Lints
+      (`unsafe_code = "forbid"`, `unwrap_used`/`expect_used` als Warnung)
+- [x] Frontend-Gerüst: React 19, Vite, TypeScript (strict), Tailwind v4, ESLint,
+      Vitest, leere Modul-Registry
+- [x] CI: Format, Clippy, Tests, Frontend-Build, Prüfung interner Doku-Links
+- [x] `justfile` für die gängigen Abläufe
 
-*Erst danach ist das Repository „grün" und alles Weitere hat ein Netz.*
+*Das Repository ist damit „grün" — alles Weitere hat ein Netz.*
 
 ## Schritt 2 — Protokoll (`meshdash-proto`)
 

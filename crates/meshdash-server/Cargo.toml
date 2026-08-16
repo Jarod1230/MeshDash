@@ -1,0 +1,19 @@
+[package]
+name = "meshdash-server"
+description = "MeshDash binary: HTTP, WebSocket, auth, embedded frontend."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "meshdash"
+path = "src/main.rs"
+
+[dependencies]
+meshdash-core.workspace = true
+meshdash-modules.workspace = true
+
+[lints]
+workspace = true

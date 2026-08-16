@@ -1,0 +1,13 @@
+[package]
+name = "meshdash-proto"
+description = "MeshCore companion protocol: framing, opcodes, encoding. No I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

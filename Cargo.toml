@@ -1,0 +1,67 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/meshdash-proto",
+    "crates/meshdash-transport",
+    "crates/meshdash-core",
+    "crates/meshdash-modules",
+    "crates/meshdash-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Jarod1230/MeshDash"
+
+# Internal crates. The dependency direction is strictly one-way:
+# proto -> transport -> core -> modules -> server.
+# A backward reference is an architecture error, see docs/architecture.md.
+[workspace.dependencies]
+meshdash-proto = { path = "crates/meshdash-proto" }
+meshdash-transport = { path = "crates/meshdash-transport" }
+meshdash-core = { path = "crates/meshdash-core" }
+meshdash-modules = { path = "crates/meshdash-modules" }
+
+# Version catalogue for the planned stack. Crates opt in individually with
+# `dep.workspace = true` as they start using something; declaring a version
+# here does not pull it into any build.
+anyhow = "1"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["ws", "macros"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+futures = "0.3"
+rust-embed = { version = "8", features = ["mime-guess"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-ring",
+    "sqlite",
+    "chrono",
+    "migrate",
+] }
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-serial = "5"
+tokio-util = { version = "0.7", features = ["codec"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "compression-gzip"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Guardrails from docs/conventions.md. `unwrap`/`expect` stay allowed in tests
+# via the tool's own test exemptions; these fire on library and binary code.
+unwrap_used = "warn"
+expect_used = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

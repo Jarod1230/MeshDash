@@ -1,9 +1,10 @@
 # crates/
 
-Rust-Workspace. **Noch leer** — die Crates entstehen in Schritt 1 der
-[Roadmap](../docs/roadmap.md).
+Rust-Workspace. Die Crates existieren und bauen, sind aber **inhaltlich leer** —
+jede `lib.rs` enthält nur den Modul-Kommentar mit den Regeln für diese Schicht.
+Gefüllt werden sie ab Schritt 2 der [Roadmap](../docs/roadmap.md).
 
-Geplanter Zuschnitt, begründet in [`../docs/architecture.md`](../docs/architecture.md):
+Zuschnitt, begründet in [`../docs/architecture.md`](../docs/architecture.md):
 
 | Crate | Verantwortung | Darf abhängen von |
 | --- | --- | --- |

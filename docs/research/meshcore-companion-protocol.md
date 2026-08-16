@@ -2,14 +2,16 @@
 
 **Stand: 2026-08-16.** Verifikationsstufen nach [`README.md`](README.md).
 
-Dieser Stand stammt **ausschließlich aus veröffentlichter Dokumentation**
-(Stufe `DOKU`). Nichts davon wurde an Hardware oder am Firmware-Quellcode
-geprüft. Vor der Umsetzung von Schritt 2 der [Roadmap](../roadmap.md) ist
-mindestens das Framing hochzustufen.
+Das **Framing für Serial und TCP ist verifiziert** (Stufe `SOURCE`, bestätigt
+durch `REFERENZ`) — siehe unten. Alles Übrige, insbesondere sämtliche Opcodes
+und Payload-Aufteilungen, stammt weiterhin **ausschließlich aus
+veröffentlichter Dokumentation** (Stufe `DOKU`) und ist ungeprüft.
 
-> **Warnung.** Die Quellen widersprechen sich beim Framing. Details unten und in
-> [`../lessons-learned.md`](../lessons-learned.md). Wer hier Werte übernimmt,
-> ohne sie zu prüfen, baut einen Decoder, der nicht synchronisiert.
+> **Warnung.** Die veröffentlichte Dokumentation war beim Framing
+> widersprüchlich, und die plausibler wirkende Variante war die falsche. Details
+> in [`../lessons-learned.md`](../lessons-learned.md). Für die Opcode-Tabellen
+> gilt die Warnung unverändert weiter: Wer daraus Werte ohne Prüfung übernimmt,
+> schreibt still falsche Daten in die Datenbank.
 
 ## Überblick
 
@@ -39,7 +41,7 @@ der auch die Integrität sichert. Kein Längenpräfix, keine Prüfsumme.
 Hinweis aus der Doku: Die Standard-MTU von 23 Byte (20 Byte Nutzlast) reicht für
 größere Kommandos nicht; es sollte eine MTU von 512 ausgehandelt werden.
 
-### USB/Serial und TCP — `DOKU`, **widersprüchlich**
+### USB/Serial und TCP — `SOURCE` (bestätigt durch `REFERENZ`)
 
 Ein Bytestrom kennt keine Frame-Grenzen, deshalb gibt es hier ein Präfix aus
 Richtungs-Marker und Länge:
@@ -48,31 +50,64 @@ Richtungs-Marker und Länge:
 [ marker: u8 ][ len: u16 little-endian ][ payload: len Bytes ]
 ```
 
-**Die Richtung der Marker ist unklar.** Aus derselben Recherche kamen zwei
-einander widersprechende Aussagen:
+**Die Richtung der Marker ist geklärt — es gilt Variante A:**
 
-| Aussage | App → Radio | Radio → App |
+| Richtung | Marker | Belegstelle |
 | --- | --- | --- |
-| Variante A | `0x3C` (`<`, 60) | `0x3E` (`>`, 62) |
-| Variante B | `0x3E` (`>`, 62) | `0x3C` (`<`, 60) |
+| App → Radio | `0x3C` (`<`, 60) | Firmware `checkRecvFrame()` sucht `'<'`; `meshcore_py` sendet `\x3c` |
+| Radio → App | `0x3E` (`>`, 62) | Firmware `writeFrame()` schreibt `'>'`; `meshcore_py` sucht `\x3e` |
 
-Variante B ist die ausführlichere und plausiblere Darstellung — „ausgehender
-Frame beginnt mit Byte 62 (`>`), eingehender mit Byte 60 (`<`)" —, aber
-**plausibel ist nicht verifiziert.**
+Die Firmware sagt es an einer Stelle wörtlich: `'<' is 0x3c which indicates a
+frame sent from app to radio` (`SerialWifiInterface.cpp`).
 
-**Vor der Umsetzung zu klären**, auf einem dieser Wege:
+**Für MeshDash gilt die App-Seite, also spiegelverkehrt zur Firmware:** wir
+senden Frames mit `0x3C` und empfangen Frames mit `0x3E`.
 
-1. Hexdump einer echten Verbindung (`HARDWARE`) — der schnellste Weg.
-2. Serial-Implementierung im Firmware-Quellcode nachlesen (`SOURCE`).
-3. Eine funktionierende Fremdimplementierung ansehen (`REFERENZ`) — etwa
-   `meshcore_py` oder `meshcore_c`, siehe Quellen.
+Beantwortet sind damit auch die übrigen Framing-Fragen:
 
-Weitere offene Punkte beim Serial-Framing:
+- **`len` zählt nur die Payload**, ohne Marker und ohne Längenfeld. Die Firmware
+  schreibt `len` aus `writeFrame(src, len)` und danach genau `len` Bytes;
+  `meshcore_py` bildet `\x3c + len(data) + data`.
+- **Es gibt keine Prüfsumme.** Weder Sende- noch Empfangspfad berechnet oder
+  prüft eine. Die Integrität liefert bei USB die CDC-Schicht, bei TCP der
+  Transport selbst.
+- **TCP verwendet dasselbe Framing wie Serial.** Kommentar in der Firmware:
+  `use same header as serial interface so client can delimit frames`.
 
-- Zählt `len` nur die Payload oder Marker und Längenfeld mit?
-- Gibt es eine Prüfsumme? (Nicht erwähnt — vermutlich nein, aber nicht belegt.)
-- Wie synchronisiert man nach einem Fehler wieder auf? (Marker suchen genügt
-  nicht sicher, weil `0x3C`/`0x3E` auch in Nutzdaten vorkommen.)
+#### Rahmengröße
+
+`MAX_FRAME_SIZE` ist in der Firmware **176** Byte
+(`BaseSerialInterface.h`, Kommentar: `+4 for transport codes (region
+scoping)`). Größere Frames werden beim Senden **verworfen** — `writeFrame()`
+gibt `0` zurück — und beim Empfang je nach Transport abgeschnitten (Serial) oder
+übersprungen (TCP).
+
+`meshcore_py` verwirft empfangsseitig erst ab **300** Byte. Das ist kein
+Widerspruch, sondern eine großzügigere Plausibilitätsschranke im Client. Für
+MeshDash folgt daraus: **senden ≤ 176 Byte**, empfangsseitig toleranter puffern
+und die eigene Obergrenze nicht enger ziehen als der Node sie kennt.
+
+#### Resynchronisierung
+
+Die beiden Firmware-Transporte verhalten sich nach einem Fehler unterschiedlich
+— relevant, weil unser Decoder beides überstehen muss:
+
+- **Serial** verwirft im Zustand `IDLE` jedes Byte, das nicht `'<'` ist, und
+  beginnt beim nächsten Markerbyte neu. Eine Längenprüfung findet **nicht**
+  statt. Ein Markerbyte in den Nutzdaten kann nach einem verlorenen Frame also
+  zu einer Fehlsynchronisierung führen.
+- **TCP** liest den 3-Byte-Kopf am Stück, prüft den Frame-Typ und überspringt
+  gezielt `len` Bytes, wenn Typ oder Länge nicht passen.
+
+`meshcore_py` ergänzt clientseitig eine Heuristik, die die Firmware nicht hat:
+Eine angekündigte Länge > 300 gilt als ungültig, der Puffer wird verworfen und
+die Suche nach dem Marker beginnt von vorn. Zusätzlich überspringt es führenden
+Müll vor dem Marker mit der Begründung, manche Radios mischten Konsolenausgaben
+auf dieselbe UART.
+
+Für unseren Decoder heißt das: Markersuche allein genügt nicht. Eine
+Längen-Plausibilitätsprüfung beim Resync ist belegte Praxis der offiziellen
+Referenzimplementierung und gehört eingebaut.
 
 ## Opcodes
 
@@ -99,8 +134,8 @@ Richtungsunterscheidung: Antworten liegen unter `0x80`, Pushes ab `0x80`.
 > `CMD_APP_START` muss laut Doku das erste Kommando nach dem Verbindungsaufbau
 > sein.
 >
-> **Achtung:** `0x3E` ist hier ein Kommando-Opcode und gleichzeitig ein
-> Kandidat für den Serial-Richtungs-Marker. Das ist kein Widerspruch — die
+> **Achtung:** `0x3E` ist hier ein Kommando-Opcode und zugleich der
+> Richtungs-Marker für Frames vom Radio zur App. Das ist kein Widerspruch — die
 > Bytes liegen auf verschiedenen Ebenen —, aber eine Fehlerquelle beim
 > Debuggen von Hexdumps.
 
@@ -167,18 +202,40 @@ Deren Opcodes zu ermitteln ist Teil von Schritt 2 der Roadmap.
 
 ## Offene Fragen
 
-1. Richtung der Serial-Marker (`0x3C` / `0x3E`) — **blockiert Schritt 2**.
-2. Zählweise des Längenfelds.
-3. Gibt es eine Prüfsumme im Serial-Framing?
-4. Verwendet TCP dasselbe Framing wie Serial?
-5. Opcodes für Kontakte, Nachbarn, Pfade, Telemetrie und Statistiken.
-6. Genaue Feldaufteilung von `RESP_CODE_SELF_INFO` (58+ Byte).
-7. Format der Advert-Paketdaten in `PUSH_CODE_ADVERTISEMENT`.
-8. Ab welcher Firmware-Version kommen die V3-Nachrichtenvarianten?
+1. Opcodes für Kontakte, Nachbarn, Pfade, Telemetrie und Statistiken.
+2. Genaue Feldaufteilung von `RESP_CODE_SELF_INFO` (58+ Byte).
+3. Format der Advert-Paketdaten in `PUSH_CODE_ADVERTISEMENT`.
+4. Ab welcher Firmware-Version kommen die V3-Nachrichtenvarianten?
+5. Sämtliche Opcode-Werte und Payload-Aufteilungen oben stehen weiterhin auf
+   Stufe `DOKU`. Sie lassen sich auf demselben Weg wie das Framing hochstufen —
+   `examples/companion_radio/MyMesh.cpp` in der Firmware ist der Ort, an dem die
+   Kommandos ausgewertet werden.
+
+**Erledigt am 2026-08-16** (Belege im Abschnitt „Framing"): Richtung der
+Serial-Marker, Zählweise des Längenfelds, Prüfsumme, Framing bei TCP.
+Damit ist die Vorbedingung für Schritt 2 der [Roadmap](../roadmap.md) erfüllt.
 
 ## Quellen
 
 Alle abgerufen am 2026-08-16.
+
+### Für das Framing — Stufe `SOURCE` und `REFERENZ`
+
+Firmware `meshcore-dev/MeshCore`, Commit `d929643`:
+
+- [`src/helpers/ArduinoSerialInterface.cpp`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/ArduinoSerialInterface.cpp)
+  — Serial-Framing beider Richtungen, Empfangs-Zustandsautomat
+- [`src/helpers/BaseSerialInterface.h`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/BaseSerialInterface.h)
+  — `MAX_FRAME_SIZE 176`
+- [`src/helpers/esp32/SerialWifiInterface.cpp`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/esp32/SerialWifiInterface.cpp)
+  — TCP-Framing, Typprüfung, wörtliche Aussage zur Marker-Richtung
+
+Referenzimplementierung `meshcore-dev/meshcore_py`, Commit `c487efb`:
+
+- [`src/meshcore/serial_cx.py`](https://github.com/meshcore-dev/meshcore_py/blob/c487efbe187f4b000020afdfc0349c4cdf503c5a/src/meshcore/serial_cx.py)
+  — App-Seite: sendet `\x3c`, empfängt `\x3e`, Längen-Plausibilität ab 300
+
+### Für die Opcodes — Stufe `DOKU`
 
 - [Companion Radio Protocol — MeshCore Wiki](https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol)
 - [`docs/companion_protocol.md` — meshcore-dev/MeshCore](https://github.com/meshcore-dev/MeshCore/blob/main/docs/companion_protocol.md)

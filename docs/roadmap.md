@@ -32,9 +32,15 @@ Die fehleranfälligste Schicht, deshalb früh und mit Tests.
 - Offene Punkte aus [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md)
   abarbeiten oder ausdrücklich als offen markieren
 
-**Vorbedingung:** Das Framing muss vorher an echter Hardware oder am
-Firmware-Quellcode verifiziert sein — die veröffentlichte Dokumentation ist an
-dieser Stelle widersprüchlich, siehe [`lessons-learned.md`](lessons-learned.md).
+**Vorbedingung erfüllt (2026-08-16).** Das Serial- und TCP-Framing ist am
+Firmware-Quellcode verifiziert: Marker-Richtung, Zählweise des Längenfelds,
+Rahmengröße und die Abwesenheit einer Prüfsumme stehen belegt in
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
+Schritt 2 ist damit nicht mehr blockiert.
+
+**Weiterhin ungeprüft sind die Opcodes.** Sie stehen auf Stufe `DOKU`. Für die
+Frame-Ebene darf jetzt gebaut werden; jeder einzelne Opcode-Wert braucht nach
+wie vor einen Beleg oder bleibt `Unknown(u8)`.
 
 ## Schritt 3 — Transport und Link
 

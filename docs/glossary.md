@@ -60,9 +60,18 @@ aussagekräftiger als RSSI, weil LoRa noch unterhalb des Rauschens dekodiert.
 : Das binäre Protokoll zwischen Client und Companion-Node. Siehe
 [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
 
+**Frame**
+: Eine abgegrenzte Übertragungseinheit auf der Leitung. Wie die Abgrenzung
+zustande kommt, hängt vom Transport ab: Bei Serial und TCP steht ein
+Richtungs-Marker mit Längenangabe davor, bei BLE begrenzt die Characteristic
+den Frame. Der Inhalt eines Frames ist der Payload, und dessen erstes Byte ist
+der Opcode.
+
 **Opcode**
 : Erstes Byte eines Protokoll-Payloads; legt fest, um welches Kommando, welche
-Antwort oder welche Push-Meldung es sich handelt.
+Antwort oder welche Push-Meldung es sich handelt. Werte unter `0x80` sind
+Antworten, ab `0x80` Pushes — daran erkennt der Link, was zu einer Anfrage
+gehört und was der Node von sich aus meldet.
 
 **Push**
 : Meldung, die der Node von sich aus schickt, ohne dass ein Kommando sie

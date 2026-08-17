@@ -29,8 +29,16 @@ use meshdash_core::{
 use serde::Serialize;
 use subtle::ConstantTimeEq;
 
+pub mod events;
+
 /// Prefix every module route sits under, per `docs/conventions.md`.
 pub const API_PREFIX: &str = "/api/v1";
+
+/// Where the live event stream lives, per `docs/architecture.md`.
+///
+/// Reserved: a module may not be called `events`, or its routes would collide
+/// with this one.
+pub const EVENTS_PATH: &str = "/api/v1/events";
 
 /// The body shape for every error the API returns.
 ///
@@ -111,6 +119,7 @@ async fn require_token(auth: AuthConfig, request: Request, next: Next) -> Respon
 /// Builds the router: every module's routes under its own prefix, behind the
 /// configured authentication.
 pub fn build_router(registry: &ModuleRegistry, context: AppContext, auth: AuthConfig) -> Router {
+    let auth_for_events = auth.clone();
     let mut api = Router::new();
 
     for module in registry.modules() {
@@ -135,6 +144,16 @@ pub fn build_router(registry: &ModuleRegistry, context: AppContext, auth: AuthCo
         }));
 
     Router::new()
+        // Registered above the guarded tree on purpose: a browser cannot put a
+        // header on a WebSocket, so this endpoint authenticates itself after
+        // the upgrade. See `events` for why.
+        .route(
+            EVENTS_PATH,
+            axum::routing::get({
+                let auth = auth_for_events;
+                move |upgrade, state| events::handle_upgrade(upgrade, state, auth.clone())
+            }),
+        )
         .nest(API_PREFIX, api)
         // Everything outside the API. No token needed: this is where the
         // frontend will live, and it gives nothing away.

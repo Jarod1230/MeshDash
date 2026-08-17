@@ -25,6 +25,9 @@ in die Hand bekommt, kann es auch nicht missbrauchen.
 Tabellenpräfix, Routenpfad und Migrationszuordnung; zwei Anwärter würden sich
 gegenseitig das Schema migrieren.
 
+**`events` ist reserviert.** Unter `/api/v1/events` liegt der Ereignisstrom des
+Kerns; ein gleichnamiges Modul käme dort nicht an.
+
 **Ein fehlschlagendes Modul verhindert den Start.** Mit halbem Schema
 weiterzulaufen erzeugt falsche Daten statt eines Fehlers, und das ist schlimmer
 als ein Dienst, der gar nicht erst hochkommt. Die Fehlermeldung nennt das

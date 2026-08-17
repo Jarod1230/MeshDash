@@ -21,6 +21,8 @@ meshdash-modules.workspace = true
 meshdash-transport.workspace = true
 anyhow.workspace = true
 axum.workspace = true
+futures.workspace = true
+serde_json.workspace = true
 # Constant-time comparison, so the response time cannot reveal the token
 # character by character. See ADR-0006.
 subtle = "2"
@@ -31,6 +33,11 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+futures.workspace = true
+serde_json.workspace = true
+# A real WebSocket client, so the endpoint is exercised the way a browser
+# would use it rather than through a stand-in.
+tokio-tungstenite = "0.24"
 # Provides `oneshot`, which runs a request through the router without binding
 # a port.
 tower = "0.5"

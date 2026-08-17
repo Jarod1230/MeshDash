@@ -12,9 +12,11 @@ jedem Minor-Release ändern.
 
 ### Added
 
-- **Ein Binary mit Dashboard.** `just build` bettet das gebaute Frontend ein;
-  unbekannte Pfade landen bei der Oberfläche, damit deren eigene Navigation
-  funktioniert, während `/api/v1/` weiterhin JSON liefert.
+- **Ein Binary mit eingebettetem Frontend.** `just build` legt die gebaute
+  Oberfläche ins Binary; unbekannte Pfade landen bei ihr, damit deren eigene
+  Navigation funktioniert, während `/api/v1/` weiterhin JSON liefert. Die
+  Oberfläche selbst ist bislang eine Platzhalterseite — sie wird in Schritt 7
+  der Roadmap ausgebaut.
 - **Geordnetes Herunterfahren** auf Strg-C und SIGTERM: Laufende Anfragen werden
   zu Ende beantwortet, und die Verbindung zum Node wird gelöst, statt dass der
   Dienst abgeschnitten wird.
@@ -35,6 +37,9 @@ jedem Minor-Release ändern.
   registriert ist, antwortet der Dienst auf jeden Pfad mit `404` im
   vereinbarten Fehlerformat. Authentifizierung, WebSocket und eingebettetes
   Frontend fehlen noch.
+- Auswertung der Node-Kennung (`RESP_CODE_DEVICE_INFO`) in `meshdash-proto` —
+  die erste am Firmware-Quellcode verifizierte Nutzlast. Enthält Firmware-Stand,
+  Hersteller, Kontaktkapazität und Kanalzahl.
 - Modulvertrag und Registry in `meshdash-core`. Ein Modul bringt Name,
   Migrationen und einen Startvorgang mit; die Registry migriert und startet
   alle. Ein fehlschlagendes Modul verhindert den Start und wird dabei benannt.

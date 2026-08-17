@@ -40,6 +40,17 @@ async fn drives_the_message_pickup_sequence() {
     assert_eq!(node.sent(), &[vec![u8::from(Command::SyncNextMessage)]]);
 }
 
+/// The transport is chosen at runtime, so it has to work through a box.
+#[tokio::test]
+async fn works_through_a_box() {
+    let mut node: Box<dyn Transport> = Box::new(MockTransport::new(vec![Step::Emit(vec![0x00])]));
+
+    node.connect().await.unwrap();
+    node.send(&[0x14]).await.unwrap();
+
+    assert_eq!(node.recv().await.unwrap(), vec![0x00]);
+}
+
 /// An opcode this firmware table does not know must survive the trip.
 #[tokio::test]
 async fn passes_an_unknown_opcode_through_untouched() {

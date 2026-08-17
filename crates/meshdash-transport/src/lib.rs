@@ -65,3 +65,27 @@ pub trait Transport: Send {
     /// Closes the connection. Calling it on a closed transport is not an error.
     async fn disconnect(&mut self) -> Result<(), TransportError>;
 }
+
+/// Lets a boxed transport be used wherever a transport is expected.
+///
+/// Which transport MeshDash uses is decided at runtime from the configuration,
+/// so it has to travel as `Box<dyn Transport>` — and the link takes it by
+/// value, not by reference.
+#[async_trait::async_trait]
+impl<T: Transport + ?Sized> Transport for Box<T> {
+    async fn connect(&mut self) -> Result<(), TransportError> {
+        (**self).connect().await
+    }
+
+    async fn send(&mut self, frame: &[u8]) -> Result<(), TransportError> {
+        (**self).send(frame).await
+    }
+
+    async fn recv(&mut self) -> Result<Vec<u8>, TransportError> {
+        (**self).recv().await
+    }
+
+    async fn disconnect(&mut self) -> Result<(), TransportError> {
+        (**self).disconnect().await
+    }
+}

@@ -77,7 +77,10 @@ diese Tabelle.
 
 ## Schritt 5 — Server (`meshdash-server`)
 
-- Axum-Router, aus der Modul-Registry zusammengebaut
+- [x] Axum-Router, aus der Modul-Registry zusammengebaut — Modulrouten unter
+      `/api/v1/<modul>/`, Fehler im Format aus
+      [`conventions.md`](conventions.md); das Binary verdrahtet Konfiguration,
+      Datenbank, Transport, Link und Registry und lauscht
 - WebSocket für Live-Ereignisse
 - Optionale Authentifizierung — **braucht vorher einen ADR**
 - Eingebettetes Frontend, geordnetes Herunterfahren

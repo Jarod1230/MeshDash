@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **MeshDash startet als Dienst.** Das Binary liest die Konfiguration, legt die
+  Datenbank an, baut den eingestellten Transport auf, hält die Verbindung zum
+  Node selbsttätig aufrecht und lauscht auf der konfigurierten Adresse.
+  Modulrouten werden unter `/api/v1/<modul>/` eingehängt; solange kein Modul
+  registriert ist, antwortet der Dienst auf jeden Pfad mit `404` im
+  vereinbarten Fehlerformat. Authentifizierung, WebSocket und eingebettetes
+  Frontend fehlen noch.
 - Modulvertrag und Registry in `meshdash-core`. Ein Modul bringt Name,
   Migrationen und einen Startvorgang mit; die Registry migriert und startet
   alle. Ein fehlschlagendes Modul verhindert den Start und wird dabei benannt.

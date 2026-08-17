@@ -11,6 +11,9 @@ repository.workspace = true
 meshdash-proto.workspace = true
 meshdash-transport.workspace = true
 async-trait.workspace = true
+# Needed for the routes a module contributes. The core does not serve HTTP —
+# meshdash-server does — but the contract has to name the type modules hand over.
+axum.workspace = true
 figment.workspace = true
 serde.workspace = true
 sqlx.workspace = true

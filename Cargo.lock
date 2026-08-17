@@ -1031,6 +1031,7 @@ dependencies = [
  "meshdash-modules",
  "meshdash-transport",
  "serde",
+ "subtle",
  "tokio",
  "tower",
  "tracing",

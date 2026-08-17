@@ -1,10 +1,10 @@
 # Konfiguration
 
-> **Weitgehend umgesetzt.** Die unten beschriebenen Optionen werden gelesen
-> **und wirken**: Der Server lauscht auf `[server] bind`, die Datenbank wird
-> unter `[database] path` angelegt, und `[node]` bestimmt, wie MeshDash den
-> Companion-Node ansteuert. Ausnahme ist `[auth] token` — das Feld existiert,
-> ausgewertet wird es noch nicht. Was fehlt, steht am Ende des Dokuments.
+> **Umgesetzt.** Die unten beschriebenen Optionen werden gelesen **und wirken**:
+> Der Server lauscht auf `[server] bind`, die Datenbank wird unter
+> `[database] path` angelegt, `[node]` bestimmt die Anbindung an den
+> Companion-Node, und `[auth]` schützt die API. Was noch fehlt, steht am Ende
+> des Dokuments.
 
 ## Quellen und Rangfolge
 
@@ -39,9 +39,15 @@ nicht ins Repository.
 bind = "127.0.0.1:8080"
 
 [auth]
-# Optionales Bearer-Token. Nicht gesetzt = keine Authentifizierung.
-# Die endgültige Form ist noch nicht entschieden und braucht einen ADR.
+# Bearer-Token. Ist es gesetzt, braucht jede Anfrage unter /api/v1/ den Header
+# "Authorization: Bearer <token>". Nicht gesetzt = keine Authentifizierung.
+# Siehe ADR-0006.
 token = ""
+
+# Erlaubt das Lauschen auf einer öffentlichen Adresse ohne Token — für den
+# Betrieb hinter einem Reverse-Proxy, der die Authentifizierung übernimmt.
+# Ohne diese Zustimmung startet MeshDash in dieser Kombination nicht.
+allow_unauthenticated = false
 
 [database]
 # Pfad zur SQLite-Datei. Wird beim Start angelegt.
@@ -77,9 +83,10 @@ Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
   aufgezeichneten Verkehr unter `fixtures/` gibt — siehe
   [`testing.md`](testing.md).
 - **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
-- **`[auth] token` wirkt noch nicht.** Das Feld wird gelesen, aber keine Anfrage
-  daran gemessen. Der Mechanismus braucht laut [`roadmap.md`](roadmap.md) erst
-  einen ADR.
+- **Authentifizierung für den WebSocket.** Browser können bei
+  WebSocket-Verbindungen keinen eigenen `Authorization`-Header setzen; dafür
+  braucht es einen eigenen Weg, siehe
+  [ADR-0006](decisions/0006-authentifizierung.md).
 
 ## Beim Ergänzen einer Option
 

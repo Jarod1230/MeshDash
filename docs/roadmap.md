@@ -82,7 +82,10 @@ diese Tabelle.
       [`conventions.md`](conventions.md); das Binary verdrahtet Konfiguration,
       Datenbank, Transport, Link und Registry und lauscht
 - WebSocket für Live-Ereignisse
-- Optionale Authentifizierung — **braucht vorher einen ADR**
+- [x] Optionale Authentifizierung — einzelnes Bearer-Token nach
+      [ADR-0006](decisions/0006-authentifizierung.md); der Dienst startet nicht
+      ungeschützt auf einer öffentlichen Adresse. Für den WebSocket ist die
+      Prüfung noch zu ergänzen.
 - Eingebettetes Frontend, geordnetes Herunterfahren
 
 ## Schritt 6 — Erste Module

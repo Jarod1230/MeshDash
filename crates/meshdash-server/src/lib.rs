@@ -5,19 +5,29 @@
 //! here, so the `/api/v1/<module>/` convention lives in one place instead of in
 //! every module.
 //!
+//! # Authentication
+//!
+//! A single bearer token, per ADR-0006. When one is configured, every request
+//! under [`API_PREFIX`] needs it; when none is, the API is open — which is only
+//! safe because the service then refuses to listen on a public address.
+//!
 //! # Not here yet
 //!
-//! Authentication is missing on purpose: `docs/roadmap.md` requires an ADR
-//! before it is built, and that decision is open. The WebSocket stream and the
-//! embedded frontend follow in the same step.
+//! The WebSocket stream and the embedded frontend follow in the same step.
 
 use axum::{
     Json, Router,
-    http::StatusCode,
+    extract::Request,
+    http::{StatusCode, header::AUTHORIZATION},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
 };
-use meshdash_core::module::{AppContext, ModuleRegistry};
+use meshdash_core::{
+    config::AuthConfig,
+    module::{AppContext, ModuleRegistry},
+};
 use serde::Serialize;
+use subtle::ConstantTimeEq;
 
 /// Prefix every module route sits under, per `docs/conventions.md`.
 pub const API_PREFIX: &str = "/api/v1";
@@ -50,16 +60,57 @@ impl ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
+/// An error together with the status it should be answered with.
+struct WithStatus(StatusCode, ApiError);
+
+impl IntoResponse for WithStatus {
     fn into_response(self) -> Response {
-        // Only used for "not found" so far; a status argument arrives when
-        // there is a second case.
-        (StatusCode::NOT_FOUND, Json(self)).into_response()
+        (self.0, Json(self.1)).into_response()
     }
 }
 
-/// Builds the router: every module's routes under its own prefix.
-pub fn build_router(registry: &ModuleRegistry, context: AppContext) -> Router {
+/// Rejects a request that carries no valid token.
+///
+/// Constant-time comparison on purpose: comparing byte by byte and returning
+/// early would let an attacker read the token off the response time, one
+/// character at a time. See ADR-0006.
+async fn require_token(auth: AuthConfig, request: Request, next: Next) -> Response {
+    let Some(expected) = auth.configured_token() else {
+        // No token configured means an open API — only reachable on loopback,
+        // because `Config::check_exposure` refuses anything else at startup.
+        return next.run(request).await;
+    };
+
+    let presented = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+
+    let accepted =
+        presented.is_some_and(|token| token.as_bytes().ct_eq(expected.as_bytes()).into());
+
+    if !accepted {
+        // Never log the presented token — a near miss would end up on disk.
+        tracing::warn!(
+            path = %request.uri().path(),
+            presented = presented.is_some(),
+            "rejected an unauthenticated request"
+        );
+
+        return WithStatus(
+            StatusCode::UNAUTHORIZED,
+            ApiError::new("unauthorized", "a valid bearer token is required"),
+        )
+        .into_response();
+    }
+
+    next.run(request).await
+}
+
+/// Builds the router: every module's routes under its own prefix, behind the
+/// configured authentication.
+pub fn build_router(registry: &ModuleRegistry, context: AppContext, auth: AuthConfig) -> Router {
     let mut api = Router::new();
 
     for module in registry.modules() {
@@ -72,12 +123,31 @@ pub fn build_router(registry: &ModuleRegistry, context: AppContext) -> Router {
         api = api.nest(&mount, routes);
     }
 
+    // The API answers its own misses, so that an unmatched path inside the API
+    // still passes through the guard below. Otherwise an unauthenticated
+    // caller could tell a real path (401) from an invented one (404) and map
+    // the API without ever holding a token.
+    let api = api
+        .fallback(|| async { not_found() })
+        // Guards the whole API at once — per module, a new one could forget it.
+        .layer(middleware::from_fn(move |request, next| {
+            require_token(auth.clone(), request, next)
+        }));
+
     Router::new()
         .nest(API_PREFIX, api)
-        // Anything unrouted answers in the agreed error shape, so a client
-        // never has to tell an API error from a stray HTML page.
-        .fallback(|| async { ApiError::new("not_found", "no route matches this path") })
+        // Everything outside the API. No token needed: this is where the
+        // frontend will live, and it gives nothing away.
+        .fallback(|| async { not_found() })
         .with_state(context)
+}
+
+/// The standard answer for a path that matches nothing.
+fn not_found() -> WithStatus {
+    WithStatus(
+        StatusCode::NOT_FOUND,
+        ApiError::new("not_found", "no route matches this path"),
+    )
 }
 
 #[cfg(test)]
@@ -134,8 +204,18 @@ mod tests {
 
     /// Sends one request through the router and returns status plus body.
     async fn call(router: Router, path: &str) -> (StatusCode, String) {
+        send(router, path, None).await
+    }
+
+    /// Sends a request, optionally with an `Authorization` header.
+    async fn send(router: Router, path: &str, authorization: Option<&str>) -> (StatusCode, String) {
+        let mut request = Request::builder().uri(path);
+        if let Some(value) = authorization {
+            request = request.header("authorization", value);
+        }
+
         let response = router
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .oneshot(request.body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -144,6 +224,159 @@ mod tests {
             .await
             .unwrap();
         (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    /// A configuration demanding the given token.
+    fn demanding(token: &str) -> AuthConfig {
+        AuthConfig {
+            token: Some(token.to_owned()),
+            allow_unauthenticated: false,
+        }
+    }
+
+    /// A router with one module, guarded by `auth`.
+    async fn guarded(auth: AuthConfig) -> Router {
+        let mut registry = ModuleRegistry::new();
+        registry
+            .register(Box::new(Talkative {
+                name: "nodes",
+                body: "contacts",
+            }))
+            .unwrap();
+
+        build_router(&registry, context().await, auth)
+    }
+
+    #[tokio::test]
+    async fn lets_a_correct_token_through() {
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, body) = send(router, "/api/v1/nodes/things", Some("Bearer s3cret")).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, "contacts");
+    }
+
+    #[tokio::test]
+    async fn rejects_a_request_without_a_token() {
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, body) = call(router, "/api/v1/nodes/things").await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body.contains("unauthorized"), "got: {body}");
+    }
+
+    #[tokio::test]
+    async fn rejects_a_wrong_token() {
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, _) = send(router, "/api/v1/nodes/things", Some("Bearer wrong")).await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rejects_a_token_that_is_merely_a_prefix() {
+        // A comparison that stops at the first difference would accept this
+        // as "matching so far"; length has to count too.
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, _) = send(router, "/api/v1/nodes/things", Some("Bearer s3c")).await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rejects_a_token_sent_without_the_bearer_scheme() {
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, _) = send(router, "/api/v1/nodes/things", Some("s3cret")).await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn serves_without_a_token_when_none_is_configured() {
+        // Only reachable on loopback — Config::check_exposure sees to that.
+        let router = guarded(AuthConfig::default()).await;
+
+        let (status, body) = call(router, "/api/v1/nodes/things").await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, "contacts");
+    }
+
+    #[tokio::test]
+    async fn treats_a_blank_token_as_no_protection() {
+        // Consistent with Config::check_exposure, which refuses to expose such
+        // a configuration in the first place.
+        let router = guarded(AuthConfig {
+            token: Some("   ".to_owned()),
+            allow_unauthenticated: false,
+        })
+        .await;
+
+        let (status, _) = call(router, "/api/v1/nodes/things").await;
+
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn does_not_reveal_which_api_paths_exist() {
+        // Answering 401 for a real path and 404 for an invented one would let
+        // anyone map the API without a token.
+        let router = guarded(demanding("s3cret")).await;
+
+        let real = call(router.clone(), "/api/v1/nodes/things").await.0;
+        let invented = call(router, "/api/v1/nodes/nothing-here").await.0;
+
+        assert_eq!(real, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            invented,
+            StatusCode::UNAUTHORIZED,
+            "an unknown API path must not be distinguishable from a real one"
+        );
+    }
+
+    #[tokio::test]
+    async fn guards_paths_of_modules_that_do_not_exist() {
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, _) = call(router, "/api/v1/nosuchmodule/things").await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn guards_every_module_at_once() {
+        // A second module must not need its own guard — forgetting one would
+        // silently open a hole.
+        let mut registry = ModuleRegistry::new();
+        registry
+            .register(Box::new(Talkative {
+                name: "nodes",
+                body: "a",
+            }))
+            .unwrap();
+        registry
+            .register(Box::new(Talkative {
+                name: "telemetry",
+                body: "b",
+            }))
+            .unwrap();
+        let router = build_router(&registry, context().await, demanding("s3cret"));
+
+        assert_eq!(
+            call(router.clone(), "/api/v1/telemetry/things").await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            send(router, "/api/v1/telemetry/things", Some("Bearer s3cret"))
+                .await
+                .0,
+            StatusCode::OK
+        );
     }
 
     #[tokio::test]
@@ -156,7 +389,7 @@ mod tests {
             }))
             .unwrap();
 
-        let router = build_router(&registry, context().await);
+        let router = build_router(&registry, context().await, AuthConfig::default());
 
         let (status, body) = call(router, "/api/v1/nodes/things").await;
         assert_eq!(status, StatusCode::OK);
@@ -179,7 +412,7 @@ mod tests {
             }))
             .unwrap();
 
-        let router = build_router(&registry, context().await);
+        let router = build_router(&registry, context().await, AuthConfig::default());
 
         assert_eq!(
             call(router.clone(), "/api/v1/nodes/things").await.1,
@@ -196,7 +429,7 @@ mod tests {
         let mut registry = ModuleRegistry::new();
         registry.register(Box::new(Silent)).unwrap();
 
-        let router = build_router(&registry, context().await);
+        let router = build_router(&registry, context().await, AuthConfig::default());
 
         let (status, _) = call(router, "/api/v1/silent/things").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -206,7 +439,7 @@ mod tests {
     async fn answers_an_unknown_path_in_the_agreed_shape() {
         let registry = ModuleRegistry::new();
 
-        let router = build_router(&registry, context().await);
+        let router = build_router(&registry, context().await, AuthConfig::default());
 
         let (status, body) = call(router, "/api/v1/nowhere").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -221,7 +454,7 @@ mod tests {
         // MeshDash must come up with every module switched off.
         let registry = ModuleRegistry::new();
 
-        let router = build_router(&registry, context().await);
+        let router = build_router(&registry, context().await, AuthConfig::default());
 
         let (status, _) = call(router, "/api/v1/nodes/things").await;
         assert_eq!(status, StatusCode::NOT_FOUND);

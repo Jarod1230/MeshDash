@@ -66,9 +66,16 @@ pub struct ServerConfig {
 pub struct AuthConfig {
     /// Optional bearer token. `None` means no authentication.
     ///
-    /// The final shape of authentication is undecided and needs its own ADR,
-    /// see the open points in `docs/architecture.md`.
+    /// See ADR-0006. Safe only in combination with a loopback `bind`, which is
+    /// why [`Config::check_exposure`] refuses the other combination.
     pub token: Option<String>,
+
+    /// Permits listening on a public address without a token.
+    ///
+    /// For a deployment behind a reverse proxy that authenticates instead.
+    /// Deliberately an explicit switch: forgetting the token must not look the
+    /// same as choosing to do without it.
+    pub allow_unauthenticated: bool,
 }
 
 /// Settings for storage.
@@ -177,6 +184,40 @@ impl Default for LogConfig {
     }
 }
 
+impl AuthConfig {
+    /// Whether a usable token is configured.
+    ///
+    /// An empty or blank token counts as none: in a file it reads like a
+    /// setting that was made, but it protects nothing.
+    pub fn is_protected(&self) -> bool {
+        self.configured_token().is_some()
+    }
+
+    /// The token to compare against, if there is a usable one.
+    pub fn configured_token(&self) -> Option<&str> {
+        self.token
+            .as_deref()
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+    }
+}
+
+/// The service would be reachable from outside without any authentication.
+///
+/// Its own type rather than a variant of [`ConfigError`], because it is not a
+/// malformed configuration — every value is valid on its own. Only the
+/// combination is dangerous.
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "refusing to listen on {bind} without authentication: set [auth] token, \
+     or set [auth] allow_unauthenticated = true if something in front of \
+     MeshDash authenticates instead"
+)]
+pub struct UnprotectedExposure {
+    /// The address that would have been exposed.
+    pub bind: SocketAddr,
+}
+
 /// Why a configuration could not be assembled.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -209,6 +250,24 @@ impl Config {
             .map_err(Box::new)?;
 
         Ok(config)
+    }
+
+    /// Fails if the service would be reachable from outside unprotected.
+    ///
+    /// See ADR-0006. The accident this prevents is opening `bind` to reach the
+    /// dashboard from another machine and not thinking about the token —
+    /// which would expose sending into the mesh and, later, repeater
+    /// administration.
+    pub fn check_exposure(&self) -> Result<(), UnprotectedExposure> {
+        let reachable_from_outside = !self.server.bind.ip().is_loopback();
+
+        if reachable_from_outside && !self.auth.is_protected() && !self.auth.allow_unauthenticated {
+            return Err(UnprotectedExposure {
+                bind: self.server.bind,
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -243,6 +302,88 @@ mod tests {
     #[test]
     fn has_no_authentication_token_by_default() {
         assert_eq!(Config::default().auth.token, None);
+    }
+
+    /// Builds a configuration bound to `bind`, with the given auth settings.
+    fn exposed(bind: &str, token: Option<&str>, allow: bool) -> Config {
+        Config {
+            server: ServerConfig {
+                bind: bind.parse().unwrap(),
+            },
+            auth: AuthConfig {
+                token: token.map(str::to_owned),
+                allow_unauthenticated: allow,
+            },
+            ..Config::default()
+        }
+    }
+
+    #[test]
+    fn the_default_configuration_is_allowed_to_start() {
+        Config::default().check_exposure().unwrap();
+    }
+
+    #[test]
+    fn allows_loopback_without_a_token() {
+        // Only reachable by someone already on the machine.
+        exposed("127.0.0.1:8080", None, false)
+            .check_exposure()
+            .unwrap();
+        exposed("[::1]:8080", None, false).check_exposure().unwrap();
+        exposed("127.0.0.5:8080", None, false)
+            .check_exposure()
+            .unwrap();
+    }
+
+    #[test]
+    fn refuses_a_public_address_without_a_token() {
+        let error = exposed("0.0.0.0:8080", None, false)
+            .check_exposure()
+            .unwrap_err();
+
+        // 0.0.0.0 is reachable from outside, however local it looks.
+        assert!(error.to_string().contains("0.0.0.0:8080"));
+    }
+
+    #[test]
+    fn refuses_every_kind_of_public_address_without_a_token() {
+        for bind in ["0.0.0.0:8080", "192.168.1.10:8080", "[::]:8080"] {
+            assert!(
+                exposed(bind, None, false).check_exposure().is_err(),
+                "{bind} must not be served unprotected"
+            );
+        }
+    }
+
+    #[test]
+    fn allows_a_public_address_with_a_token() {
+        exposed("0.0.0.0:8080", Some("secret"), false)
+            .check_exposure()
+            .unwrap();
+    }
+
+    #[test]
+    fn allows_a_public_address_when_it_was_asked_for() {
+        // The reverse proxy case from ADR-0006.
+        exposed("0.0.0.0:8080", None, true)
+            .check_exposure()
+            .unwrap();
+    }
+
+    #[test]
+    fn treats_an_empty_token_as_no_token() {
+        // An empty string in the file reads as "I set it" but protects nothing.
+        assert!(
+            exposed("0.0.0.0:8080", Some(""), false)
+                .check_exposure()
+                .is_err()
+        );
+        assert!(
+            exposed("0.0.0.0:8080", Some("   "), false)
+                .check_exposure()
+                .is_err(),
+            "whitespace is not a token either"
+        );
     }
 
     #[test]

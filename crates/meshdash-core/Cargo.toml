@@ -12,6 +12,7 @@ meshdash-proto.workspace = true
 meshdash-transport.workspace = true
 figment.workspace = true
 serde.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true }
 tracing.workspace = true

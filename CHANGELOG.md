@@ -12,6 +12,9 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- SQLite-Anbindung in `meshdash-core`, samt Migrationen je Modul. Die
+  Datenbankdatei und ihr Verzeichnis werden beim ersten Start angelegt; jedes
+  Modul zählt seine Schemaversionen unabhängig von allen anderen.
 - Event-Bus in `meshdash-core`. Der `Link` meldet dort, ob der Node erreichbar
   ist und was er von sich aus schickt — die Grundlage dafür, dass mehrere
   Module dieselben Ereignisse unabhängig voneinander verarbeiten können.

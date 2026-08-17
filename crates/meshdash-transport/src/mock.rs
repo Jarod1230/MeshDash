@@ -59,9 +59,18 @@ impl SentFrames {
 pub enum Step {
     /// The node emits this frame.
     Emit(Vec<u8>),
+
     /// The link drops, with the given reason. Everything after this step is
     /// only reachable after a reconnect.
     Drop(String),
+
+    /// Holds the script until the caller has sent this many frames in total.
+    ///
+    /// Needed for anything request/response: a reader that is idle would
+    /// otherwise consume the answer before the question was asked, and a real
+    /// node only answers once asked. Without this, the correlation cases in
+    /// `docs/testing.md` cannot be exercised at all.
+    AwaitSent(usize),
 }
 
 /// A scripted stand-in for a companion node.
@@ -154,26 +163,39 @@ impl Transport for MockTransport {
     async fn recv(&mut self) -> Result<Vec<u8>, TransportError> {
         self.require_connection()?;
 
-        match self.script.get(self.position) {
-            Some(Step::Emit(frame)) => {
-                self.position += 1;
-                Ok(frame.clone())
-            }
-            // Consume the step, so a reconnect resumes after it rather than
-            // dropping the link again forever.
-            Some(Step::Drop(reason)) => {
-                let reason = reason.clone();
-                self.position += 1;
-                self.connected = false;
-                Err(TransportError::Disconnected { reason })
-            }
-            // A finished script is an ended link, not an endless wait: the
-            // caller must be able to decide something.
-            None => {
-                self.connected = false;
-                Err(TransportError::Disconnected {
-                    reason: "mock script exhausted".into(),
-                })
+        loop {
+            match self.script.get(self.position) {
+                Some(Step::Emit(frame)) => {
+                    let frame = frame.clone();
+                    self.position += 1;
+                    return Ok(frame);
+                }
+                // Consume the step, so a reconnect resumes after it rather than
+                // dropping the link again forever.
+                Some(Step::Drop(reason)) => {
+                    let reason = reason.clone();
+                    self.position += 1;
+                    self.connected = false;
+                    return Err(TransportError::Disconnected { reason });
+                }
+                // Wait for the caller to ask before answering. Yielding rather
+                // than sleeping keeps tests quick; the caller runs on another
+                // task, so it makes progress meanwhile.
+                Some(&Step::AwaitSent(expected)) => {
+                    if self.sent.len() >= expected {
+                        self.position += 1;
+                        continue;
+                    }
+                    tokio::task::yield_now().await;
+                }
+                // A finished script is an ended link, not an endless wait: the
+                // caller must be able to decide something.
+                None => {
+                    self.connected = false;
+                    return Err(TransportError::Disconnected {
+                        reason: "mock script exhausted".into(),
+                    });
+                }
             }
         }
     }
@@ -273,6 +295,20 @@ mod tests {
         ));
 
         transport.connect().await.unwrap();
+        assert_eq!(transport.recv().await.unwrap(), vec![0xAA]);
+    }
+
+    #[tokio::test]
+    async fn holds_the_script_until_the_caller_has_sent() {
+        let mut transport = MockTransport::new(vec![Step::AwaitSent(1), emit(&[0xAA])]);
+        transport.connect().await.unwrap();
+
+        // Nothing sent yet, so the answer must not arrive.
+        let too_early =
+            tokio::time::timeout(std::time::Duration::from_millis(50), transport.recv()).await;
+        assert!(too_early.is_err(), "the answer came before the question");
+
+        transport.send(&[0x16]).await.unwrap();
         assert_eq!(transport.recv().await.unwrap(), vec![0xAA]);
     }
 

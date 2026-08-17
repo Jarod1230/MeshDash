@@ -137,12 +137,18 @@ impl LinkHandle {
     }
 }
 
-/// Starts a link over `transport` and returns its handle plus the actor task.
+/// Builds a link without starting it yet.
 ///
-/// Everything the node reports goes to `events`, including when the connection
-/// opens and closes — the state modules need in order to show whether the mesh
-/// is reachable at all.
-pub fn spawn<T>(transport: T, config: LinkConfig, events: EventBus) -> (LinkHandle, JoinHandle<()>)
+/// Returned so that listeners can subscribe **before** the first event is
+/// published. The bus keeps no backlog, so a link that connects while the
+/// modules are still starting would report a connection nobody hears — and the
+/// state stays wrong until the next disconnect. Use [`spawn`] where that does
+/// not matter, such as in tests.
+pub fn prepare<T>(
+    transport: T,
+    config: LinkConfig,
+    events: EventBus,
+) -> (LinkHandle, PreparedLink<T>)
 where
     T: Transport + 'static,
 {
@@ -160,7 +166,38 @@ where
         pending: None,
     };
 
-    (handle, tokio::spawn(actor.run()))
+    (handle, PreparedLink { actor })
+}
+
+/// A link that is built but not yet running.
+pub struct PreparedLink<T> {
+    actor: Actor<T>,
+}
+
+impl<T> PreparedLink<T>
+where
+    T: Transport + 'static,
+{
+    /// Starts the actor. From here on it connects and reports on the bus.
+    pub fn start(self) -> JoinHandle<()> {
+        tokio::spawn(self.actor.run())
+    }
+}
+
+/// Starts a link over `transport` and returns its handle plus the actor task.
+///
+/// Everything the node reports goes to `events`, including when the connection
+/// opens and closes — the state modules need in order to show whether the mesh
+/// is reachable at all.
+///
+/// Starts immediately, so anything that must not miss the first event should
+/// use [`prepare`] instead.
+pub fn spawn<T>(transport: T, config: LinkConfig, events: EventBus) -> (LinkHandle, JoinHandle<()>)
+where
+    T: Transport + 'static,
+{
+    let (handle, prepared) = prepare(transport, config, events);
+    (handle, prepared.start())
 }
 
 /// Owns the transport and is the only thing that touches it.
@@ -421,6 +458,31 @@ mod tests {
         assert_eq!(
             sent.snapshot(),
             vec![frame(u8::from(Command::GetDeviceTime))]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prepared_link_stays_quiet_until_started() {
+        // The reason `prepare` exists: a listener that subscribes after the
+        // link connected would never learn that it did, because the bus keeps
+        // no backlog.
+        let transport = MockTransport::new(idle_after(vec![]));
+        let bus = EventBus::new();
+        let (_link, prepared) = prepare(transport, brisk_reconnect(), bus.clone());
+
+        // Subscribing late is safe as long as nothing has started.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let mut events = bus.subscribe();
+
+        let _task = prepared.start();
+
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .expect("expected an event")
+                .unwrap(),
+            AppEvent::NodeConnected,
+            "a late subscriber must still see the first connection"
         );
     }
 

@@ -6,9 +6,9 @@
 //!
 //! # What it does not do yet
 //!
-//! No module is registered — there are none, they arrive in step 6 of
-//! `docs/roadmap.md`. So the API has nothing to offer and the dashboard has
-//! nothing to show, though both are in place and working.
+//! Only the `system` module is registered; `nodes`, `messages` and `telemetry`
+//! follow in step 6 of `docs/roadmap.md`. The dashboard is still a placeholder
+//! page — that is step 7.
 
 use std::{net::ToSocketAddrs, process::ExitCode};
 
@@ -66,16 +66,29 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     let transport = open_transport(&config).context("setting up the connection to the node")?;
 
     let events = EventBus::new();
-    let (link, link_task) = link::spawn(transport, LinkConfig::default(), events.clone());
+
+    // Built but not started: the modules must be listening before the link
+    // reports its first connection. The bus keeps no backlog, so an event sent
+    // now would be lost and the status would stay wrong until the next
+    // disconnect.
+    let (link, prepared_link) = link::prepare(transport, LinkConfig::default(), events.clone());
 
     let context = AppContext { db, events, link };
 
-    // Empty for now; modules register here from step 6 onwards.
-    let registry = ModuleRegistry::new();
+    // The one place modules are switched on. Removing one means deleting its
+    // line here and its directory — nothing else, see docs/module-system.md.
+    let mut registry = ModuleRegistry::new();
+    registry
+        .register(Box::new(meshdash_modules::system::SystemModule))
+        .context("registering the system module")?;
+
     registry
         .start_all(&context)
         .await
         .context("starting the modules")?;
+
+    // Everyone is listening now.
+    let link_task = prepared_link.start();
 
     let router = meshdash_server::build_router(&registry, context, config.auth.clone());
 

@@ -37,6 +37,11 @@ jedem Minor-Release ändern.
   registriert ist, antwortet der Dienst auf jeden Pfad mit `404` im
   vereinbarten Fehlerformat. Authentifizierung, WebSocket und eingebettetes
   Frontend fehlen noch.
+- **Erstes Modul: `system`.** Meldet unter `/api/v1/system/status`, ob der Node
+  erreichbar ist und was er über sich sagt — Firmware, Hersteller,
+  Kontaktkapazität, Kanalzahl. Jede Verbindungsänderung wird mit Zeitpunkt
+  festgehalten: Dass ein Node nachts elfmal weg war, ist die eigentlich
+  interessante Auskunft, und die sieht man nur im Verlauf.
 - Auswertung der Node-Kennung (`RESP_CODE_DEVICE_INFO`) in `meshdash-proto` —
   die erste am Firmware-Quellcode verifizierte Nutzlast. Enthält Firmware-Stand,
   Hersteller, Kontaktkapazität und Kanalzahl.

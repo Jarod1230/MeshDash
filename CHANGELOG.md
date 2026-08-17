@@ -37,6 +37,9 @@ jedem Minor-Release ändern.
   registriert ist, antwortet der Dienst auf jeden Pfad mit `404` im
   vereinbarten Fehlerformat. Authentifizierung, WebSocket und eingebettetes
   Frontend fehlen noch.
+- Auswertung von Kontakten (`RESP_CODE_CONTACT`) in `meshdash-proto`, als
+  Vorarbeit für das Modul `nodes`: Schlüssel, Name, bekannter Pfad, Position und
+  Zeitstempel.
 - **Erstes Modul: `system`.** Meldet unter `/api/v1/system/status`, ob der Node
   erreichbar ist und was er über sich sagt — Firmware, Hersteller,
   Kontaktkapazität, Kanalzahl. Jede Verbindungsänderung wird mit Zeitpunkt

@@ -329,10 +329,23 @@ und muss zum Anzeigen durch 4 geteilt werden. Wer das übersieht, bekommt
 plausibel aussehende, aber vierfach zu große Werte — genau die Sorte Fehler, die
 niemandem auffällt.
 
+**Die Kontaktkapazität steht halbiert auf der Leitung.** In
+`RESP_CODE_DEVICE_INFO` schreibt die Firmware `MAX_CONTACTS / 2` in ein einzelnes
+Byte, weil der echte Wert dort nicht hineinpasst. Wer das Byte als Kapazität
+liest, meldet einem Betreiber 50 Kontakte, wo 100 hineinpassen — falsch, ohne
+dass es auffällt. Verdoppeln ist Pflicht.
+
+**Die Markierungen `v3+`, `v9+` und `v10+` betreffen die App, nicht den Node.**
+Sie sagen, ab welcher angesagten Protokollversion eine App das Feld versteht —
+der Node schreibt es unabhängig davon immer. Ältere Firmware kann trotzdem
+kürzere Frames senden, ein Parser muss also mit fehlenden Endfeldern umgehen.
+
 **`RESP_CODE_DEVICE_INFO`** wird in `handleCmdFrame()` in dieser Reihenfolge
 zusammengesetzt: Opcode, `FIRMWARE_VER_CODE` (1 B), `MAX_CONTACTS / 2` (1 B, v3+),
 `MAX_GROUP_CHANNELS` (1 B, v3+), BLE-PIN (4 B), Build-Datum (12 B, nullterminiert),
-Herstellername (40 B), Firmware-Version (20 B), Repeater-Flag (1 B, v9+).
+Herstellername (40 B), Firmware-Version (20 B), Repeater-Flag (1 B, v9+),
+`path_hash_mode` (1 B, v10+). Zeichenketten sind mit Nullbytes aufgefüllt.
+Vollständig umgesetzt in `meshdash_proto::device`.
 
 ## Offene Fragen
 
@@ -348,10 +361,10 @@ Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
    eigene Bibliothek, das Format ist also nicht projektspezifisch).
 5. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Nachrichten- und
    Pfad-Antworten.
-6. Welche Protokollversion MeshDash in `CMD_DEVICE_QUERY` ansagen soll. Das ist
-   keine reine Recherchefrage, sondern eine Entscheidung: Version 3 bringt SNR,
-   Version 8 und 9 bringen weitere Felder — aber jede Stufe setzt voraus, dass
-   wir die zugehörigen Antwortformate auch auswerten können.
+6. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
+   Version 3 ist gesetzt (`meshdash_proto::device::PROTOCOL_VERSION`), weil sie
+   die SNR-Varianten der Nachrichten bringt. Version 8 schaltet Statistiken
+   frei — dafür müssen deren Formate aber erst verifiziert sein.
 
 **Erledigt am 2026-08-16:**
 

@@ -81,11 +81,12 @@ diese Tabelle.
       `/api/v1/<modul>/`, Fehler im Format aus
       [`conventions.md`](conventions.md); das Binary verdrahtet Konfiguration,
       Datenbank, Transport, Link und Registry und lauscht
-- WebSocket für Live-Ereignisse
+- [x] WebSocket für Live-Ereignisse — `/api/v1/events`; das Token kommt als
+      erste Nachricht, weil ein Browser dort keinen Header setzen kann
 - [x] Optionale Authentifizierung — einzelnes Bearer-Token nach
       [ADR-0006](decisions/0006-authentifizierung.md); der Dienst startet nicht
-      ungeschützt auf einer öffentlichen Adresse. Für den WebSocket ist die
-      Prüfung noch zu ergänzen.
+      ungeschützt auf einer öffentlichen Adresse. Gilt auch für den
+      Ereignisstrom.
 - Eingebettetes Frontend, geordnetes Herunterfahren
 
 ## Schritt 6 — Erste Module

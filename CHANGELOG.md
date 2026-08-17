@@ -12,6 +12,10 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Live-Ereignisse über WebSocket** unter `/api/v1/events`. Verbindungsstatus
+  des Node und alles, was er von sich aus meldet, erreichen den Browser ohne
+  Nachfragen. Ist ein Token gesetzt, wird es als erste Nachricht erwartet —
+  Browser können bei WebSocket-Verbindungen keinen Header mitgeben.
 - **Authentifizierung für die API.** Ist `[auth] token` gesetzt, braucht jede
   Anfrage unter `/api/v1/` ein passendes Bearer-Token. Ist es nicht gesetzt und
   lauscht MeshDash auf einer öffentlichen Adresse, **startet der Dienst nicht** —

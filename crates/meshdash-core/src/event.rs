@@ -10,6 +10,7 @@
 //! carrying opcode `0x80` is an advertisement — and what to store about it — is
 //! a module's business, not the core's.
 
+use serde::{Serialize, Serializer};
 use tokio::sync::broadcast;
 
 /// How many events are kept for a subscriber that is falling behind.
@@ -19,7 +20,12 @@ use tokio::sync::broadcast;
 const DEFAULT_CAPACITY: usize = 1024;
 
 /// Something that happened and that modules may want to know about.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serialises with a `type` field, so a browser can switch on it:
+/// `{"type": "node_connected"}`. Field names are `snake_case`, matching the
+/// rest of the API — see `docs/conventions.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppEvent {
     /// The link opened a connection to the node.
     NodeConnected,
@@ -37,8 +43,24 @@ pub enum AppEvent {
     /// arrive here rather than being dropped.
     Push {
         /// Raw payload of the frame, without the transport's framing.
+        ///
+        /// Sent as a lowercase hex string rather than an array of numbers:
+        /// shorter on the wire, readable in a log, and consistent with how the
+        /// API spells binary data elsewhere.
+        #[serde(serialize_with = "as_hex")]
         payload: Vec<u8>,
     },
+}
+
+/// Writes bytes as a lowercase hex string.
+fn as_hex<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write;
+        // Writing into a String cannot fail.
+        let _ = write!(hex, "{byte:02x}");
+    }
+    serializer.serialize_str(&hex)
 }
 
 /// Distributes [`AppEvent`]s to everyone listening.
@@ -172,6 +194,45 @@ mod tests {
                 reason: "cable pulled".into()
             }
         );
+    }
+
+    #[test]
+    fn serialises_with_a_type_a_browser_can_switch_on() {
+        let json = serde_json::to_string(&AppEvent::NodeConnected).unwrap();
+
+        assert_eq!(json, r#"{"type":"node_connected"}"#);
+    }
+
+    #[test]
+    fn serialises_the_reason_a_connection_ended() {
+        let json = serde_json::to_string(&AppEvent::NodeDisconnected {
+            reason: "cable pulled".into(),
+        })
+        .unwrap();
+
+        assert_eq!(
+            json,
+            r#"{"type":"node_disconnected","reason":"cable pulled"}"#
+        );
+    }
+
+    #[test]
+    fn serialises_a_payload_as_lowercase_hex() {
+        let json = serde_json::to_string(&AppEvent::Push {
+            payload: vec![0x80, 0x0f, 0xAB],
+        })
+        .unwrap();
+
+        // Not an array of numbers: shorter, readable, and consistent with how
+        // the API spells binary data elsewhere.
+        assert_eq!(json, r#"{"type":"push","payload":"800fab"}"#);
+    }
+
+    #[test]
+    fn serialises_an_empty_payload_as_an_empty_string() {
+        let json = serde_json::to_string(&AppEvent::Push { payload: vec![] }).unwrap();
+
+        assert_eq!(json, r#"{"type":"push","payload":""}"#);
     }
 
     #[tokio::test]

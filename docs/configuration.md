@@ -49,6 +49,12 @@ token = ""
 # Ohne diese Zustimmung startet MeshDash in dieser Kombination nicht.
 allow_unauthenticated = false
 
+# Am Ereignisstrom /api/v1/events wird dasselbe Token verlangt, aber anders
+# übergeben: Ein Browser kann bei WebSocket-Verbindungen keinen eigenen Header
+# setzen, deshalb ist die **erste Nachricht** nach dem Verbindungsaufbau das
+# Token. Ein Token im Query-String wäre einfacher, würde aber in Server- und
+# Proxy-Protokollen sowie im Verlauf des Browsers landen.
+
 [database]
 # Pfad zur SQLite-Datei. Wird beim Start angelegt.
 path = "data/meshdash.db"
@@ -83,10 +89,7 @@ Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
   aufgezeichneten Verkehr unter `fixtures/` gibt — siehe
   [`testing.md`](testing.md).
 - **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
-- **Authentifizierung für den WebSocket.** Browser können bei
-  WebSocket-Verbindungen keinen eigenen `Authorization`-Header setzen; dafür
-  braucht es einen eigenen Weg, siehe
-  [ADR-0006](decisions/0006-authentifizierung.md).
+- **Eingebettetes Frontend.** Der Server liefert noch keine Oberfläche aus.
 
 ## Beim Ergänzen einer Option
 

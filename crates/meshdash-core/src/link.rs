@@ -14,6 +14,14 @@
 //! the first non-push frame is its answer; pushes arriving in between are
 //! forwarded and do not disturb the correlation.
 //!
+//! # Some answers are a series
+//!
+//! Not every exchange is one question, one answer: the contact list arrives as
+//! a start marker, one frame per contact and an end marker. Taking the first
+//! frame as *the* answer would drop the rest, and the exchange would be out of
+//! step from then on. [`LinkHandle::request_until`] collects until a caller
+//! -supplied predicate says the series is complete.
+//!
 //! # Why this lives in the core, not in the transport
 //!
 //! Telling a push from a reply is protocol knowledge, and the transport crate
@@ -104,10 +112,18 @@ pub enum LinkError {
     Closed,
 }
 
+/// Decides when a multi-frame answer is complete.
+///
+/// Gets each non-push frame as it arrives; returning `true` ends the exchange
+/// and that frame is included.
+pub type IsFinal = Box<dyn Fn(&[u8]) -> bool + Send>;
+
 /// One command waiting to be sent, with the channel for its answer.
 struct Request {
     frame: Vec<u8>,
-    reply: oneshot::Sender<Result<Vec<u8>, LinkError>>,
+    /// `None` for an ordinary command, which ends after one frame.
+    until: Option<IsFinal>,
+    reply: oneshot::Sender<Result<Vec<Vec<u8>>, LinkError>>,
 }
 
 /// A cheap, cloneable handle to a running link.
@@ -125,10 +141,43 @@ impl LinkHandle {
     /// Commands are served one at a time in arrival order, because the node
     /// works that way; callers do not need to coordinate.
     pub async fn request(&self, frame: Vec<u8>) -> Result<Vec<u8>, LinkError> {
+        let mut frames = self.send_request(frame, None).await?;
+
+        // Exactly one frame, because `until` was not set.
+        Ok(frames.remove(0))
+    }
+
+    /// Sends a command and collects answers until `is_final` says stop.
+    ///
+    /// Some exchanges answer with a series rather than a single frame — the
+    /// contact list arrives as a start marker, one frame per contact and an end
+    /// marker. Treating the first as *the* answer would drop the rest and leave
+    /// the exchange out of step.
+    ///
+    /// The response timeout applies to each frame, not to the whole series: a
+    /// long list must not fail merely for being long.
+    pub async fn request_until(
+        &self,
+        frame: Vec<u8>,
+        is_final: IsFinal,
+    ) -> Result<Vec<Vec<u8>>, LinkError> {
+        self.send_request(frame, Some(is_final)).await
+    }
+
+    /// Hands a request to the actor and waits for its answer.
+    async fn send_request(
+        &self,
+        frame: Vec<u8>,
+        until: Option<IsFinal>,
+    ) -> Result<Vec<Vec<u8>>, LinkError> {
         let (reply, answer) = oneshot::channel();
 
         self.commands
-            .send(Request { frame, reply })
+            .send(Request {
+                frame,
+                until,
+                reply,
+            })
             .await
             .map_err(|_| LinkError::Closed)?;
 
@@ -354,14 +403,14 @@ where
     /// Sends one command and waits for its answer, forwarding pushes meanwhile.
     ///
     /// Returns `Err(())` when the transport died and the actor should stop.
-    async fn serve(&mut self, request: Request) -> Result<(), ()> {
+    async fn serve(&mut self, mut request: Request) -> Result<(), ()> {
         if let Err(error) = self.transport.send(&request.frame).await {
             let fatal = matches!(error, TransportError::Disconnected { .. });
             let _ = request.reply.send(Err(LinkError::Transport(error)));
             return if fatal { Err(()) } else { Ok(()) };
         }
 
-        let outcome = tokio::time::timeout(self.config.response_timeout, self.await_answer()).await;
+        let outcome = self.collect_answer(request.until.take()).await;
 
         match outcome {
             Ok(Ok(answer)) => {
@@ -384,6 +433,40 @@ where
                     .reply
                     .send(Err(LinkError::Timeout(self.config.response_timeout)));
                 Err(())
+            }
+        }
+    }
+
+    /// Gathers the answer, one frame or a series.
+    ///
+    /// The timeout is per frame rather than for the whole exchange: a contact
+    /// list of a hundred entries must not fail merely for being long.
+    #[allow(clippy::type_complexity)]
+    async fn collect_answer(
+        &mut self,
+        until: Option<IsFinal>,
+    ) -> Result<Result<Vec<Vec<u8>>, TransportError>, tokio::time::error::Elapsed> {
+        let mut collected = Vec::new();
+
+        loop {
+            let frame =
+                match tokio::time::timeout(self.config.response_timeout, self.await_answer()).await
+                {
+                    Ok(Ok(frame)) => frame,
+                    Ok(Err(error)) => return Ok(Err(error)),
+                    Err(elapsed) => return Err(elapsed),
+                };
+
+            let done = match &until {
+                Some(is_final) => is_final(&frame),
+                // An ordinary command ends with its first reply.
+                None => true,
+            };
+
+            collected.push(frame);
+
+            if done {
+                return Ok(Ok(collected));
             }
         }
     }
@@ -579,6 +662,79 @@ mod tests {
             error,
             Err(LinkError::Timeout(_)) | Err(LinkError::Transport(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn collects_a_series_of_answers() {
+        // The shape of a contact list: a start marker, entries, an end marker.
+        let transport = MockTransport::new(idle_after(vec![
+            emit(u8::from(Response::ContactsStart)),
+            emit(u8::from(Response::Contact)),
+            emit(u8::from(Response::Contact)),
+            emit(u8::from(Response::EndOfContacts)),
+        ]));
+        let (link, _task) = spawn(transport, LinkConfig::default(), EventBus::new());
+
+        let frames = link
+            .request_until(
+                frame(u8::from(Command::GetContacts)),
+                Box::new(|frame: &[u8]| Response::from(frame[0]) == Response::EndOfContacts),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(frames.len(), 4, "start, two contacts and the end marker");
+        assert_eq!(
+            Response::from(frames[3][0]),
+            Response::EndOfContacts,
+            "the closing frame belongs to the answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn forwards_pushes_during_a_series() {
+        // A node may announce something halfway through a listing.
+        let transport = MockTransport::new(idle_after(vec![
+            emit(u8::from(Response::ContactsStart)),
+            emit(u8::from(Push::MsgWaiting)),
+            emit(u8::from(Response::EndOfContacts)),
+        ]));
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+        let (link, _task) = spawn(transport, LinkConfig::default(), bus);
+
+        let frames = link
+            .request_until(
+                frame(u8::from(Command::GetContacts)),
+                Box::new(|frame: &[u8]| Response::from(frame[0]) == Response::EndOfContacts),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(frames.len(), 2, "the push is not part of the answer");
+        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(
+            events.recv().await.unwrap(),
+            AppEvent::Push {
+                payload: vec![u8::from(Push::MsgWaiting)]
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn an_ordinary_command_still_ends_after_one_frame() {
+        let transport = MockTransport::new(idle_after(vec![
+            emit(u8::from(Response::Ok)),
+            emit(u8::from(Response::SelfInfo)),
+        ]));
+        let (link, _task) = spawn(transport, LinkConfig::default(), EventBus::new());
+
+        let answer = link
+            .request(frame(u8::from(Command::AppStart)))
+            .await
+            .unwrap();
+
+        assert_eq!(Response::from(answer[0]), Response::Ok);
     }
 
     #[tokio::test]

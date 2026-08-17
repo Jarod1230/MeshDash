@@ -329,6 +329,25 @@ und muss zum Anzeigen durch 4 geteilt werden. Wer das übersieht, bekommt
 plausibel aussehende, aber vierfach zu große Werte — genau die Sorte Fehler, die
 niemandem auffällt.
 
+**Koordinaten sind Mikrograd, keine Grad.** Die Firmware multipliziert beim
+Setzen mit `1e6`, dividiert beim Lesen und weist Werte jenseits von ±90e6 bzw.
+±180e6 zurück (`CMD_SET_ADVERT_LATLON`, `MyMesh.cpp`). Wer den rohen Wert als
+Grad nimmt, landet weit hinter den Polen.
+
+**Ein Pfadfeld ist breiter als der Pfad.** `RESP_CODE_CONTACT` überträgt
+`out_path` immer mit `MAX_PATH_SIZE` = 64 Byte; gültig sind nur die ersten
+`out_path_len`. Wer alles liest, erfindet Zwischenstationen aus dem, was ein
+früherer, längerer Pfad hinterlassen hat — eine Route, die plausibel aussieht
+und nie existierte.
+
+**`PUB_KEY_SIZE` ist 32, `MAX_PATH_SIZE` ist 64** (`src/MeshCore.h`,
+Commit `d929643`).
+
+**`RESP_CODE_CONTACT`** (`writeContactRespFrame()`, 148 Byte): Opcode,
+Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
+Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
+letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
+
 **Die Kontaktkapazität steht halbiert auf der Leitung.** In
 `RESP_CODE_DEVICE_INFO` schreibt die Firmware `MAX_CONTACTS / 2` in ein einzelnes
 Byte, weil der echte Wert dort nicht hineinpasst. Wer das Byte als Kapazität
@@ -354,7 +373,8 @@ Opcodes. Sie lassen sich einzeln in `handleCmdFrame()` und den `on…Recv()`-
 Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 
 1. Feldaufteilung von `RESP_CODE_SELF_INFO` (Identität und Funkkonfiguration).
-2. Aufbau der Kontaktstruktur in `RESP_CODE_CONTACT`.
+2. Bedeutung der Werte in `type` und `flags` eines Kontakts — die Struktur ist
+   belegt, die Kodierung dieser beiden Bytes nicht.
 3. Format der Advert-Paketdaten in `PUSH_CODE_ADVERT` und `PUSH_CODE_NEW_ADVERT`.
 4. Aufbau von `RESP_CODE_STATS` je Statistiktyp und von
    `PUSH_CODE_TELEMETRY_RESPONSE` (CayenneLPP — die Firmware nutzt dafür eine

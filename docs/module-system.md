@@ -4,8 +4,36 @@ MeshDash soll über Jahre wachsen, ohne dass der Kern mitwächst. Deshalb ist
 jede Fachlichkeit ein **Modul**: eine abgeschlossene Einheit mit eigenen
 Tabellen, eigenen HTTP-Routen und eigener Oberfläche.
 
-Dieses Dokument beschreibt den Zuschnitt. Der Vertrag (das `Module`-Trait) wird
-im ersten Implementierungsschritt festgelegt — siehe [`roadmap.md`](roadmap.md).
+Dieses Dokument beschreibt den Zuschnitt. Der Vertrag steht als
+`module::Module` in `meshdash-core`.
+
+## Der Vertrag
+
+Ein Modul liefert drei Dinge:
+
+| Bestandteil | Bedeutung |
+| --- | --- |
+| `name()` | Kennung des Moduls. Präfixt Tabellen (`<name>_…`), Routen (`/api/v1/<name>/…`) und die Migrationsbuchführung. **Stabil halten** — eine Umbenennung verwaist Tabellen und Schemaversion. |
+| `migrations()` | Schemageschichte des Moduls, aufsteigend ab 1. Leer ist zulässig für ein Modul, das nichts speichert. |
+| `start(ctx)` | Wird einmal aufgerufen, **nachdem** die Migrationen liefen. Startet Event-Handler und Hintergrundjobs. Dauerhaftes läuft in einem eigenen Task; die Rückkehr heißt „läuft", nicht „fertig". |
+
+Dazu bekommt es einen `AppContext` mit Datenbank, Event-Bus und einem Handle
+zum Node — mehr nicht. Der schmale Zuschnitt ist Absicht: Was ein Modul nicht
+in die Hand bekommt, kann es auch nicht missbrauchen.
+
+**Doppelte Modulnamen werden abgewiesen.** Der Name entscheidet über
+Tabellenpräfix, Routenpfad und Migrationszuordnung; zwei Anwärter würden sich
+gegenseitig das Schema migrieren.
+
+**Ein fehlschlagendes Modul verhindert den Start.** Mit halbem Schema
+weiterzulaufen erzeugt falsche Daten statt eines Fehlers, und das ist schlimmer
+als ein Dienst, der gar nicht erst hochkommt. Die Fehlermeldung nennt das
+verantwortliche Modul.
+
+**Routen sind noch nicht Teil des Traits.** Sie gehören dazu, aber es gibt bis
+Schritt 5 der [Roadmap](roadmap.md) keinen Router, an dem sie hängen könnten —
+eine Schnittstelle zu entwerfen, die nichts ausüben kann, wäre geraten statt
+entschieden.
 
 ## Was ein Modul ist
 

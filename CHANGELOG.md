@@ -12,6 +12,9 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- Modulvertrag und Registry in `meshdash-core`. Ein Modul bringt Name,
+  Migrationen und einen Startvorgang mit; die Registry migriert und startet
+  alle. Ein fehlschlagendes Modul verhindert den Start und wird dabei benannt.
 - SQLite-Anbindung in `meshdash-core`, samt Migrationen je Modul. Die
   Datenbankdatei und ihr Verzeichnis werden beim ersten Start angelegt; jedes
   Modul zählt seine Schemaversionen unabhängig von allen anderen.

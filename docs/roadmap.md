@@ -71,7 +71,9 @@ diese Tabelle.
       Versionsreihe je Modul, jede Migration in eigener Transaktion
 - [x] Event-Bus — `event::{EventBus, AppEvent}`; der `Link` meldet dort
       Verbindungsstatus und Pushes, statt einen eigenen Verteilweg zu haben
-- `Module`-Trait und Registry — der Vertrag aus [`module-system.md`](module-system.md)
+- [x] `Module`-Trait und Registry — der Vertrag aus
+      [`module-system.md`](module-system.md); Routen folgen mit Schritt 5,
+      weil es vorher keinen Router gibt
 
 ## Schritt 5 — Server (`meshdash-server`)
 

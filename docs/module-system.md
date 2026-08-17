@@ -97,7 +97,7 @@ pflegen, sobald sich etwas ändert.
 
 | Modul | Zweck | Stand |
 | --- | --- | --- |
-| `system` | Verbindungsstatus, Node-Identität, Version, Health | geplant |
+| `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
 | `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | geplant |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | geplant |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | geplant |

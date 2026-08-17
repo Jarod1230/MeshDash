@@ -301,3 +301,47 @@ gewesen — also genau der Fall, für den es die Wiederverbindung überhaupt gib
 **Belege:** `Interruption::Disconnected { made_progress }` in
 `crates/meshdash-core/src/link.rs`, Tests `keeps_running_when_the_connection_dies`
 und `backs_off_further_with_every_failed_attempt`.
+
+---
+
+## 2026-08-17 — Ein Broadcast ohne Rückschau bestraft die Startreihenfolge
+
+**Kontext:** Das erste Fachmodul (`system`) hört auf dem Event-Bus mit und
+schreibt Verbindungsereignisse fort. Alle Unit- und Modultests waren grün.
+
+**Problem:** Im echten Betrieb blieb der Status **dauerhaft** auf „nicht
+verbunden", obwohl der Node erreichbar war. Das Protokoll zeigte den Grund auf
+die Millisekunde:
+
+```
+.485982  connected to node over TCP      ← Link meldet NodeConnected
+.486422  module started                  ← Modul abonniert erst jetzt
+```
+
+Der Kern verdrahtete in der Reihenfolge Link → Module. Der Bus hält
+**keine Rückschau** (so dokumentiert und so gewollt), also ging das erste
+`NodeConnected` an null Zuhörer und war verloren. Der Zustand wäre erst nach dem
+nächsten Verbindungsabbruch richtig geworden — bei einem stabilen Node also nie.
+
+**Kein Test hat das gefunden**, weil jeder Test das Ereignis selbst
+veröffentlicht, nachdem er abonniert hat. Genau die Reihenfolge, die in der
+Anwendung falsch war, kam im Test nicht vor.
+
+**Konsequenz:**
+
+1. **Wer auf einem Broadcast ohne Rückschau lauscht, muss vor dem Erzeuger
+   bereitstehen.** Der Link wird deshalb mit `link::prepare` gebaut und erst
+   nach `registry.start_all` mit `.start()` losgelassen. Die Reihenfolge steht
+   damit im Typ, nicht in einem Kommentar.
+2. **Startreihenfolgen sind eine eigene Fehlerklasse.** Sie zeigen sich nicht in
+   Komponententests, weil dort jeder Test seine Welt selbst aufbaut — meist in
+   der richtigen Reihenfolge.
+3. **Ein Durchstichlauf mit echtem Prozess findet, was Tests nicht finden.** Das
+   ist inzwischen der dritte Fehler dieser Art (siehe die Busy-Loop weiter oben
+   und die Rangfolge von Routing und Authentifizierung). Nach einem fertigen
+   Feature einmal wirklich starten, nicht nur `cargo test`.
+
+**Belege:** `link::prepare` und `PreparedLink` in
+`crates/meshdash-core/src/link.rs`, Test
+`a_prepared_link_stays_quiet_until_started`; die Verdrahtung in
+`crates/meshdash-server/src/main.rs`.

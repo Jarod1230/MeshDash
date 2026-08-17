@@ -1,11 +1,6 @@
 //! Domain modules. Everything MeshDash actually does for an operator lives
 //! here, split into modules that do not know about each other.
 //!
-//! # Scaffolding only
-//!
-//! No module exists yet. Step 6 of `docs/roadmap.md` adds them in order:
-//! `system`, `nodes`, `messages`, `telemetry`.
-//!
 //! # Rules for modules
 //!
 //! - A module owns its own tables, prefixed `<module>_`. It never reads or
@@ -17,3 +12,5 @@
 //!
 //! The test for a good cut: removing a module means touching two registration
 //! lists and nothing else. See `docs/module-system.md`.
+
+pub mod system;

@@ -7,6 +7,13 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Bakes the built frontend into the binary. Off by default because it needs
+# `web/dist`, which only exists after `pnpm build` — a plain `cargo build`, and
+# the Rust CI job, must not depend on the frontend having been built. The
+# release build in the justfile turns it on.
+embed-frontend = ["dep:rust-embed"]
+
 [lib]
 name = "meshdash_server"
 path = "src/lib.rs"
@@ -22,6 +29,7 @@ meshdash-transport.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 futures.workspace = true
+rust-embed = { workspace = true, optional = true }
 serde_json.workspace = true
 # Constant-time comparison, so the response time cannot reveal the token
 # character by character. See ADR-0006.

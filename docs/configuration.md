@@ -89,7 +89,8 @@ Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
   aufgezeichneten Verkehr unter `fixtures/` gibt — siehe
   [`testing.md`](testing.md).
 - **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
-- **Eingebettetes Frontend.** Der Server liefert noch keine Oberfläche aus.
+- **Module und ihre Konfiguration.** Solange es keine Module gibt, zeigt das
+  Dashboard nichts an — die kommen mit Schritt 6.
 
 ## Beim Ergänzen einer Option
 

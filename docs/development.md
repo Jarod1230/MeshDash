@@ -55,11 +55,13 @@ Konfiguration, legt die Datenbank an, baut den konfigurierten Transport auf,
 verbindet sich selbsttätig neu, wenn kein Node antwortet, und lauscht auf der
 eingestellten Adresse. Das Protokoll beherrscht Frame-Ebene und Opcodes.
 
-**Was noch nicht geht:** alles Fachliche. Die Modul-Registry ist leer, also
-antwortet der Server auf jeden Pfad mit `404` im vereinbarten Fehlerformat.
-Ohne Module gibt es nichts abzurufen — die kommen mit Schritt 6. Ebenfalls
-offen: Authentifizierung, WebSocket und das eingebettete Frontend. Siehe
-[`roadmap.md`](roadmap.md).
+Dazu: geschützte API mit Bearer-Token, ein Ereignisstrom über WebSocket unter
+`/api/v1/events`, das eingebettete Dashboard und geordnetes Herunterfahren auf
+SIGINT und SIGTERM.
+
+**Was noch nicht geht:** alles Fachliche. Die Modul-Registry ist leer — unter
+`/api/v1/` gibt es also nichts abzurufen, und das Dashboard hat nichts
+anzuzeigen. Module kommen mit Schritt 6, siehe [`roadmap.md`](roadmap.md).
 
 ## Arbeitsabläufe
 
@@ -80,6 +82,13 @@ just check-docs        # interne Markdown-Links
 Im Entwicklungsmodus laufen zwei Prozesse: Vite liefert das Frontend mit Hot
 Reload und leitet `/api` an das Rust-Backend weiter. Im Release-Build wird das
 gebaute Frontend ins Binary eingebettet — dann ist es ein Prozess.
+
+**Das Einbetten hängt am Merkmal `embed-frontend`** und ist standardmäßig aus.
+Grund: Es liest `web/dist`, und das entsteht erst durch `pnpm build`. Wäre es
+immer an, ließe sich das Backend nicht ohne gebautes Frontend übersetzen — auch
+nicht in der CI, die beides getrennt prüft. `just build` schaltet es ein,
+`just dev-server` nicht. Ohne eingebettetes Frontend antwortet der Server
+außerhalb von `/api/v1/` mit einem Hinweis statt mit einer leeren Seite.
 
 ## Konfiguration
 

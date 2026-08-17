@@ -87,7 +87,9 @@ diese Tabelle.
       [ADR-0006](decisions/0006-authentifizierung.md); der Dienst startet nicht
       ungeschützt auf einer öffentlichen Adresse. Gilt auch für den
       Ereignisstrom.
-- Eingebettetes Frontend, geordnetes Herunterfahren
+- [x] Eingebettetes Frontend, geordnetes Herunterfahren — Frontend über das
+      Merkmal `embed-frontend` im Binary (`just build`), Abbruch auf SIGINT und
+      SIGTERM ohne abgeschnittene Anfragen
 
 ## Schritt 6 — Erste Module
 

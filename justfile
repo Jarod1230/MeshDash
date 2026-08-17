@@ -37,7 +37,8 @@ dev-web:
 setup:
     cd web && pnpm install
 
-# Release build. The frontend is not embedded yet — that arrives in step 5.
+# Release build: one binary with the dashboard inside.
+# The frontend must be built first — `embed-frontend` reads web/dist.
 build:
     cd web && pnpm build
-    cargo build --release
+    cargo build --release --features meshdash-server/embed-frontend

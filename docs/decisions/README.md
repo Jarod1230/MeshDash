@@ -36,5 +36,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0003](0003-transport-priorisierung.md) | Serial und TCP zuerst, BLE später | Angenommen |
 | [0004](0004-dokumentationssprache.md) | Doku Deutsch, Code Englisch | Angenommen |
 | [0005](0005-sqlite-als-datenbank.md) | SQLite als einzige Datenbank | Angenommen |
+| [0006](0006-authentifizierung.md) | Einzelnes Token, kein ungeschützter Start nach außen | **Vorschlag** |
 
 Vorlage: [`template.md`](template.md).

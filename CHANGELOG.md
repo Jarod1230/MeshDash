@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Ein Binary mit Dashboard.** `just build` bettet das gebaute Frontend ein;
+  unbekannte Pfade landen bei der Oberfläche, damit deren eigene Navigation
+  funktioniert, während `/api/v1/` weiterhin JSON liefert.
+- **Geordnetes Herunterfahren** auf Strg-C und SIGTERM: Laufende Anfragen werden
+  zu Ende beantwortet, und die Verbindung zum Node wird gelöst, statt dass der
+  Dienst abgeschnitten wird.
 - **Live-Ereignisse über WebSocket** unter `/api/v1/events`. Verbindungsstatus
   des Node und alles, was er von sich aus meldet, erreichen den Browser ohne
   Nachfragen. Ist ein Token gesetzt, wird es als erste Nachricht erwartet —

@@ -7,9 +7,8 @@
 //! # What it does not do yet
 //!
 //! No module is registered — there are none, they arrive in step 6 of
-//! `docs/roadmap.md`. The server therefore answers every path with a 404 in
-//! the agreed error shape. Authentication, the WebSocket stream and the
-//! embedded frontend are still missing too; authentication needs an ADR first.
+//! `docs/roadmap.md`. So the API has nothing to offer and the dashboard has
+//! nothing to show, though both are in place and working.
 
 use std::{net::ToSocketAddrs, process::ExitCode};
 
@@ -67,7 +66,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     let transport = open_transport(&config).context("setting up the connection to the node")?;
 
     let events = EventBus::new();
-    let (link, _link_task) = link::spawn(transport, LinkConfig::default(), events.clone());
+    let (link, link_task) = link::spawn(transport, LinkConfig::default(), events.clone());
 
     let context = AppContext { db, events, link };
 
@@ -91,10 +90,50 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     );
 
     axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .context("serving HTTP")?;
 
+    // The link owns the connection to the node; ending it releases the serial
+    // port, which matters when a service manager restarts us right away.
+    link_task.abort();
+    tracing::info!("meshdash stopped");
+
     Ok(())
+}
+
+/// Resolves when the process is asked to stop.
+///
+/// Both signals matter: Ctrl-C for someone running it in a terminal, SIGTERM
+/// for a service manager. Without SIGTERM the process would be killed outright
+/// after a grace period, cutting requests off mid-answer.
+async fn shutdown_signal() {
+    let interrupt = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            // Without the handler the default behaviour still applies, so
+            // there is nothing to recover from here.
+            Err(error) => {
+                tracing::warn!(%error, "could not listen for SIGTERM");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = interrupt => tracing::info!("received interrupt, shutting down"),
+        () = terminate => tracing::info!("received terminate, shutting down"),
+    }
 }
 
 /// Builds the transport the configuration asks for.

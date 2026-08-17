@@ -11,9 +11,12 @@
 //! under [`API_PREFIX`] needs it; when none is, the API is open — which is only
 //! safe because the service then refuses to listen on a public address.
 //!
-//! # Not here yet
+//! # Beyond the API
 //!
-//! The WebSocket stream and the embedded frontend follow in the same step.
+//! Everything outside [`API_PREFIX`] is the dashboard, served from inside the
+//! binary — see [`frontend`]. The live event stream sits at [`EVENTS_PATH`] and
+//! authenticates differently, because a browser cannot put a header on a
+//! WebSocket; [`events`] explains why.
 
 use axum::{
     Json, Router,
@@ -30,6 +33,7 @@ use serde::Serialize;
 use subtle::ConstantTimeEq;
 
 pub mod events;
+pub mod frontend;
 
 /// Prefix every module route sits under, per `docs/conventions.md`.
 pub const API_PREFIX: &str = "/api/v1";
@@ -155,9 +159,9 @@ pub fn build_router(registry: &ModuleRegistry, context: AppContext, auth: AuthCo
             }),
         )
         .nest(API_PREFIX, api)
-        // Everything outside the API. No token needed: this is where the
-        // frontend will live, and it gives nothing away.
-        .fallback(|| async { not_found() })
+        // Everything outside the API is the dashboard. No token needed: the
+        // frontend is public files, and it asks for one before it shows data.
+        .fallback(frontend::serve)
         .with_state(context)
 }
 
@@ -339,6 +343,39 @@ mod tests {
         let (status, _) = call(router, "/api/v1/nodes/things").await;
 
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn serves_the_dashboard_outside_the_api() {
+        let router = guarded(demanding("s3cret")).await;
+
+        // No token: the frontend is public files, and it asks for one itself
+        // before it shows any data.
+        let (status, body) = call(router, "/").await;
+
+        if cfg!(feature = "embed-frontend") {
+            assert_eq!(status, StatusCode::OK);
+            assert!(
+                body.contains("<html"),
+                "expected the dashboard, got: {body}"
+            );
+        } else {
+            // A plain explanation beats a blank page nobody can account for.
+            assert_eq!(status, StatusCode::NOT_FOUND);
+            assert!(body.contains("No frontend is embedded"), "got: {body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_dashboard_path_never_swallows_the_api() {
+        // The frontend catches unknown paths, but the API must keep answering
+        // in JSON — otherwise a client would get HTML where it expects data.
+        let router = guarded(demanding("s3cret")).await;
+
+        let (status, body) = call(router, "/api/v1/nodes/things").await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body.contains("\"error\""), "got: {body}");
     }
 
     #[tokio::test]

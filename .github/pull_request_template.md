@@ -6,6 +6,19 @@ Behebt #
 
 ## Art der Änderung
 
+<!-- Mehrfachnennung ist der Normalfall, nicht die Ausnahme: Angekreuzt wird,
+     was im Diff steckt, nicht der Hauptzweck des PRs.
+
+     "Dokumentation" gilt, sobald Dokumentation **inhaltlich** geändert wurde —
+     ein neuer Absatz in `architecture.md`, eine überarbeitete
+     `configuration.md`, ein Eintrag in `lessons-learned.md`, eine neue
+     Glossar-Definition. Also alles, was jemand beim Review lesen sollte.
+
+     Nicht angekreuzt bei reiner Pflege: einen Haken in `roadmap.md` setzen,
+     eine Zeile ins `CHANGELOG.md` schreiben, eine Standspalte aktualisieren.
+     Das fällt laut `CLAUDE.md` in fast jedem PR an und sagt nichts darüber,
+     worauf zu schauen ist. -->
+
 - [ ] Neues Feature bzw. neues Modul
 - [ ] Fehlerbehebung
 - [ ] Refactoring ohne Verhaltensänderung

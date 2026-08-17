@@ -1,6 +1,6 @@
 # ADR-0006: Einzelnes Token, und kein ungeschützter Start nach außen
 
-- **Status:** Vorschlag
+- **Status:** Angenommen
 - **Datum:** 2026-08-17
 - **Betrifft:** `meshdash-server`, `meshdash-core` (Konfiguration), Frontend
 

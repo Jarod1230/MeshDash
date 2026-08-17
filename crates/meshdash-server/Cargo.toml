@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "meshdash_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "meshdash"
 path = "src/main.rs"
@@ -14,6 +18,19 @@ path = "src/main.rs"
 [dependencies]
 meshdash-core.workspace = true
 meshdash-modules.workspace = true
+meshdash-transport.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+serde.workspace = true
+tokio = { workspace = true }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+# Provides `oneshot`, which runs a request through the router without binding
+# a port.
+tower = "0.5"
 
 [lints]
 workspace = true

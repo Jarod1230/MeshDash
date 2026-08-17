@@ -50,12 +50,16 @@ just check     # alles, was auch die CI prüft
 [`just`](https://github.com/casey/just) ist optional (`cargo install just`);
 alle Rezepte stehen im Klartext im [`justfile`](../justfile).
 
-**Was schon geht:** Der Workspace baut, das Frontend baut, die CI ist grün, und
-`meshdash-proto` beherrscht die Frame-Ebene des Companion-Protokolls — mit
-Unit-Tests, die ohne Hardware laufen.
-**Was noch nicht geht:** alles Fachliche — der Server gibt beim Start nur seine
-Version aus, die Modul-Registry ist leer, und über der Frame-Ebene gibt es noch
-keine Opcodes. Siehe [`roadmap.md`](roadmap.md).
+**Was schon geht:** `just dev-server` startet einen echten Dienst. Er liest die
+Konfiguration, legt die Datenbank an, baut den konfigurierten Transport auf,
+verbindet sich selbsttätig neu, wenn kein Node antwortet, und lauscht auf der
+eingestellten Adresse. Das Protokoll beherrscht Frame-Ebene und Opcodes.
+
+**Was noch nicht geht:** alles Fachliche. Die Modul-Registry ist leer, also
+antwortet der Server auf jeden Pfad mit `404` im vereinbarten Fehlerformat.
+Ohne Module gibt es nichts abzurufen — die kommen mit Schritt 6. Ebenfalls
+offen: Authentifizierung, WebSocket und das eingebettete Frontend. Siehe
+[`roadmap.md`](roadmap.md).
 
 ## Arbeitsabläufe
 

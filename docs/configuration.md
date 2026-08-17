@@ -1,9 +1,10 @@
 # Konfiguration
 
-> **Teilweise umgesetzt.** Die unten beschriebenen Optionen werden gelesen —
-> aber noch von niemandem *benutzt*: Es gibt weder Server noch Datenbank, und
-> der Link wird noch nicht aus der Konfiguration aufgebaut. Was noch fehlt,
-> steht am Ende des Dokuments.
+> **Weitgehend umgesetzt.** Die unten beschriebenen Optionen werden gelesen
+> **und wirken**: Der Server lauscht auf `[server] bind`, die Datenbank wird
+> unter `[database] path` angelegt, und `[node]` bestimmt, wie MeshDash den
+> Companion-Node ansteuert. Ausnahme ist `[auth] token` — das Feld existiert,
+> ausgewertet wird es noch nicht. Was fehlt, steht am Ende des Dokuments.
 
 ## Quellen und Rangfolge
 
@@ -76,9 +77,9 @@ Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
   aufgezeichneten Verkehr unter `fixtures/` gibt — siehe
   [`testing.md`](testing.md).
 - **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
-- **Wirkung.** Die Werte werden gelesen und geprüft, aber noch nirgends
-  verwendet: Server, Datenbank und der Aufbau des Links aus der Konfiguration
-  kommen in den Schritten 4 und 5.
+- **`[auth] token` wirkt noch nicht.** Das Feld wird gelesen, aber keine Anfrage
+  daran gemessen. Der Mechanismus braucht laut [`roadmap.md`](roadmap.md) erst
+  einen ADR.
 
 ## Beim Ergänzen einer Option
 

@@ -14,12 +14,13 @@
 //! `docs/module-system.md`. None of that is enforced by the compiler; the
 //! contract is deliberately narrow so that breaking those rules takes effort.
 //!
-//! # Routes are not part of this yet
+//! # Routes belong to the module, mounting belongs to the server
 //!
-//! `module-system.md` counts routes among a module's parts, and they will be —
-//! but there is no router to hang them on until step 5 of the roadmap. Adding
-//! the method now would mean designing an interface nothing can exercise, so it
-//! arrives with the server.
+//! A module hands over a router for its own paths and never learns where it is
+//! mounted. `meshdash-server` puts it under `/api/v1/<name>/`, which keeps the
+//! prefix in one place instead of in every module.
+
+use axum::Router;
 
 use crate::{db::Database, db::DatabaseError, db::Migration, event::EventBus, link::LinkHandle};
 
@@ -89,6 +90,14 @@ pub trait Module: Send + Sync {
         &[]
     }
 
+    /// The module's HTTP routes, relative to its own prefix.
+    ///
+    /// A path is written as `/contacts`, not `/api/v1/nodes/contacts` — the
+    /// server mounts it. `None` is right for a module that offers no API.
+    fn routes(&self) -> Option<Router<AppContext>> {
+        None
+    }
+
     /// Starts whatever the module needs running: event handlers, background
     /// jobs, timers.
     ///
@@ -145,6 +154,14 @@ impl ModuleRegistry {
     /// The registered names, in registration order.
     pub fn names(&self) -> Vec<&'static str> {
         self.modules.iter().map(|module| module.name()).collect()
+    }
+
+    /// The registered modules, in registration order.
+    ///
+    /// For whoever assembles the HTTP surface — the server needs each module's
+    /// name and routes together to mount them.
+    pub fn modules(&self) -> impl Iterator<Item = &dyn Module> {
+        self.modules.iter().map(AsRef::as_ref)
     }
 
     /// Whether any module is registered.

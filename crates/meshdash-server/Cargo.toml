@@ -21,6 +21,9 @@ meshdash-modules.workspace = true
 meshdash-transport.workspace = true
 anyhow.workspace = true
 axum.workspace = true
+# Constant-time comparison, so the response time cannot reveal the token
+# character by character. See ADR-0006.
+subtle = "2"
 serde.workspace = true
 tokio = { workspace = true }
 tracing.workspace = true

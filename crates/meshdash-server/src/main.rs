@@ -42,6 +42,10 @@ fn run() -> anyhow::Result<()> {
     let config = Config::load().context("reading the configuration")?;
     init_tracing(&config.log.filter);
 
+    // Before anything is opened: a service reachable from outside without
+    // authentication must not come up at all. See ADR-0006.
+    config.check_exposure()?;
+
     tokio::runtime::Runtime::new()
         .context("starting the async runtime")?
         .block_on(serve(config))
@@ -74,7 +78,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         .await
         .context("starting the modules")?;
 
-    let router = meshdash_server::build_router(&registry, context);
+    let router = meshdash_server::build_router(&registry, context, config.auth.clone());
 
     let listener = tokio::net::TcpListener::bind(config.server.bind)
         .await

@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Authentifizierung für die API.** Ist `[auth] token` gesetzt, braucht jede
+  Anfrage unter `/api/v1/` ein passendes Bearer-Token. Ist es nicht gesetzt und
+  lauscht MeshDash auf einer öffentlichen Adresse, **startet der Dienst nicht** —
+  wer hinter einem Reverse-Proxy ohne eigenes Token betreiben will, stimmt dem
+  mit `allow_unauthenticated = true` ausdrücklich zu. Grundlage ist
+  ADR-0006.
 - **MeshDash startet als Dienst.** Das Binary liest die Konfiguration, legt die
   Datenbank an, baut den eingestellten Transport auf, hält die Verbindung zum
   Node selbsttätig aufrecht und lauscht auf der konfigurierten Adresse.

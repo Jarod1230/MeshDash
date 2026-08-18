@@ -96,14 +96,26 @@ diese Tabelle.
 In dieser Reihenfolge, jedes für sich abgeschlossen:
 
 1. [x] **`system`** — Verbindungsstatus und Node-Identität, mit Verlauf jeder
-   Verbindungsänderung. Der Durchstich vom Node bis zur API steht; bis in den
-   Browser fehlt die Oberfläche aus Schritt 7.
-2. [x] **`nodes`** — Kontakte mit Erst- und Letztsichtung. Adverts als Live-Quelle
-   fehlen noch: ihre Nutzlast ist unverifiziert.
-3. [x] **`messages`** — Empfang von Direktnachrichten mit Verlauf. Senden und
-   Kanäle stehen noch aus.
-4. [x] **`telemetry`** — Batterie und Speicher des eigenen Node über die Zeit.
-   Messwerte fremder Nodes stecken in CayenneLPP und sind noch offen.
+   Verbindungsänderung. Bis in den Browser fehlt die Oberfläche aus Schritt 7.
+2. **`nodes`** — Kontakte und Nachbarn mit Verlauf.
+   - [x] Kontakte abrufen, mit Erst- und Letztsichtung
+   - [ ] **Nachbarn** — Adverts (`PUSH_CODE_ADVERT`, `PUSH_CODE_NEW_ADVERT`)
+         auswerten, Nutzlast dafür erst verifizieren
+3. **`messages`** — Direktnachrichten und Kanäle.
+   - [x] Direktnachrichten empfangen, mit Verlauf
+   - [ ] **Senden** (`CMD_SEND_TXT_MSG`), Nutzlast erst verifizieren
+   - [ ] **Kanäle** — empfangen und senden
+4. **`telemetry`** — Batterie und Empfangsqualität über die Zeit.
+   - [x] Batterie und Speicher des eigenen Node
+   - [ ] **Empfangsqualität** über die Zeit. Der SNR liegt in den Nachrichten,
+         die `messages` abholt; `telemetry` kommt über ein Ereignis auf dem Bus
+         daran — kein CayenneLPP nötig, siehe
+         [`module-system.md`](module-system.md)
+
+**Nicht Teil dieses Schritts:** Telemetrie *fremder* Nodes
+(`PUSH_CODE_TELEMETRY_RESPONSE`). Deren Nutzlast ist CayenneLPP, ein
+Fremdformat — das braucht eine eigene Abhängigkeitsentscheidung und steht
+unter „Danach".
 
 ## Schritt 7 — Frontend-Ausbau
 
@@ -121,6 +133,8 @@ Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 - **`alerts`** — Benachrichtigung bei Node-Ausfall
 - **BLE-Transport** — siehe [ADR-0003](decisions/0003-transport-priorisierung.md)
 - **Mehrere Gateways gleichzeitig** — siehe „Offene Punkte" in `architecture.md`
+- **Telemetrie fremder Nodes** — CayenneLPP als Fremdformat, braucht eine
+  Abhängigkeitsentscheidung
 - **Aufbewahrung und Verdichtung von Telemetrie**
 - Docker-Image, Release-Automatisierung, ARM-Builds für den Raspberry Pi
 

@@ -6,9 +6,8 @@
 //!
 //! # What it does not do yet
 //!
-//! `system`, `nodes` and `messages` are registered; `telemetry` follows in
-//! step 6 of `docs/roadmap.md`. The dashboard is still a placeholder page —
-//! that is step 7.
+//! All four modules of step 6 are registered. The dashboard is still a
+//! placeholder page — that is step 7 of `docs/roadmap.md`.
 
 use std::{net::ToSocketAddrs, process::ExitCode};
 
@@ -87,6 +86,9 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     registry
         .register(Box::new(meshdash_modules::messages::MessagesModule))
         .context("registering the messages module")?;
+    registry
+        .register(Box::new(meshdash_modules::telemetry::TelemetryModule))
+        .context("registering the telemetry module")?;
 
     registry
         .start_all(&context)

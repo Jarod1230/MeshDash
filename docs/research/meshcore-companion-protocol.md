@@ -329,6 +329,28 @@ und muss zum Anzeigen durch 4 geteilt werden. Wer das übersieht, bekommt
 plausibel aussehende, aber vierfach zu große Werte — genau die Sorte Fehler, die
 niemandem auffällt.
 
+**Der Absender einer Nachricht wird nur mit sechs Byte benannt.**
+`RESP_CODE_CONTACT_MSG_RECV(_V3)` überträgt nicht den vollen Schlüssel, sondern
+ein 6-Byte-Präfix (`just 6-byte prefix`, `queueMessage()`). Eine Zuordnung zu
+einem Kontakt ist damit ein Präfixvergleich — und Präfixe können kollidieren.
+Wer darauf aufbaut, behandelt den Treffer als „vermutlich dieser Kontakt", nicht
+als sicher.
+
+**Eine Pfadlänge von `0xFF` heißt „kein Flood-Pfad"**, nicht 255 Zwischenschritte.
+Die Firmware schreibt den Wert, sobald das Paket nicht als Flood lief.
+
+**Der Nachrichtentext läuft bis zum Frame-Ende und ist nicht terminiert.** Die
+Firmware kürzt ihn auf die Rahmengröße **ohne Rücksicht auf Zeichengrenzen** —
+der Quelltext vermerkt selbst `TODO: UTF-8 ??`. Das letzte Zeichen kann also
+halbiert ankommen; ein Parser muss das aushalten, statt die Nachricht zu
+verwerfen.
+
+**Vier Zusatzbytes gibt es nur bei signierten Nachrichten.** Zwischen Zeitstempel
+und Text steht bei `TXT_TYPE_SIGNED_PLAIN` (2) ein 4-Byte-Signaturpräfix, bei
+`TXT_TYPE_PLAIN` (0) und `TXT_TYPE_CLI_DATA` (1) nicht. Eine feste Annahme
+verschluckt entweder vier Zeichen oder stellt dem Text vier Bytes Unsinn voran.
+Konstanten aus `src/helpers/TxtDataHelpers.h`.
+
 **Der Kontaktabruf ist ein Strom, keine einzelne Antwort.** Auf
 `CMD_GET_CONTACTS` (optional mit `since` als u32 ab Byte 1) folgt
 `RESP_CODE_CONTACTS_START` mit der Anzahl, danach je Kontakt ein

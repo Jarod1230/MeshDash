@@ -114,6 +114,15 @@ impl Contact {
             }
         }
 
+        Self::parse_body(payload)
+    }
+
+    /// Reads the fields of a contact frame without checking the opcode.
+    ///
+    /// `PUSH_CODE_NEW_ADVERT` carries the same bytes under a different first
+    /// byte — the firmware builds both with `writeContactRespFrame()`. See
+    /// [`crate::advert`].
+    pub(crate) fn parse_body(payload: &[u8]) -> Result<Self, ContactError> {
         if payload.len() < layout::LEN {
             return Err(ContactError::TooShort {
                 len: payload.len(),

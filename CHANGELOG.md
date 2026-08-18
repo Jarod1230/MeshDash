@@ -12,6 +12,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Nachbarn: Adverts werden ausgewertet.** Meldet sich ein Node über Funk,
+  hält MeshDash die Sichtung fest — abrufbar unter `/api/v1/nodes/adverts`,
+  neueste zuerst. War der Node dem eigenen Gerät noch unbekannt, trägt die
+  Meldung den vollständigen Kontakt und dieser wird gleich mit angelegt; war er
+  bekannt, kommt nur sein Schlüssel und lediglich die Letztsichtung rückt vor.
+  Damit ist die Kontaktliste nicht mehr die einzige Quelle: Wer gerade zu hören
+  ist, steht jetzt ohne Abfrage fest.
+
 - **Ein Binary mit eingebettetem Frontend.** `just build` legt die gebaute
   Oberfläche ins Binary; unbekannte Pfade landen bei ihr, damit deren eigene
   Navigation funktioniert, während `/api/v1/` weiterhin JSON liefert. Die

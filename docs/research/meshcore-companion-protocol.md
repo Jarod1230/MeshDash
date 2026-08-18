@@ -1,6 +1,6 @@
 # MeshCore Companion-Protokoll — Recherchestand
 
-**Stand: 2026-08-16.** Verifikationsstufen nach [`README.md`](README.md).
+**Stand: 2026-08-18.** Verifikationsstufen nach [`README.md`](README.md).
 
 Verifiziert am Firmware-Quellcode (Stufe `SOURCE`) sind:
 
@@ -397,6 +397,26 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**Die beiden Advert-Pushes tragen sehr unterschiedlich viel** — Stufe `SOURCE`,
+`onDiscoveredContact()`, Commit `d929643`. Welcher der beiden kommt, entscheidet
+allein, ob der Node den Kontakt schon kannte:
+
+- `PUSH_CODE_NEW_ADVERT` (`0x8A`) — kannte er nicht. Die Firmware ruft dafür
+  **dieselbe** `writeContactRespFrame()` auf wie für `RESP_CODE_CONTACT`; die
+  Nutzlast ist also Byte für Byte ein Kontakt, nur mit anderem ersten Byte.
+- `PUSH_CODE_ADVERT` (`0x80`) — kannte er. Es reisen Opcode und Pubkey (32 B),
+  sonst nichts. Insgesamt 33 Byte.
+
+Die kurze Form ist **kein abgespeckter Kontakt**, sondern die Aussage „dieser
+Schlüssel wurde eben gehört". Name, Typ, Pfad und Position fehlen, weil der Node
+davon ausgeht, dass die App sie aus der Kontaktliste hat — nicht, weil sie leer
+geworden wären. Wer auf diesen Push hin die fehlenden Felder schreibt, löscht,
+was die Liste geliefert hat. Umgesetzt in `meshdash_proto::advert`.
+
+Nebenbei belegt dieselbe Funktion: Der Node führt zusätzlich eine eigene Tabelle
+zuletzt gehörter Adverts samt Rückpfad (`advert_paths`, `getRecentlyHeard()`).
+Ob und wie sie über das Companion-Protokoll abrufbar ist, ist noch nicht geprüft.
+
 **Die Kontaktkapazität steht halbiert auf der Leitung.** In
 `RESP_CODE_DEVICE_INFO` schreibt die Firmware `MAX_CONTACTS / 2` in ein einzelnes
 Byte, weil der echte Wert dort nicht hineinpasst. Wer das Byte als Kapazität
@@ -424,13 +444,12 @@ Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 1. Feldaufteilung von `RESP_CODE_SELF_INFO` (Identität und Funkkonfiguration).
 2. Bedeutung der Werte in `type` und `flags` eines Kontakts — die Struktur ist
    belegt, die Kodierung dieser beiden Bytes nicht.
-3. Format der Advert-Paketdaten in `PUSH_CODE_ADVERT` und `PUSH_CODE_NEW_ADVERT`.
-4. Aufbau von `RESP_CODE_STATS` je Statistiktyp und von
+3. Aufbau von `RESP_CODE_STATS` je Statistiktyp und von
    `PUSH_CODE_TELEMETRY_RESPONSE` (CayenneLPP — die Firmware nutzt dafür eine
    eigene Bibliothek, das Format ist also nicht projektspezifisch).
-5. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Nachrichten- und
+4. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Nachrichten- und
    Pfad-Antworten.
-6. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
+5. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
    Version 3 ist gesetzt (`meshdash_proto::device::PROTOCOL_VERSION`), weil sie
    die SNR-Varianten der Nachrichten bringt. Version 8 schaltet Statistiken
    frei — dafür müssen deren Formate aber erst verifiziert sein.

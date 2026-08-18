@@ -97,10 +97,10 @@ In dieser Reihenfolge, jedes für sich abgeschlossen:
 
 1. [x] **`system`** — Verbindungsstatus und Node-Identität, mit Verlauf jeder
    Verbindungsänderung. Bis in den Browser fehlt die Oberfläche aus Schritt 7.
-2. **`nodes`** — Kontakte und Nachbarn mit Verlauf.
+2. [x] **`nodes`** — Kontakte und Nachbarn mit Verlauf.
    - [x] Kontakte abrufen, mit Erst- und Letztsichtung
-   - [ ] **Nachbarn** — Adverts (`PUSH_CODE_ADVERT`, `PUSH_CODE_NEW_ADVERT`)
-         auswerten, Nutzlast dafür erst verifizieren
+   - [x] **Nachbarn** — beide Advert-Pushes ausgewertet, mit Sichtungsverlauf
+         unter `/api/v1/nodes/adverts`
 3. **`messages`** — Direktnachrichten und Kanäle.
    - [x] Direktnachrichten empfangen, mit Verlauf
    - [ ] **Senden** (`CMD_SEND_TXT_MSG`), Nutzlast erst verifizieren

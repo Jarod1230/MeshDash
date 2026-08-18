@@ -23,4 +23,5 @@
 pub mod contact;
 pub mod device;
 pub mod frame;
+pub mod message;
 pub mod opcode;

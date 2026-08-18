@@ -6,7 +6,7 @@
 //!
 //! # What it does not do yet
 //!
-//! `system` and `nodes` are registered; `messages` and `telemetry` follow in
+//! `system`, `nodes` and `messages` are registered; `telemetry` follows in
 //! step 6 of `docs/roadmap.md`. The dashboard is still a placeholder page —
 //! that is step 7.
 
@@ -84,6 +84,9 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     registry
         .register(Box::new(meshdash_modules::nodes::NodesModule))
         .context("registering the nodes module")?;
+    registry
+        .register(Box::new(meshdash_modules::messages::MessagesModule))
+        .context("registering the messages module")?;
 
     registry
         .start_all(&context)

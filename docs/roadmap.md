@@ -100,7 +100,8 @@ In dieser Reihenfolge, jedes für sich abgeschlossen:
    Browser fehlt die Oberfläche aus Schritt 7.
 2. [x] **`nodes`** — Kontakte mit Erst- und Letztsichtung. Adverts als Live-Quelle
    fehlen noch: ihre Nutzlast ist unverifiziert.
-3. **`messages`** — Direktnachrichten und Kanäle.
+3. [x] **`messages`** — Empfang von Direktnachrichten mit Verlauf. Senden und
+   Kanäle stehen noch aus.
 4. **`telemetry`** — Batterie und Empfangsqualität über die Zeit.
 
 ## Schritt 7 — Frontend-Ausbau

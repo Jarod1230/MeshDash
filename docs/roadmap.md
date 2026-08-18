@@ -98,7 +98,8 @@ In dieser Reihenfolge, jedes für sich abgeschlossen:
 1. [x] **`system`** — Verbindungsstatus und Node-Identität, mit Verlauf jeder
    Verbindungsänderung. Der Durchstich vom Node bis zur API steht; bis in den
    Browser fehlt die Oberfläche aus Schritt 7.
-2. **`nodes`** — Kontakte und Nachbarn mit Verlauf.
+2. [x] **`nodes`** — Kontakte mit Erst- und Letztsichtung. Adverts als Live-Quelle
+   fehlen noch: ihre Nutzlast ist unverifiziert.
 3. **`messages`** — Direktnachrichten und Kanäle.
 4. **`telemetry`** — Batterie und Empfangsqualität über die Zeit.
 

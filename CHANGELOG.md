@@ -37,6 +37,10 @@ jedem Minor-Release ändern.
   registriert ist, antwortet der Dienst auf jeden Pfad mit `404` im
   vereinbarten Fehlerformat. Authentifizierung, WebSocket und eingebettetes
   Frontend fehlen noch.
+- **Modul `nodes`.** Holt die Kontaktliste vom Node und hält sie unter
+  `/api/v1/nodes/contacts` bereit — mit Name, bekanntem Pfad, Position und
+  Zeitpunkten. Erst- und Letztsichtung führt MeshDash selbst, damit ein Node,
+  der einen Kontakt vergisst, nicht die eigene Geschichte löscht.
 - Der `Link` kann Antworten sammeln, die aus mehreren Frames bestehen — nötig
   für Abrufe wie die Kontaktliste, die als Folge von Frames beantwortet werden.
 - Auswertung von Kontakten (`RESP_CODE_CONTACT`) in `meshdash-proto`, als

@@ -1,0 +1,164 @@
+//! Tests for the nodes module, against a real database and a mock node.
+
+use meshdash_core::{
+    db::Database,
+    event::EventBus,
+    link::{self, LinkConfig},
+    module::{AppContext, ModuleRegistry},
+};
+use meshdash_proto::opcode::Response;
+use meshdash_transport::mock::{MockTransport, Step};
+
+use super::*;
+
+/// Builds a context whose node replies with the given script.
+async fn context_with(script: Vec<Step>) -> AppContext {
+    let db = Database::open_in_memory().await.unwrap();
+    let events = EventBus::new();
+    let (link, _task) = link::spawn(
+        MockTransport::new(script),
+        LinkConfig::default(),
+        events.clone(),
+    );
+    let context = AppContext { db, events, link };
+
+    let mut registry = ModuleRegistry::new();
+    registry.register(Box::new(NodesModule)).unwrap();
+    registry.start_all(&context).await.unwrap();
+    context
+}
+
+/// A contact frame as the firmware lays it out.
+fn contact_frame(key: u8, name: &str, path: &[u8]) -> Vec<u8> {
+    let mut payload = vec![0u8; 148];
+    payload[0] = u8::from(Response::Contact);
+    payload[1..33].copy_from_slice(&[key; 32]);
+    payload[33] = 2;
+    payload[35] = path.len() as u8;
+    payload[36..36 + path.len()].copy_from_slice(path);
+    payload[100..100 + name.len()].copy_from_slice(name.as_bytes());
+    payload[132..136].copy_from_slice(&1_700_000_000_u32.to_le_bytes());
+    payload[136..140].copy_from_slice(&52_520_008_i32.to_le_bytes());
+    payload[140..144].copy_from_slice(&13_404_954_i32.to_le_bytes());
+    payload
+}
+
+/// Start and end markers of a listing.
+fn start_frame() -> Vec<u8> {
+    let mut frame = vec![0u8; 5];
+    frame[0] = u8::from(Response::ContactsStart);
+    frame[1..5].copy_from_slice(&2_u32.to_le_bytes());
+    frame
+}
+
+fn end_frame() -> Vec<u8> {
+    let mut frame = vec![0u8; 5];
+    frame[0] = u8::from(Response::EndOfContacts);
+    frame
+}
+
+/// A script answering one listing with the given contacts.
+fn listing(contacts: Vec<Vec<u8>>) -> Vec<Step> {
+    let mut script = vec![Step::AwaitSent(1), Step::Emit(start_frame())];
+    script.extend(contacts.into_iter().map(Step::Emit));
+    script.push(Step::Emit(end_frame()));
+    script.push(Step::Drop("script finished".into()));
+    script
+}
+
+#[tokio::test]
+async fn starts_with_nothing_known() {
+    let context = context_with(vec![]).await;
+
+    assert!(read_contacts(&context).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn fetches_and_stores_the_contact_list() {
+    let context = context_with(listing(vec![
+        contact_frame(0xAA, "Repeater Nord", &[1, 2]),
+        contact_frame(0xBB, "Room Server", &[]),
+    ]))
+    .await;
+
+    let stored = sync_contacts(&context).await.unwrap();
+
+    assert_eq!(stored, 2);
+    let contacts = read_contacts(&context).await.unwrap();
+    assert_eq!(contacts.len(), 2);
+    assert!(contacts.iter().any(|c| c.name == "Repeater Nord"));
+}
+
+#[tokio::test]
+async fn writes_the_key_and_path_as_hex() {
+    let context = context_with(listing(vec![contact_frame(0xAB, "Node", &[1, 2, 3])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+
+    assert!(
+        contacts[0].public_key.starts_with("abab"),
+        "got {}",
+        contacts[0].public_key
+    );
+    assert_eq!(contacts[0].path, "010203");
+}
+
+#[tokio::test]
+async fn reports_positions_in_degrees() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+
+    let latitude = contacts[0].latitude.unwrap();
+    assert!((latitude - 52.520_008).abs() < 1e-6, "got {latitude}");
+}
+
+#[tokio::test]
+async fn keeps_the_first_sighting_across_updates() {
+    // A node that forgets a contact must not erase our own history of it.
+    let context = context_with(vec![]).await;
+    let contact = Contact::parse(&contact_frame(0xAA, "Erst", &[])).unwrap();
+
+    store_contact(&context, &contact).await.unwrap();
+    let first = read_contacts(&context).await.unwrap()[0].first_seen;
+
+    let renamed = Contact::parse(&contact_frame(0xAA, "Danach", &[])).unwrap();
+    store_contact(&context, &renamed).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+    assert_eq!(contacts.len(), 1, "same key, same row");
+    assert_eq!(contacts[0].name, "Danach", "the newer name wins");
+    assert_eq!(contacts[0].first_seen, first, "the first sighting stands");
+}
+
+#[tokio::test]
+async fn passes_unverified_fields_through_unread() {
+    // type and flags have no documented meaning; inventing one would be worse
+    // than handing the number on.
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+
+    assert_eq!(contacts[0].contact_type, 2);
+}
+
+#[tokio::test]
+async fn survives_a_node_that_answers_nothing() {
+    let context = context_with(vec![Step::Drop("silent".into())]).await;
+
+    assert!(sync_contacts(&context).await.is_err());
+    assert!(read_contacts(&context).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn fetches_when_the_node_becomes_reachable() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[])])).await;
+
+    context.events.publish(AppEvent::NodeConnected);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    assert_eq!(read_contacts(&context).await.unwrap().len(), 1);
+}

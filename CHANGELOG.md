@@ -42,6 +42,10 @@ jedem Minor-Release ändern.
   Text — auch dann, wenn der Node den Text mitten im Zeichen abgeschnitten hat.
 - Auswertung von Batterie- und Speicherstand des angeschlossenen Node in
   `meshdash-proto`, als Vorarbeit für das Modul `telemetry`.
+- **Modul `telemetry`.** Fragt Batterie- und Speicherstand des Node alle fünf
+  Minuten ab und hält den Verlauf unter `/api/v1/telemetry/battery` bereit —
+  damit sichtbar wird, ob die Batterie schneller fällt als sonst. Messwerte
+  anderer Nodes fehlen noch.
 - **Modul `messages`.** Holt Direktnachrichten ab, sobald der Node welche
   ankündigt, und hält sie unter `/api/v1/messages/received` bereit — mit Absenderpräfix,
   Empfangsqualität und Zeitpunkt. Das Abholen leert die Warteschlange des Node,

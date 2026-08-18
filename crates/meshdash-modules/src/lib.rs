@@ -16,3 +16,4 @@
 pub mod messages;
 pub mod nodes;
 pub mod system;
+pub mod telemetry;

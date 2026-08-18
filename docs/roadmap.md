@@ -102,7 +102,8 @@ In dieser Reihenfolge, jedes für sich abgeschlossen:
    fehlen noch: ihre Nutzlast ist unverifiziert.
 3. [x] **`messages`** — Empfang von Direktnachrichten mit Verlauf. Senden und
    Kanäle stehen noch aus.
-4. **`telemetry`** — Batterie und Empfangsqualität über die Zeit.
+4. [x] **`telemetry`** — Batterie und Speicher des eigenen Node über die Zeit.
+   Messwerte fremder Nodes stecken in CayenneLPP und sind noch offen.
 
 ## Schritt 7 — Frontend-Ausbau
 

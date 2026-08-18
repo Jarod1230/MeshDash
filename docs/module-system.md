@@ -99,9 +99,9 @@ pflegen, sobald sich etwas ändert.
 | Modul | Zweck | Stand |
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
-| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — `/api/v1/nodes/contacts` |
+| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **teilweise** — Kontakte unter `/api/v1/nodes/contacts`; Nachbarn offen |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **teilweise** — Empfang unter `/api/v1/messages/received`; Senden und Kanäle offen |
-| `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **teilweise** — Batterie unter `/api/v1/telemetry/battery`; fremde Nodes offen |
+| `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **teilweise** — Batterie unter `/api/v1/telemetry/battery`; Empfangsqualität offen |
 | `map` | Geografische Darstellung bekannter Positionen | angedacht |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |
 | `alerts` | Benachrichtigung, wenn ein Node ausfällt | angedacht |

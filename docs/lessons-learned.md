@@ -371,3 +371,39 @@ war also, dass die Daten stimmen — nicht, dass sie abrufbar sind.
    der Datenbank nützen nichts, wenn der Weg dorthin nicht erreichbar ist.
 
 **Belege:** `routes()` in `crates/meshdash-modules/src/messages/mod.rs`.
+
+---
+
+## 2026-08-18 — Ein Haken ist eine Aussage, keine Zusammenfassung
+
+**Kontext:** Nach dem vierten Modul galt Schritt 6 der Roadmap als erledigt.
+Alle vier Punkte trugen ein Häkchen, die Einschränkungen standen daneben.
+
+**Problem:** Drei der vier Module waren gegenüber ihrer **eigenen
+Anforderung** unvollständig — `nodes` ohne Nachbarn, `messages` ohne Kanäle und
+ohne Senden, `telemetry` ohne Empfangsqualität. Über der Liste steht „jedes für
+sich abgeschlossen".
+
+Schlimmer als das Häkchen war, **wie** es gesetzt wurde: Beim Abhaken wurde die
+Beschreibung mitgeschrieben. Aus „Kontakte **und Nachbarn** mit Verlauf" wurde
+„Kontakte mit Erst- und Letztsichtung" — eine Beschreibung des Erledigten
+anstelle der Anforderung. Die Lücke war danach nicht mehr sichtbar, sondern nur
+noch der Nachsatz „fehlt noch", der wie ein Zusatzwunsch klingt statt wie ein
+offener Teil des Auftrags. Aufgefallen ist es erst durch Nachfrage.
+
+Nebenbei fiel dabei eine falsche Verknüpfung auf: Die fehlende Empfangsqualität
+war als „braucht CayenneLPP" abgelegt. Der SNR steckt aber in den Nachrichten,
+die `messages` ohnehin abholt — erreichbar über ein Ereignis auf dem Bus. Eine
+vermeintliche Blockade, die keine war.
+
+**Konsequenz:**
+
+1. **Beim Abhaken die Anforderung stehen lassen.** Was erledigt ist, kommt
+   dazu; die ursprüngliche Formulierung bleibt, damit die Lücke sichtbar ist.
+2. **Teilweise erledigt bekommt Unterpunkte, kein Häkchen.** Ein Haken auf der
+   obersten Ebene heißt „vollständig", sonst heißt er nichts.
+3. **Bevor etwas als blockiert gilt, den Weg dorthin prüfen.** „Braucht ein
+   Fremdformat" war hier schlicht falsch.
+
+**Belege:** Schritt 6 in [`roadmap.md`](roadmap.md), verglichen mit der
+ursprünglichen Fassung im ersten Commit derselben Datei.

@@ -9,12 +9,13 @@ Dieses Dokument beschreibt den Zuschnitt. Der Vertrag steht als
 
 ## Der Vertrag
 
-Ein Modul liefert drei Dinge:
+Ein Modul liefert vier Dinge:
 
 | Bestandteil | Bedeutung |
 | --- | --- |
 | `name()` | Kennung des Moduls. Präfixt Tabellen (`<name>_…`), Routen (`/api/v1/<name>/…`) und die Migrationsbuchführung. **Stabil halten** — eine Umbenennung verwaist Tabellen und Schemaversion. |
 | `migrations()` | Schemageschichte des Moduls, aufsteigend ab 1. Leer ist zulässig für ein Modul, das nichts speichert. |
+| `routes()` | HTTP-Routen des Moduls, relativ zu seinem eigenen Präfix. `None` für ein Modul ohne API. |
 | `start(ctx)` | Wird einmal aufgerufen, **nachdem** die Migrationen liefen. Startet Event-Handler und Hintergrundjobs. Dauerhaftes läuft in einem eigenen Task; die Rückkehr heißt „läuft", nicht „fertig". |
 
 Dazu bekommt es einen `AppContext` mit Datenbank, Event-Bus und einem Handle
@@ -33,10 +34,10 @@ weiterzulaufen erzeugt falsche Daten statt eines Fehlers, und das ist schlimmer
 als ein Dienst, der gar nicht erst hochkommt. Die Fehlermeldung nennt das
 verantwortliche Modul.
 
-**Routen sind noch nicht Teil des Traits.** Sie gehören dazu, aber es gibt bis
-Schritt 5 der [Roadmap](roadmap.md) keinen Router, an dem sie hängen könnten —
-eine Schnittstelle zu entwerfen, die nichts ausüben kann, wäre geraten statt
-entschieden.
+**Routen liefert das Modul, eingehängt werden sie vom Server.** Ein Modul gibt
+Pfade relativ zu sich selbst an — `/status`, nicht `/api/v1/system/status`. Wo
+sie landen, entscheidet `meshdash-server`; so steht die Präfixkonvention an
+einer Stelle statt in jedem Modul.
 
 ## Was ein Modul ist
 
@@ -98,7 +99,7 @@ pflegen, sobald sich etwas ändert.
 | Modul | Zweck | Stand |
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
-| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | geplant |
+| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — `/api/v1/nodes/contacts` |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | geplant |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | geplant |
 | `map` | Geografische Darstellung bekannter Positionen | angedacht |

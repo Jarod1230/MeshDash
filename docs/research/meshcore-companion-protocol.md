@@ -329,6 +329,21 @@ und muss zum Anzeigen durch 4 geteilt werden. Wer das übersieht, bekommt
 plausibel aussehende, aber vierfach zu große Werte — genau die Sorte Fehler, die
 niemandem auffällt.
 
+**Der Kontaktabruf ist ein Strom, keine einzelne Antwort.** Auf
+`CMD_GET_CONTACTS` (optional mit `since` als u32 ab Byte 1) folgt
+`RESP_CODE_CONTACTS_START` mit der Anzahl, danach je Kontakt ein
+`RESP_CODE_CONTACT`, zuletzt `RESP_CODE_END_OF_CONTACTS` mit dem jüngsten
+`lastmod`. Wer nur den ersten Frame als Antwort nimmt, verliert die Liste und
+bringt den Austausch dauerhaft aus dem Tritt.
+
+**Die Zahl in `CONTACTS_START` ist die Gesamtzahl, nicht die gefilterte.** Der
+Quelltext sagt es ausdrücklich: `total, NOT filtered count`. Wer darauf wartet,
+dass so viele Kontakte eintreffen, wartet bei gesetztem `since` vergeblich —
+das Ende erkennt man nur am Abschluss-Frame.
+
+**Das `lastmod` im Abschluss-Frame ist der Wert für das nächste `since`.** Damit
+holt ein Client beim nächsten Mal nur Geändertes.
+
 **Koordinaten sind Mikrograd, keine Grad.** Die Firmware multipliziert beim
 Setzen mit `1e6`, dividiert beim Lesen und weist Werte jenseits von ±90e6 bzw.
 ±180e6 zurück (`CMD_SET_ADVERT_LATLON`, `MyMesh.cpp`). Wer den rohen Wert als

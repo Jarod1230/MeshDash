@@ -37,6 +37,8 @@ jedem Minor-Release ändern.
   registriert ist, antwortet der Dienst auf jeden Pfad mit `404` im
   vereinbarten Fehlerformat. Authentifizierung, WebSocket und eingebettetes
   Frontend fehlen noch.
+- Der `Link` kann Antworten sammeln, die aus mehreren Frames bestehen — nötig
+  für Abrufe wie die Kontaktliste, die als Folge von Frames beantwortet werden.
 - Auswertung von Kontakten (`RESP_CODE_CONTACT`) in `meshdash-proto`, als
   Vorarbeit für das Modul `nodes`: Schlüssel, Name, bekannter Pfad, Position und
   Zeitstempel.

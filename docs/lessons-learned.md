@@ -345,3 +345,29 @@ Anwendung falsch war, kam im Test nicht vor.
 `crates/meshdash-core/src/link.rs`, Test
 `a_prepared_link_stays_quiet_until_started`; die Verdrahtung in
 `crates/meshdash-server/src/main.rs`.
+
+---
+
+## 2026-08-18 — Eine Route auf `/` greift im eingehängten Router nicht
+
+**Kontext:** Das Modul `messages` bot seine Liste unter `/api/v1/messages/` an,
+also mit einer Route auf `/` innerhalb des Modul-Routers. Alle Tests waren grün.
+
+**Problem:** Im laufenden Dienst antwortete der Pfad mit `404`. Die Module
+davor waren nicht betroffen, weil ihre Routen Namen tragen — `/status`,
+`/contacts`. Erst das erste Modul mit einer Wurzelroute fiel darauf herein.
+
+**Kein Test hat es gefunden**, weil die Modultests die Speicher- und
+Abholfunktionen direkt aufrufen und den Router gar nicht durchlaufen. Geprüft
+war also, dass die Daten stimmen — nicht, dass sie abrufbar sind.
+
+**Konsequenz:**
+
+1. **Modulrouten bekommen einen Namen.** `/received` statt `/`. Das ist auch
+   fachlich besser: Sobald es Senden gibt, wäre `/` mehrdeutig gewesen.
+2. Der Vertrag in [`module-system.md`](module-system.md) sagt das jetzt
+   ausdrücklich, damit es nicht jedes neue Modul selbst herausfindet.
+3. **Ein Modul ist erst geprüft, wenn seine Route abgerufen wurde.** Daten in
+   der Datenbank nützen nichts, wenn der Weg dorthin nicht erreichbar ist.
+
+**Belege:** `routes()` in `crates/meshdash-modules/src/messages/mod.rs`.

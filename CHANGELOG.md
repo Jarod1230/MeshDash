@@ -40,6 +40,11 @@ jedem Minor-Release ändern.
 - Auswertung eingehender Direktnachrichten in `meshdash-proto`, als Vorarbeit
   für das Modul `messages`: Absenderpräfix, Empfangsqualität, Zeitpunkt und
   Text — auch dann, wenn der Node den Text mitten im Zeichen abgeschnitten hat.
+- **Modul `messages`.** Holt Direktnachrichten ab, sobald der Node welche
+  ankündigt, und hält sie unter `/api/v1/messages/received` bereit — mit Absenderpräfix,
+  Empfangsqualität und Zeitpunkt. Das Abholen leert die Warteschlange des Node,
+  weshalb der hier geführte Verlauf danach die einzige Aufzeichnung ist.
+  Senden und Kanäle fehlen noch.
 - **Modul `nodes`.** Holt die Kontaktliste vom Node und hält sie unter
   `/api/v1/nodes/contacts` bereit — mit Name, bekanntem Pfad, Position und
   Zeitpunkten. Erst- und Letztsichtung führt MeshDash selbst, damit ein Node,

@@ -15,7 +15,7 @@ Ein Modul liefert vier Dinge:
 | --- | --- |
 | `name()` | Kennung des Moduls. Präfixt Tabellen (`<name>_…`), Routen (`/api/v1/<name>/…`) und die Migrationsbuchführung. **Stabil halten** — eine Umbenennung verwaist Tabellen und Schemaversion. |
 | `migrations()` | Schemageschichte des Moduls, aufsteigend ab 1. Leer ist zulässig für ein Modul, das nichts speichert. |
-| `routes()` | HTTP-Routen des Moduls, relativ zu seinem eigenen Präfix. `None` für ein Modul ohne API. |
+| `routes()` | HTTP-Routen des Moduls, relativ zu seinem eigenen Präfix. `None` für ein Modul ohne API. **Pfade benennen** — eine Route auf `/` greift im eingehängten Router nicht. |
 | `start(ctx)` | Wird einmal aufgerufen, **nachdem** die Migrationen liefen. Startet Event-Handler und Hintergrundjobs. Dauerhaftes läuft in einem eigenen Task; die Rückkehr heißt „läuft", nicht „fertig". |
 
 Dazu bekommt es einen `AppContext` mit Datenbank, Event-Bus und einem Handle
@@ -100,7 +100,7 @@ pflegen, sobald sich etwas ändert.
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
 | `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — `/api/v1/nodes/contacts` |
-| `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | geplant |
+| `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **teilweise** — Empfang unter `/api/v1/messages/received`; Senden und Kanäle offen |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | geplant |
 | `map` | Geografische Darstellung bekannter Positionen | angedacht |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |

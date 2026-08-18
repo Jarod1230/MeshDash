@@ -40,6 +40,8 @@ jedem Minor-Release ändern.
 - Auswertung eingehender Direktnachrichten in `meshdash-proto`, als Vorarbeit
   für das Modul `messages`: Absenderpräfix, Empfangsqualität, Zeitpunkt und
   Text — auch dann, wenn der Node den Text mitten im Zeichen abgeschnitten hat.
+- Auswertung von Batterie- und Speicherstand des angeschlossenen Node in
+  `meshdash-proto`, als Vorarbeit für das Modul `telemetry`.
 - **Modul `messages`.** Holt Direktnachrichten ab, sobald der Node welche
   ankündigt, und hält sie unter `/api/v1/messages/received` bereit — mit Absenderpräfix,
   Empfangsqualität und Zeitpunkt. Das Abholen leert die Warteschlange des Node,

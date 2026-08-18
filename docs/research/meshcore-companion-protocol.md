@@ -329,6 +329,18 @@ und muss zum Anzeigen durch 4 geteilt werden. Wer das übersieht, bekommt
 plausibel aussehende, aber vierfach zu große Werte — genau die Sorte Fehler, die
 niemandem auffällt.
 
+**`RESP_CODE_BATT_AND_STORAGE`** (11 Byte, `handleCmdFrame()`): Opcode,
+Batteriespannung in **Millivolt** (u16), belegter Speicher in KiB (u32),
+Gesamtspeicher in KiB (u32). Betrifft den **angeschlossenen** Node, nicht das
+Mesh. Die Firmware meldet Spannung, keinen Ladestand — der ließe sich ohne
+Zellchemie und -zahl nicht ableiten. Umgesetzt in `meshdash_proto::battery`.
+
+**Telemetrie fremder Nodes steckt in CayenneLPP.**
+`PUSH_CODE_TELEMETRY_RESPONSE` trägt Opcode, ein reserviertes Byte, ein
+6-Byte-Schlüsselpräfix und danach die Nutzdaten des Antwortpakets ab Offset 4 —
+und die sind CayenneLPP, ein Fremdformat. Der Rahmen ist damit belegt, der
+Inhalt nicht.
+
 **Der Absender einer Nachricht wird nur mit sechs Byte benannt.**
 `RESP_CODE_CONTACT_MSG_RECV(_V3)` überträgt nicht den vollen Schlüssel, sondern
 ein 6-Byte-Präfix (`just 6-byte prefix`, `queueMessage()`). Eine Zuordnung zu

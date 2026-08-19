@@ -155,6 +155,13 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   kann es nicht. Das genügt, solange die Oberfläche nur den aktuellen Stand
   zeigt; sobald jemand im Verlauf zurückblättern soll, braucht es einen Cursor.
   Betrifft `messages`, `telemetry` und `nodes` gleichermaßen.
+- **Tabellennamen vereinheitlichen.** `conventions.md` verlangt
+  `<modul>_<gegenstand>` im Plural. Vier Tabellen weichen ab:
+  `messages_received`, `messages_channel_received`, `messages_sent` (Partizip
+  statt Gegenstand) und `system_node_info` (Singular). Da Migrationen nach dem
+  Merge nicht mehr geändert werden, bräuchte es je eine neue Migration samt
+  Datenumzug — für Kosmetik zu teuer, deshalb bewusst offen gelassen und hier
+  vermerkt, statt die Regel stillschweigend zu beugen.
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

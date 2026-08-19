@@ -175,7 +175,14 @@ impl Module for TelemetryModule {
                         record_signal(&on_connect, &data).await;
                     }
                     Ok(_) => {}
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    // Missed events used to cost nothing here: this module
+                    // only reacted to a connection coming up, and the next one
+                    // would come. Since it records reception quality, a missed
+                    // event is a missing measurement — a gap in a curve that
+                    // otherwise looks complete.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
+                        tracing::warn!(missed, "telemetry module missed events");
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }

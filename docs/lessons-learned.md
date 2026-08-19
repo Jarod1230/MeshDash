@@ -407,3 +407,37 @@ vermeintliche Blockade, die keine war.
 
 **Belege:** Schritt 6 in [`roadmap.md`](roadmap.md), verglichen mit der
 ursprünglichen Fassung im ersten Commit derselben Datei.
+
+---
+
+## 2026-08-19 — Ein Kommentar, der die Gefahr benennt, schützt nicht vor ihr
+
+**Kontext:** `drain_messages()` holt Nachrichten einzeln ab, bis der Node
+`RESP_CODE_NO_MORE_MESSAGES` meldet. Mitten in der Schleife stand der Hinweis,
+eine unlesbare Nachricht dürfe den Ablauf nicht anhalten — „the node would
+otherwise offer the same frame forever".
+
+**Problem:** Genau dieses „forever" war unbehandelt. Der Kommentar zog nur die
+halbe Konsequenz: Parse-Fehler wurden übersprungen, aber der Fall „der Node
+antwortet dauerhaft mit etwas, das gar keine Nachricht ist" hatte keinen
+Ausgang. Beim Live-Test gegen einen nachgestellten Node waren das **376.315
+Anfragen in 16 Sekunden** — gegen echte Hardware hieße das, den Funk-Node mit
+rund 24.000 Frames pro Sekunde zu fluten.
+
+Alle Tests des Moduls waren dabei grün. Sie stellten Nodes nach, die sich an das
+Protokoll halten.
+
+**Konsequenz:**
+
+1. **Wer eine Endlosgefahr im Kommentar benennt, muss sie im Code beenden.** Ein
+   Kommentar ist eine Notiz, kein Abbruchkriterium.
+2. **Jede Schleife, deren Ausgang von einer Gegenstelle abhängt, bekommt
+   zusätzlich eine eigene Obergrenze.** Die Gegenstelle ist genau das, was sich
+   nicht an Erwartungen halten muss.
+3. **Ein Zweig `Some(_) => {}` ist eine Entscheidung, keine Auslassung.** Er
+   sagt „jede andere Antwort behandeln wir wie die erwartete", und das ist
+   selten gemeint.
+
+**Belege:** Issue #37 im Repository. Gefunden beim Live-Test zu den Adverts, in
+einem ganz anderen Modul — wieder durch das laufende Binary, nicht durch die
+Testsuite.

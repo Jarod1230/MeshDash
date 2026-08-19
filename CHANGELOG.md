@@ -125,4 +125,13 @@ jedem Minor-Release ändern.
   verifizierter Frame-Struktur, bekannter Opcodes und offener Fragen.
 - Arbeitsanweisung für KI-Agenten (`CLAUDE.md`).
 
+### Fixed
+
+- **Endlose Abrufschleife für Nachrichten.** Antwortete der Node auf die Frage
+  nach der nächsten Nachricht dauerhaft mit etwas Unerwartetem, fragte MeshDash
+  ohne Pause weiter — im Test rund 24.000 Anfragen pro Sekunde an den Funk-Node.
+  Jetzt endet der Durchlauf bei einer Antwort, die weder eine Nachricht noch
+  „keine weiteren" ist, und ist zusätzlich auf 500 Nachrichten je Durchlauf
+  begrenzt.
+
 [Unreleased]: https://github.com/Jarod1230/MeshDash/commits/main

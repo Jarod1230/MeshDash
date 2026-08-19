@@ -10,6 +10,14 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Changed
+
+- **Nachrichtenlisten liefern höchstens 500 Einträge** statt alles, was je
+  angekommen ist. Beide Tabellen wachsen mit jeder empfangenen Nachricht und
+  werden von nichts aufgeräumt; eine Abfrage hätte irgendwann den gesamten
+  Verlauf in eine einzige Antwort gepackt. Mit `?limit=` lässt sich der Wert
+  ändern, bis maximal 5000 — wie bei den Telemetriereihen.
+
 ### Added
 
 - **Nachrichten senden.** MeshDash schreibt zum ersten Mal etwas an den Node,

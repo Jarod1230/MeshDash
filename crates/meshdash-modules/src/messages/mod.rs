@@ -41,7 +41,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -118,6 +118,30 @@ const MIGRATIONS: &[Migration] = &[
     ",
     },
 ];
+
+/// How many messages a listing returns unless it asks for fewer.
+///
+/// Both message tables grow with every message the mesh delivers and nothing
+/// prunes them. An unbounded read would eventually try to serialise a year of
+/// traffic into one response — see `docs/conventions.md`.
+const DEFAULT_LIMIT: i64 = 500;
+
+/// Largest number of messages a single request may ask for.
+const MAX_LIMIT: i64 = 5_000;
+
+/// How many messages to return.
+#[derive(Debug, Deserialize, Default)]
+pub struct ListQuery {
+    /// Upper bound, capped at [`MAX_LIMIT`].
+    limit: Option<i64>,
+}
+
+impl ListQuery {
+    /// The number of rows to read, within the bounds this module allows.
+    fn effective_limit(&self) -> i64 {
+        self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+    }
+}
 
 /// Highest channel index the node can possibly have.
 ///
@@ -288,8 +312,12 @@ fn is_message_waiting(payload: &[u8]) -> bool {
 /// Answers with the stored messages, newest first.
 async fn list_messages(
     State(context): State<AppContext>,
+    Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredMessage>>, ListError> {
-    read_messages(&context).await.map(Json).map_err(ListError)
+    read_messages(&context, query.effective_limit())
+        .await
+        .map(Json)
+        .map_err(ListError)
 }
 
 /// How many messages one drain fetches at most.
@@ -673,8 +701,9 @@ fn parse_prefix(text: &str) -> Option<[u8; 6]> {
 /// Answers with the stored channel messages, newest first.
 async fn list_channel_messages(
     State(context): State<AppContext>,
+    Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredChannelMessage>>, ListError> {
-    read_channel_messages(&context)
+    read_channel_messages(&context, query.effective_limit())
         .await
         .map(Json)
         .map_err(ListError)
@@ -693,11 +722,13 @@ type ChannelMessageRow = (i64, i64, String, i64, Option<f64>, Option<i64>, i64, 
 /// Reads stored channel messages, newest first.
 pub async fn read_channel_messages(
     context: &AppContext,
+    limit: i64,
 ) -> Result<Vec<StoredChannelMessage>, sqlx::Error> {
     let rows: Vec<ChannelMessageRow> = sqlx::query_as(
         "SELECT id, channel_index, text, text_type, snr, path_len, sent_at, received_at
-         FROM messages_channel_received ORDER BY id DESC",
+         FROM messages_channel_received ORDER BY id DESC LIMIT ?",
     )
+    .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -751,11 +782,15 @@ type MessageRow = (
 );
 
 /// Reads stored messages, newest first.
-pub async fn read_messages(context: &AppContext) -> Result<Vec<StoredMessage>, sqlx::Error> {
+pub async fn read_messages(
+    context: &AppContext,
+    limit: i64,
+) -> Result<Vec<StoredMessage>, sqlx::Error> {
     let rows: Vec<MessageRow> = sqlx::query_as(
         "SELECT id, sender_prefix, text, text_type, snr, path_len, sent_at, received_at
-         FROM messages_received ORDER BY id DESC",
+         FROM messages_received ORDER BY id DESC LIMIT ?",
     )
+    .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
 

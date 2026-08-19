@@ -475,3 +475,42 @@ Aus der Opcode-Tabelle allein geht es nicht hervor.
 **Belege:** `onChannelMessageRecv()` und `onChannelDataRecv()` in `MyMesh.cpp`,
 Commit `d929643`; festgehalten in
 [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
+
+---
+
+## 2026-08-19 — Standangaben altern still, und die schlimmste steht ganz vorn
+
+**Kontext:** Nach Abschluss von Schritt 6 eine Prüfung des Gesamtstands.
+
+**Problem:** Sechs Stellen behaupteten noch den Stand von Schritt 1 bis 3.
+`CLAUDE.md` schrieb „Gerüst steht … Funktionalität gibt es noch keine — kein
+Protokoll-Codec, keine Datenbank, keine Route, kein Modul", der `README` zählte
+Transport, Datenbank, API und Module als „noch nicht vorhanden" auf, und drei
+Crate-Kopfkommentare sagten „Scaffolding only. Nothing is implemented yet".
+
+Der gefährlichste Satz war ein anderer: **„Die Opcodes sind es nicht"** —
+gemeint war „nicht verifiziert" — direkt neben Regel 1 in `CLAUDE.md`, und
+gleichlautend in `meshdash-proto/src/lib.rs`. Zu dem Zeitpunkt waren alle 110
+Opcodes am Firmware-Quellcode belegt. Wer das las, musste die vorhandene
+Tabelle für geraten halten und hätte sie entweder nochmals verifiziert oder,
+schlimmer, als unzuverlässig behandelt.
+
+Diese Sätze standen jeweils **in der Datei, die man zuerst liest**: die
+Arbeitsanweisung für Agenten, der Einstieg für Menschen, der Kopfkommentar
+eines Crates. Kein einziger der zwölf PRs davor hat sie mitgezogen, weil jeder
+für sich stimmig war — die Pflegepflichten in `CLAUDE.md` nennen ADR,
+Lessons Learned, Modultabelle, Konfiguration und CHANGELOG, aber keine
+Standangabe.
+
+**Konsequenz:**
+
+1. **Wer einen Roadmap-Schritt abschließt, prüft die Standangaben mit**:
+   `CLAUDE.md`, `README.md` und der Kopfkommentar jedes berührten Crates.
+2. **Eine Aussage über Verifikationsstand ist eine Protokollaussage.** Sie
+   veraltet genauso still wie ein falscher Offset und richtet ähnlichen
+   Schaden an — nur in die andere Richtung.
+3. Regel 5 hat eine Kehrseite: Nichts als fertig melden, was nicht läuft —
+   aber auch nichts als unfertig stehen lassen, was läuft.
+
+**Belege:** Vergleich der genannten Dateien mit `docs/roadmap.md` nach dem
+Merge von Schritt 6.

@@ -81,16 +81,15 @@ filter = "meshdash=info"
 
 Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
 
-- **`[modules.<name>]`** — es gibt noch keine Module. Die Sektion kommt mit
-  Schritt 6; gelesen wird sie dann vom Modul, nicht vom Kern.
+- **`[modules.<name>]`** — die vier vorhandenen Module brauchen bislang keine
+  Konfiguration, deshalb liest sie auch keines. Gelesen wird die Sektion vom
+  Modul, nicht vom Kern; ein Modul, das eine Option braucht, bringt sie mit.
 - **`[node.mock]` mit Skriptdatei** — der Mock-Transport spielt Skripte ab, die
   im Code zusammengesetzt werden, und lädt keine Dateien. Eine Option dafür
   anzubieten, würde eine Fähigkeit vortäuschen. Sie ergibt Sinn, sobald es
   aufgezeichneten Verkehr unter `fixtures/` gibt — siehe
   [`testing.md`](testing.md).
 - **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
-- **Module und ihre Konfiguration.** Solange es keine Module gibt, zeigt das
-  Dashboard nichts an — die kommen mit Schritt 6.
 
 ## Beim Ergänzen einer Option
 

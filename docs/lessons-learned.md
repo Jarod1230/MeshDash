@@ -514,3 +514,39 @@ Standangabe.
 
 **Belege:** Vergleich der genannten Dateien mit `docs/roadmap.md` nach dem
 Merge von Schritt 6.
+
+---
+
+## 2026-08-20 — Ein leerer Zweig altert mit dem Modul
+
+**Kontext:** Nachlese der Gesamtprüfung. Vier der fünf Abonnenten des
+Event-Bus melden verlorene Ereignisse (`RecvError::Lagged`) als Warnung, das
+Telemetriemodul verschluckte sie stillschweigend.
+
+**Problem:** Der leere Zweig war einmal **richtig**. Das Modul reagierte nur auf
+`NodeConnected`, um sofort eine Batteriemessung zu nehmen; ging so ein Ereignis
+verloren, kam beim nächsten Verbindungsaufbau das nächste, und der Fünf-Minuten-
+Takt lieferte ohnehin weiter. Es gab nichts zu melden.
+
+Mit der Empfangsqualität hängt seit dem 2026-08-19 eine **Messreihe** an diesem
+Kanal. Ein verlorenes Ereignis ist jetzt ein fehlender Messwert — eine Lücke in
+einer Kurve, die vollständig aussieht. Betroffen ist genau der Fall, in dem sie
+am meisten aussagt: viel Funkverkehr, viele Ereignisse, voller Puffer.
+
+Beim Einbauen wurde der Zweig nicht angefasst, weil er nicht im Weg stand. Das
+ist die Falle: Nicht der Code hat sich geändert, sondern das, was von ihm
+abhängt.
+
+**Konsequenz:**
+
+1. **Wer einen Ereignistyp neu abonniert, prüft die Fehlerzweige derselben
+   Schleife mit.** Was bei einem seltenen Steuerereignis vertretbar war, ist es
+   bei einer Messreihe nicht mehr.
+2. **Ein leerer `Err`-Zweig braucht eine Begründung im Kommentar**, sonst ist
+   nach dem nächsten Umbau nicht mehr erkennbar, ob er gedacht oder vergessen
+   ist.
+3. Ein stiller Datenverlust ist schlimmer als ein lauter Fehler: Die Kurve
+   zeigt Werte, nur nicht alle.
+
+**Belege:** `telemetry/mod.rs` gegen die drei anderen Module und
+`server/src/events.rs`, die alle warnen.

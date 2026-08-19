@@ -71,6 +71,40 @@ jobs:
       - name: Build
         run: pnpm build
 
+  # Das ausgelieferte Binary ist das mit eingebettetem Frontend, und kein
+  # anderer Job übersetzt diesen Pfad: `cargo build` ohne Merkmal lässt
+  # `frontend.rs` außen vor. Ohne diesen Job fällt ein kaputtes Einbetten erst
+  # beim Release auf.
+  binary:
+    name: Ausliefer-Binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain installieren
+        run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # Das Einbetten braucht `web/dist`; ohne diesen Schritt bricht der Build
+      # mit „folder does not exist" ab.
+      - name: Frontend bauen
+        run: pnpm install --frozen-lockfile && pnpm build
+        working-directory: web
+
+      - name: Binary mit eingebettetem Frontend bauen
+        run: cargo build -p meshdash-server --features embed-frontend
+
   docs:
     name: Dokumentation
     runs-on: ubuntu-latest

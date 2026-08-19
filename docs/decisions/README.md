@@ -37,5 +37,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0004](0004-dokumentationssprache.md) | Doku Deutsch, Code Englisch | Angenommen |
 | [0005](0005-sqlite-als-datenbank.md) | SQLite als einzige Datenbank | Angenommen |
 | [0006](0006-authentifizierung.md) | Einzelnes Token, kein ungeschützter Start nach außen | Angenommen |
+| [0007](0007-modul-ereignisse.md) | Module tauschen Daten über ein generisches Ereignis aus | Angenommen |
 
 Vorlage: [`template.md`](template.md).

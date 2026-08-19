@@ -4,6 +4,19 @@
 //! can see a curve rather than a single number — "is the battery falling
 //! faster than last week" is the question this answers.
 //!
+//! # Reception quality comes from another module, not from the node
+//!
+//! The SNR of a received packet is not something this module can ask for: it
+//! arrives with each message, on a link the `messages` module owns. So it is
+//! not fetched here — it is listened for. `messages` publishes every message it
+//! stores as `AppEvent::Module { module: "messages", kind: "signal" }`, and
+//! this module records what it hears.
+//!
+//! Neither module knows whether the other is running. Without `messages` the
+//! curve simply stays empty; without this module nobody listens. That is the
+//! coupling the module rules prescribe — see
+//! `docs/decisions/0007-modul-ereignisse.md`.
+//!
 //! # Only the attached node, for now
 //!
 //! Telemetry from other nodes travels as CayenneLPP inside
@@ -31,10 +44,11 @@ use meshdash_proto::battery::{self, BatteryAndStorage};
 use serde::{Deserialize, Serialize};
 
 /// Schema of this module. Versions count from 1, per module.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "battery and storage readings over time",
-    sql: "
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "battery and storage readings over time",
+        sql: "
         CREATE TABLE telemetry_battery_samples (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             at                TEXT    NOT NULL,
@@ -45,7 +59,23 @@ const MIGRATIONS: &[Migration] = &[Migration {
 
         CREATE INDEX telemetry_battery_samples_at ON telemetry_battery_samples (at);
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        description: "reception quality of received packets over time",
+        sql: "
+        CREATE TABLE telemetry_signal_samples (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            at        TEXT    NOT NULL,
+            source    TEXT    NOT NULL,
+            snr       REAL    NOT NULL,
+            path_len  INTEGER
+        );
+
+        CREATE INDEX telemetry_signal_samples_at ON telemetry_signal_samples (at);
+    ",
+    },
+];
 
 /// How often the node is asked.
 ///
@@ -68,6 +98,19 @@ const MAX_LIMIT: i64 = 5_000;
 #[derive(Debug, Default)]
 pub struct TelemetryModule;
 
+/// One stored reception-quality reading.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct SignalSample {
+    /// When the packet arrived.
+    pub at: DateTime<Utc>,
+    /// Where it came from: a direct message or a channel.
+    pub source: String,
+    /// Signal-to-noise ratio in dB. Negative is ordinary for LoRa.
+    pub snr: f32,
+    /// Hops the packet flooded over, or `None` if it did not flood.
+    pub path_len: Option<u8>,
+}
+
 /// One stored reading.
 #[derive(Debug, Serialize, PartialEq)]
 pub struct BatterySample {
@@ -88,6 +131,13 @@ pub struct ListQuery {
     limit: Option<i64>,
 }
 
+impl ListQuery {
+    /// The number of rows to read, within the bounds this module allows.
+    fn effective_limit(&self) -> i64 {
+        self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+    }
+}
+
 #[async_trait]
 impl Module for TelemetryModule {
     fn name(&self) -> &'static str {
@@ -99,7 +149,11 @@ impl Module for TelemetryModule {
     }
 
     fn routes(&self) -> Option<Router<AppContext>> {
-        Some(Router::new().route("/battery", get(list_samples)))
+        Some(
+            Router::new()
+                .route("/battery", get(list_samples))
+                .route("/signal", get(list_signal_samples)),
+        )
     }
 
     async fn start(&self, context: &AppContext) -> Result<(), String> {
@@ -113,6 +167,13 @@ impl Module for TelemetryModule {
             loop {
                 match events.recv().await {
                     Ok(AppEvent::NodeConnected) => take_sample(&on_connect).await,
+                    // Reception quality is not ours to ask for; it is
+                    // announced by whoever received the packet.
+                    Ok(AppEvent::Module { module, kind, data })
+                        if module == "messages" && kind == "signal" =>
+                    {
+                        record_signal(&on_connect, &data).await;
+                    }
                     Ok(_) => {}
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -150,6 +211,92 @@ async fn take_sample(context: &AppContext) {
         }
         Err(error) => tracing::debug!(error, "no battery reading this time"),
     }
+}
+
+/// Records one announced reception quality.
+///
+/// A payload that does not carry an SNR is skipped without complaint: older
+/// protocol variants do not report one, and a missing value is not an error.
+/// The shape of `data` belongs to the publishing module, so anything
+/// unexpected is treated as "nothing to record" rather than as a failure.
+async fn record_signal(context: &AppContext, data: &serde_json::Value) {
+    let Some(snr) = data.get("snr").and_then(serde_json::Value::as_f64) else {
+        return;
+    };
+
+    let source = data
+        .get("source")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    let path_len = data.get("path_len").and_then(serde_json::Value::as_u64);
+
+    if let Err(error) = store_signal(context, source, snr, path_len).await {
+        tracing::error!(%error, "could not store a signal reading");
+    }
+}
+
+/// Stores one reception-quality reading.
+pub async fn store_signal(
+    context: &AppContext,
+    source: &str,
+    snr: f64,
+    path_len: Option<u64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO telemetry_signal_samples (at, source, snr, path_len)
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(source)
+    .bind(snr)
+    .bind(path_len.map(|value| value as i64))
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
+
+/// Answers with the stored reception qualities, newest first.
+async fn list_signal_samples(
+    State(context): State<AppContext>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Vec<SignalSample>>, ListError> {
+    read_signal_samples(&context, query.effective_limit())
+        .await
+        .map(Json)
+        .map_err(ListError)
+}
+
+/// Reads stored reception qualities, newest first.
+pub async fn read_signal_samples(
+    context: &AppContext,
+    limit: i64,
+) -> Result<Vec<SignalSample>, sqlx::Error> {
+    let rows: Vec<(String, String, f64, Option<i64>)> = sqlx::query_as(
+        "SELECT at, source, snr, path_len FROM telemetry_signal_samples
+         ORDER BY id DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(SignalSample {
+                at: match DateTime::parse_from_rfc3339(&row.0) {
+                    Ok(time) => time.with_timezone(&Utc),
+                    Err(error) => {
+                        tracing::error!(%error, "stored timestamp is not RFC 3339");
+                        return None;
+                    }
+                },
+                source: row.1,
+                snr: row.2 as f32,
+                path_len: row.3.map(|value| value as u8),
+            })
+        })
+        .collect())
 }
 
 /// Asks the node for its battery and storage.
@@ -222,9 +369,7 @@ async fn list_samples(
 ) -> Result<Json<Vec<BatterySample>>, ListError> {
     // Clamped rather than rejected: a caller asking for too much gets the most
     // it may have, not an error it has to handle.
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-
-    read_samples(&context, limit)
+    read_samples(&context, query.effective_limit())
         .await
         .map(Json)
         .map_err(ListError)

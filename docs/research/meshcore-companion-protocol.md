@@ -1,6 +1,6 @@
 # MeshCore Companion-Protokoll — Recherchestand
 
-**Stand: 2026-08-18.** Verifikationsstufen nach [`README.md`](README.md).
+**Stand: 2026-08-19.** Verifikationsstufen nach [`README.md`](README.md).
 
 Verifiziert am Firmware-Quellcode (Stufe `SOURCE`) sind:
 
@@ -417,6 +417,103 @@ Nebenbei belegt dieselbe Funktion: Der Node führt zusätzlich eine eigene Tabel
 zuletzt gehörter Adverts samt Rückpfad (`advert_paths`, `getRecentlyHeard()`).
 Ob und wie sie über das Companion-Protokoll abrufbar ist, ist noch nicht geprüft.
 
+**Senden — `CMD_SEND_TXT_MSG` (2)**, Stufe `SOURCE`, `handleCmdFrame()`,
+Commit `d929643`. Die Firmware nimmt den Zweig nur bei **mindestens 14 Byte**:
+
+```text
+0   1  Opcode
+1   1  txt_type (TXT_TYPE_PLAIN oder TXT_TYPE_CLI_DATA, sonst Fehler)
+2   1  attempt — Zähler für Wiederholungen desselben Textes
+3   4  Zeitstempel (u32 LE), kommt von der App
+7   6  Pubkey-Präfix des Empfängers — sechs Byte, wie überall
+13  n  Text bis Frame-Ende, ohne Nullterminierung
+```
+
+Ein **leerer Text** unterschreitet die 14 Byte. Der Zweig greift dann nicht, und
+das Kommando läuft in das Ende der Kette — der Node antwortet also mit einem
+Fehler über ein unbekanntes Kommando, nicht mit „leere Nachricht". Wer das nicht
+vorher abfängt, meldet dem Betreiber den falschen Grund.
+
+Bei `TXT_TYPE_CLI_DATA` **überschreibt die Firmware den Zeitstempel** mit ihrer
+eigenen Uhr, um den Replay-Schutz der Gegenstelle nicht auszulösen. Der
+mitgeschickte Wert wird in diesem Fall verworfen.
+
+**`RESP_CODE_SENT` (6)**, 10 Byte — die Antwort darauf:
+
+```text
+0  1  Opcode
+1  1  1 = als Flood gesendet, 0 = über bekannten Pfad
+2  4  erwartete Quittung (u32 LE); 0 heißt „keine erwartet"
+6  4  geschätzte Wartezeit in Millisekunden (u32 LE)
+```
+
+Schlägt das Einreihen fehl, kommt stattdessen `RESP_CODE_ERR` mit
+`ERR_CODE_TABLE_FULL`; ist der Empfänger unbekannt, `ERR_CODE_NOT_FOUND`.
+
+**`PUSH_CODE_SEND_CONFIRMED` (`0x82`)**, 9 Byte, aus `processAck()`: Opcode,
+Quittung (4 B, passend zu `RESP_CODE_SENT`), Laufzeit in Millisekunden (4 B).
+Die Firmware warnt im eigenen Quelltext: **dieselbe Quittung kann mehrfach
+eintreffen.** Wer daraus zählt, zählt zu hoch.
+
+**Kanäle senden — `CMD_SEND_CHANNEL_TXT_MSG` (3)**:
+
+```text
+0  1  Opcode
+1  1  txt_type — muss TXT_TYPE_PLAIN sein, sonst ERR_CODE_UNSUPPORTED_CMD
+2  1  Kanalindex
+3  4  Zeitstempel (u32 LE)
+7  n  Text bis Frame-Ende
+```
+
+**Die Antwort ist hier `RESP_CODE_OK`, nicht `RESP_CODE_SENT`.** Ein Broadcast
+wird von niemandem quittiert, es gibt also keine Zustellung, auf die man warten
+könnte. Wer auf eine Quittung wartet, wartet für immer.
+
+**Kanalnachrichten empfangen — `RESP_CODE_CHANNEL_MSG_RECV_V3` (17) bzw.
+`RESP_CODE_CHANNEL_MSG_RECV` (8)**, aus `onChannelMessageRecv()`:
+
+```text
+Offset  Größe  Feld                            nur V3
+     0      1  Opcode
+     1      1  SNR, mit vier multipliziert        ja
+     2      2  reserviert                         ja
+     +      1  Kanalindex
+     +      1  Pfadlänge, 0xFF wenn kein Flood
+     +      1  txt_type
+     +      4  Zeitstempel (u32 LE)
+     +      …  Text bis Frame-Ende
+```
+
+**Es gibt kein Absenderfeld.** Die sendende Firmware schreibt den Node-Namen in
+den Text hinein, bevor sie sendet. Wer den Absender auswerten will, hat nur
+Fließtext — nichts, was Code prüfen könnte.
+
+Entscheidend für den Ablauf: Diese Frames landen wie Direktnachrichten in der
+**Offline-Queue** und werden mit `PUSH_CODE_MSG_WAITING` angekündigt. Sie kommen
+also über `CMD_SYNC_NEXT_MESSAGE` herein. Ein Abrufer, der nur Direktnachrichten
+kennt, bleibt an der ersten Kanalnachricht stehen.
+
+Dasselbe gilt für `RESP_CODE_CHANNEL_DATA_RECV` (27) aus `onChannelDataRecv()`:
+Opcode, SNR×4, zwei reservierte Byte, Kanalindex, Pfadlänge, `data_type` (u16
+LE), `data_len` (u8), Daten. Auch dieses Frame geht durch dieselbe Warteschlange.
+
+**`RESP_CODE_CHANNEL_INFO` (18)**, 50 Byte, Antwort auf `CMD_GET_CHANNEL` (31):
+
+```text
+0   1  Opcode
+1   1  Kanalindex
+2  32  Name, nullterminiert
+34 16  gemeinsamer Schlüssel (128 Bit)
+```
+
+**Der Schlüssel ist ein Geheimnis.** Wer ihn hat, kann den Kanal mitlesen und in
+ihm senden. MeshDash liest ihn deshalb gar nicht erst aus dem Frame — was nicht
+existiert, kann nicht ins Log, in eine API-Antwort oder in ein Backup geraten.
+
+Es gibt **kein Kommando, das die Kanäle auflistet** — nur „beschreibe Index N".
+Ab dem ersten unbekannten Index antwortet der Node `ERR_CODE_NOT_FOUND`; dort
+endet die Liste.
+
 **Die Kontaktkapazität steht halbiert auf der Leitung.** In
 `RESP_CODE_DEVICE_INFO` schreibt die Firmware `MAX_CONTACTS / 2` in ein einzelnes
 Byte, weil der echte Wert dort nicht hineinpasst. Wer das Byte als Kapazität
@@ -447,8 +544,8 @@ Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 3. Aufbau von `RESP_CODE_STATS` je Statistiktyp und von
    `PUSH_CODE_TELEMETRY_RESPONSE` (CayenneLPP — die Firmware nutzt dafür eine
    eigene Bibliothek, das Format ist also nicht projektspezifisch).
-4. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Nachrichten- und
-   Pfad-Antworten.
+4. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Pfad-Antworten.
+   Für Nachrichten ist sie geklärt: ein Byte, `0xFF` heißt „kein Flood-Pfad".
 5. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
    Version 3 ist gesetzt (`meshdash_proto::device::PROTOCOL_VERSION`), weil sie
    die SNR-Varianten der Nachrichten bringt. Version 8 schaltet Statistiken

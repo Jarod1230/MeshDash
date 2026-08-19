@@ -133,3 +133,94 @@ async fn a_silent_node_costs_one_reading_not_the_task() {
     assert!(read_battery(&context).await.is_err());
     assert!(read_samples(&context, 10).await.unwrap().is_empty());
 }
+
+/// A signal announcement as the messages module publishes it.
+fn signal_event(source: &str, snr: Option<f64>, path_len: Option<u64>) -> AppEvent {
+    AppEvent::Module {
+        module: "messages".into(),
+        kind: "signal".into(),
+        data: serde_json::json!({
+            "source": source,
+            "snr": snr,
+            "path_len": path_len,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn records_reception_quality_announced_by_another_module() {
+    let context = context_with(vec![]).await;
+
+    context
+        .events
+        .publish(signal_event("direct", Some(-2.5), Some(2)));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let samples = read_signal_samples(&context, 10).await.unwrap();
+    assert_eq!(samples.len(), 1);
+    assert_eq!(samples[0].snr, -2.5);
+    assert_eq!(samples[0].source, "direct");
+    assert_eq!(samples[0].path_len, Some(2));
+}
+
+#[tokio::test]
+async fn keeps_a_curve_of_readings() {
+    let context = context_with(vec![]).await;
+
+    for snr in [1.0, 2.0, 3.0] {
+        context
+            .events
+            .publish(signal_event("channel", Some(snr), None));
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let samples = read_signal_samples(&context, 10).await.unwrap();
+    assert_eq!(samples.len(), 3);
+    assert_eq!(samples[0].snr, 3.0, "newest first");
+}
+
+#[tokio::test]
+async fn skips_an_announcement_without_a_reading() {
+    // Older protocol variants carry no SNR. That is not an error, and an
+    // invented zero would show up as a real measurement in the curve.
+    let context = context_with(vec![]).await;
+
+    context.events.publish(signal_event("direct", None, None));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ignores_announcements_from_other_modules() {
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::Module {
+        module: "nodes".into(),
+        kind: "signal".into(),
+        data: serde_json::json!({ "snr": 9.0 }),
+    });
+    context.events.publish(AppEvent::Module {
+        module: "messages".into(),
+        kind: "something_else".into(),
+        data: serde_json::json!({ "snr": 9.0 }),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn survives_a_payload_it_does_not_understand() {
+    // The shape of the payload belongs to the other module and may change.
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::Module {
+        module: "messages".into(),
+        kind: "signal".into(),
+        data: serde_json::json!("not an object"),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+}

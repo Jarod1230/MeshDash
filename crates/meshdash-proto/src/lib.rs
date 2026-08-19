@@ -22,8 +22,10 @@
 
 pub mod advert;
 pub mod battery;
+pub mod channel;
 pub mod contact;
 pub mod device;
 pub mod frame;
 pub mod message;
 pub mod opcode;
+pub mod send;

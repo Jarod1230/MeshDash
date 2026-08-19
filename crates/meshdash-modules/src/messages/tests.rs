@@ -202,3 +202,216 @@ async fn gives_up_on_a_node_that_never_runs_out_of_messages() {
     );
     assert_eq!(sent.len(), MAX_MESSAGES_PER_DRAIN);
 }
+
+/// A V3 channel message as the firmware lays it out.
+fn channel_frame(index: u8, text: &str) -> Vec<u8> {
+    let mut payload = vec![u8::from(Response::ChannelMsgRecvV3)];
+    payload.push((3.0_f32 * 4.0) as u8);
+    payload.extend_from_slice(&[0, 0]);
+    payload.push(index);
+    payload.push(1);
+    payload.push(0);
+    payload.extend_from_slice(&1_700_000_000_u32.to_le_bytes());
+    payload.extend_from_slice(text.as_bytes());
+    payload
+}
+
+/// A channel description, key included as the node sends it.
+fn channel_info_frame(index: u8, name: &str) -> Vec<u8> {
+    let mut payload = vec![0u8; 50];
+    payload[0] = u8::from(Response::ChannelInfo);
+    payload[1] = index;
+    payload[2..2 + name.len()].copy_from_slice(name.as_bytes());
+    payload[34..50].copy_from_slice(&[0x99; 16]);
+    payload
+}
+
+/// A receipt for a direct message.
+fn receipt_frame() -> Vec<u8> {
+    let mut payload = vec![u8::from(Response::Sent), 1];
+    payload.extend_from_slice(&0x1234_5678_u32.to_le_bytes());
+    payload.extend_from_slice(&3_000_u32.to_le_bytes());
+    payload
+}
+
+/// A script answering one request with the given frame.
+fn one_answer(frame: Vec<u8>) -> Vec<Step> {
+    vec![Step::AwaitSent(1), Step::Emit(frame)]
+}
+
+#[tokio::test]
+async fn drains_channel_messages_from_the_same_queue() {
+    // They arrive through CMD_SYNC_NEXT_MESSAGE exactly like direct ones. A
+    // drain that only knows direct messages stops dead at the first of these.
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(channel_frame(2, "Hallo Kanal")),
+        Step::AwaitSent(2),
+        Step::Emit(no_more()),
+    ];
+    let context = context_with(script).await;
+
+    assert_eq!(drain_messages(&context).await.unwrap(), 1);
+
+    let messages = read_channel_messages(&context).await.unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].channel_index, 2);
+    assert_eq!(messages[0].text, "Hallo Kanal");
+    assert_eq!(messages[0].snr, Some(3.0));
+}
+
+#[tokio::test]
+async fn keeps_channel_and_direct_messages_apart() {
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(message_frame("Direkt")),
+        Step::AwaitSent(2),
+        Step::Emit(channel_frame(0, "Im Kanal")),
+        Step::AwaitSent(3),
+        Step::Emit(no_more()),
+    ];
+    let context = context_with(script).await;
+    drain_messages(&context).await.unwrap();
+
+    assert_eq!(read_messages(&context).await.unwrap().len(), 1);
+    assert_eq!(read_channel_messages(&context).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn announces_the_reception_quality_of_every_message() {
+    // telemetry listens for this; nothing else connects the two modules.
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(message_frame("Direkt")),
+        Step::AwaitSent(2),
+        Step::Emit(channel_frame(0, "Kanal")),
+        Step::AwaitSent(3),
+        Step::Emit(no_more()),
+    ];
+    let context = context_with(script).await;
+    let mut events = context.events.subscribe();
+
+    drain_messages(&context).await.unwrap();
+
+    let mut signals = Vec::new();
+    while let Ok(AppEvent::Module { module, kind, data }) = events.try_recv() {
+        assert_eq!(module, "messages");
+        assert_eq!(kind, "signal");
+        signals.push(data);
+    }
+
+    assert_eq!(signals.len(), 2);
+    assert_eq!(signals[0]["source"], "direct");
+    assert_eq!(signals[0]["snr"], 5.0);
+    assert_eq!(signals[1]["source"], "channel");
+    assert_eq!(signals[1]["snr"], 3.0);
+}
+
+#[tokio::test]
+async fn reads_the_channel_list_until_the_node_runs_out() {
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(channel_info_frame(0, "Allgemein")),
+        Step::AwaitSent(2),
+        Step::Emit(channel_info_frame(1, "Notfunk")),
+        Step::AwaitSent(3),
+        Step::Emit(vec![u8::from(Response::Err), 2]),
+    ];
+    let context = context_with(script).await;
+
+    assert_eq!(sync_channels(&context).await.unwrap(), 2);
+
+    let channels = read_channels(&context).await.unwrap();
+    assert_eq!(channels.len(), 2);
+    assert_eq!(channels[1].name, "Notfunk");
+}
+
+#[tokio::test]
+async fn never_stores_a_channel_key() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(channel_info_frame(0, "Allgemein")),
+        Step::AwaitSent(2),
+        Step::Emit(vec![u8::from(Response::Err), 2]),
+    ])
+    .await;
+    sync_channels(&context).await.unwrap();
+
+    // Whoever holds the key can read and write the channel. It travels in the
+    // frame; it must not survive anywhere here.
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('messages_channels')")
+            .fetch_all(context.db.pool())
+            .await
+            .unwrap();
+    let names: Vec<String> = columns.into_iter().map(|row| row.0).collect();
+
+    assert!(
+        !names
+            .iter()
+            .any(|name| name.contains("key") || name.contains("secret"))
+    );
+    assert_eq!(names, vec!["channel_index", "name", "seen_at"]);
+}
+
+#[tokio::test]
+async fn sends_a_direct_message_and_reports_the_receipt() {
+    let context = context_with(one_answer(receipt_frame())).await;
+
+    let result = send_message(&context, [0xAA; 6], "Moin").await.unwrap();
+
+    assert!(result.flooded);
+    assert_eq!(result.expected_ack.as_deref(), Some("12345678"));
+    assert_eq!(result.estimated_timeout_ms, 3_000);
+}
+
+#[tokio::test]
+async fn records_what_was_sent() {
+    let context = context_with(one_answer(receipt_frame())).await;
+    send_message(&context, [0xAA; 6], "Moin").await.unwrap();
+
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT target, text FROM messages_sent")
+        .fetch_all(context.db.pool())
+        .await
+        .unwrap();
+
+    assert_eq!(rows, vec![("aaaaaaaaaaaa".to_string(), "Moin".to_string())]);
+}
+
+#[tokio::test]
+async fn sends_to_a_channel_without_waiting_for_a_receipt() {
+    // A broadcast is not acknowledged; the node answers with a plain OK.
+    let context = context_with(one_answer(vec![u8::from(Response::Ok)])).await;
+
+    assert!(send_channel_message(&context, 2, "Hallo").await.is_ok());
+
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT target FROM messages_sent")
+        .fetch_all(context.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(rows[0].0, "channel:2");
+}
+
+#[tokio::test]
+async fn passes_on_a_refusal_from_the_node() {
+    let context = context_with(one_answer(vec![u8::from(Response::Err), 3])).await;
+
+    let error = send_message(&context, [0xAA; 6], "Moin").await.unwrap_err();
+
+    assert!(matches!(error, SendFailure::NodeRefused { code: Some(3) }));
+    // Nothing went out, so nothing is recorded as sent.
+    let rows: Vec<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM messages_sent")
+        .fetch_all(context.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(rows[0].0, 0);
+}
+
+#[tokio::test]
+async fn refuses_an_empty_message_before_asking_the_node() {
+    let context = context_with(vec![]).await;
+
+    let error = send_message(&context, [0xAA; 6], "").await.unwrap_err();
+
+    assert!(matches!(error, SendFailure::Rejected(_)));
+}

@@ -63,7 +63,7 @@ fn queue(messages: Vec<&str>) -> Vec<Step> {
 async fn starts_with_nothing_stored() {
     let context = context_with(vec![]).await;
 
-    assert!(read_messages(&context).await.unwrap().is_empty());
+    assert!(read_messages(&context, 500).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -73,7 +73,7 @@ async fn fetches_until_the_node_has_no_more() {
     let fetched = drain_messages(&context).await.unwrap();
 
     assert_eq!(fetched, 3);
-    assert_eq!(read_messages(&context).await.unwrap().len(), 3);
+    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -88,7 +88,7 @@ async fn keeps_what_the_node_reported() {
     let context = context_with(queue(vec!["Hallo Mesh"])).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context).await.unwrap();
+    let messages = read_messages(&context, 500).await.unwrap();
 
     assert_eq!(messages[0].text, "Hallo Mesh");
     assert_eq!(messages[0].sender_prefix, "aaaaaaaaaaaa");
@@ -102,7 +102,7 @@ async fn reports_the_newest_first() {
     let context = context_with(queue(vec!["Alt", "Neu"])).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context).await.unwrap();
+    let messages = read_messages(&context, 500).await.unwrap();
 
     assert_eq!(messages[0].text, "Neu", "newest first");
     assert_eq!(messages[1].text, "Alt");
@@ -115,7 +115,7 @@ async fn keeps_history_the_node_has_already_forgotten() {
     let context = context_with(queue(vec!["Einmalig"])).await;
     drain_messages(&context).await.unwrap();
 
-    assert_eq!(read_messages(&context).await.unwrap().len(), 1);
+    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -127,7 +127,7 @@ async fn fetches_when_the_node_rings_the_bell() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    assert_eq!(read_messages(&context).await.unwrap().len(), 1);
+    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -140,7 +140,7 @@ async fn ignores_pushes_that_are_not_about_messages() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_messages(&context).await.unwrap().is_empty(),
+        read_messages(&context, 500).await.unwrap().is_empty(),
         "an advert is none of this module's business"
     );
 }
@@ -253,7 +253,7 @@ async fn drains_channel_messages_from_the_same_queue() {
 
     assert_eq!(drain_messages(&context).await.unwrap(), 1);
 
-    let messages = read_channel_messages(&context).await.unwrap();
+    let messages = read_channel_messages(&context, 500).await.unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].channel_index, 2);
     assert_eq!(messages[0].text, "Hallo Kanal");
@@ -273,8 +273,8 @@ async fn keeps_channel_and_direct_messages_apart() {
     let context = context_with(script).await;
     drain_messages(&context).await.unwrap();
 
-    assert_eq!(read_messages(&context).await.unwrap().len(), 1);
-    assert_eq!(read_channel_messages(&context).await.unwrap().len(), 1);
+    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 1);
+    assert_eq!(read_channel_messages(&context, 500).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -414,4 +414,69 @@ async fn refuses_an_empty_message_before_asking_the_node() {
     let error = send_message(&context, [0xAA; 6], "").await.unwrap_err();
 
     assert!(matches!(error, SendFailure::Rejected(_)));
+}
+
+#[tokio::test]
+async fn a_listing_never_returns_more_than_asked_for() {
+    // Both tables grow with every message and nothing prunes them; an
+    // unbounded read would eventually serialise a year of traffic at once.
+    let mut script = Vec::new();
+    for index in 0..10 {
+        script.push(Step::AwaitSent(index + 1));
+        script.push(Step::Emit(message_frame("Viele")));
+    }
+    script.push(Step::AwaitSent(11));
+    script.push(Step::Emit(no_more()));
+    let context = context_with(script).await;
+    drain_messages(&context).await.unwrap();
+
+    assert_eq!(read_messages(&context, 3).await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn a_channel_listing_is_bounded_too() {
+    let mut script = Vec::new();
+    for index in 0..10 {
+        script.push(Step::AwaitSent(index + 1));
+        script.push(Step::Emit(channel_frame(0, "Viele")));
+    }
+    script.push(Step::AwaitSent(11));
+    script.push(Step::Emit(no_more()));
+    let context = context_with(script).await;
+    drain_messages(&context).await.unwrap();
+
+    assert_eq!(read_channel_messages(&context, 4).await.unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn a_bounded_listing_still_starts_at_the_newest() {
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(message_frame("Alt")),
+        Step::AwaitSent(2),
+        Step::Emit(message_frame("Neu")),
+        Step::AwaitSent(3),
+        Step::Emit(no_more()),
+    ];
+    let context = context_with(script).await;
+    drain_messages(&context).await.unwrap();
+
+    let messages = read_messages(&context, 1).await.unwrap();
+    assert_eq!(messages[0].text, "Neu", "the limit must cut the old end");
+}
+
+#[test]
+fn caps_what_a_request_may_ask_for() {
+    assert_eq!(ListQuery::default().effective_limit(), DEFAULT_LIMIT);
+    assert_eq!(
+        ListQuery {
+            limit: Some(999_999)
+        }
+        .effective_limit(),
+        MAX_LIMIT
+    );
+    // Zero or negative would return nothing at all, which reads as "no
+    // messages" rather than as a bad request.
+    assert_eq!(ListQuery { limit: Some(0) }.effective_limit(), 1);
+    assert_eq!(ListQuery { limit: Some(-5) }.effective_limit(), 1);
 }

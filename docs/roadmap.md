@@ -150,6 +150,11 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   Verzeichnislisting. Festgehalten, damit die Frage später nicht auf
   „`libudev` einbinden oder keine Portliste" verengt wird — es gibt einen
   dritten Weg.
+- **Echtes Blättern in Listen.** Alle wachsenden Listen sind heute nur
+  *gedeckelt* (`?limit=`, Voreinstellung 500) — wer ältere Einträge sehen will,
+  kann es nicht. Das genügt, solange die Oberfläche nur den aktuellen Stand
+  zeigt; sobald jemand im Verlauf zurückblättern soll, braucht es einen Cursor.
+  Betrifft `messages`, `telemetry` und `nodes` gleichermaßen.
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

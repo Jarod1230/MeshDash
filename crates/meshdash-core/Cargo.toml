@@ -16,6 +16,9 @@ async-trait.workspace = true
 axum.workspace = true
 figment.workspace = true
 serde.workspace = true
+# Carries the payload of AppEvent::Module, whose shape the core does not know.
+# See docs/decisions/0007-modul-ereignisse.md.
+serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true }

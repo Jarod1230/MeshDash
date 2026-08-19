@@ -12,6 +12,20 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Nachrichten senden.** MeshDash schreibt zum ersten Mal etwas an den Node,
+  statt ihn nur zu befragen: `POST /api/v1/messages/send` an einen Kontakt,
+  `POST /api/v1/messages/channel-send` in einen Kanal. Bei einer
+  Direktnachricht meldet der Node zurück, ob sie als Flood hinausging und
+  welche Quittung zu erwarten ist; ein Kanal wird von niemandem quittiert und
+  bekommt deshalb keine. Was hinausging, wird mitgeschrieben.
+- **Kanäle.** Empfangene Kanalnachrichten stehen unter
+  `/api/v1/messages/channel-received`, die Kanäle des Node unter
+  `/api/v1/messages/channels`. Der gemeinsame Schlüssel eines Kanals wird
+  dabei **nicht** gespeichert — wer ihn hat, kann mitlesen und mitschreiben.
+- **Empfangsqualität über die Zeit** unter `/api/v1/telemetry/signal`. Jede
+  empfangene Nachricht bringt einen SNR-Wert mit; daraus wird eine Zeitreihe,
+  an der sich ablesen lässt, ob eine Verbindung schlechter wird.
+
 - **Nachbarn: Adverts werden ausgewertet.** Meldet sich ein Node über Funk,
   hält MeshDash die Sichtung fest — abrufbar unter `/api/v1/nodes/adverts`,
   neueste zuerst. War der Node dem eigenen Gerät noch unbekannt, trägt die

@@ -148,7 +148,7 @@ async fn handle(context: &AppContext, event: AppEvent) {
             }
         }
         // Everything else belongs to other modules.
-        AppEvent::Push { .. } => {}
+        AppEvent::Push { .. } | AppEvent::Module { .. } => {}
     }
 }
 

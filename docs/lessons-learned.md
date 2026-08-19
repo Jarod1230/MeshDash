@@ -441,3 +441,37 @@ Protokoll halten.
 **Belege:** Issue #37 im Repository. Gefunden beim Live-Test zu den Adverts, in
 einem ganz anderen Modul — wieder durch das laufende Binary, nicht durch die
 Testsuite.
+
+---
+
+## 2026-08-19 — Eine Warteschlange kann mehr als eine Sorte enthalten
+
+**Kontext:** Kanalnachrichten sollten ergänzt werden. Die Erwartung war ein
+eigener Weg — eigener Push, eigenes Kommando, eigener Abrufer.
+
+**Problem:** Es gibt keinen eigenen Weg. `onChannelMessageRecv()` legt die
+Nachricht in **dieselbe** Offline-Queue wie eine Direktnachricht und kündigt sie
+mit demselben `PUSH_CODE_MSG_WAITING` an. Sie kommt über dasselbe
+`CMD_SYNC_NEXT_MESSAGE` herein, nur mit anderem Opcode.
+
+Das heißt: Der bestehende Abrufer war nicht bloß unvollständig, er wäre an der
+ersten Kanalnachricht **stehen geblieben** — seit der Absicherung vom selben Tag
+bricht er bei einem unerwarteten Opcode ab. Ein Node mit aktiven Kanälen hätte
+ab der ersten Kanalnachricht keine Direktnachrichten mehr geliefert bekommen.
+Aufgefallen ist das nur, weil vor dem Bauen die Firmwarestelle gelesen wurde.
+Aus der Opcode-Tabelle allein geht es nicht hervor.
+
+**Konsequenz:**
+
+1. **Bevor ein zweiter Weg gebaut wird, prüfen, ob es wirklich zwei sind.**
+   Getrennte Opcodes bedeuten nicht getrennte Kanäle.
+2. **Wer eine Warteschlange leert, muss wissen, was alles darin liegen darf.**
+   Eine Erlaubnisliste von Opcodes ist nur so gut wie die Kenntnis der Quelle.
+3. Eine Absicherung gegen Unerwartetes kann eine Lücke **verschärfen**: Vorher
+   wäre die Kanalnachricht übersprungen worden, nachher hält sie den Abruf an.
+   Beides ist falsch, das zweite fällt schneller auf — aber nur, wenn jemand
+   hinsieht.
+
+**Belege:** `onChannelMessageRecv()` und `onChannelDataRecv()` in `MyMesh.cpp`,
+Commit `d929643`; festgehalten in
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).

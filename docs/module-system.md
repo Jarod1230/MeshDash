@@ -91,6 +91,29 @@ Braucht ein Modul Daten eines anderen, gibt es zwei zulässige Wege: das
 besitzende Modul veröffentlicht sie als Ereignis, oder es bietet eine
 ausdrückliche Schnittstelle an. Ein `JOIN` über Modulgrenzen ist keiner davon.
 
+Für den ersten Weg gibt es `AppEvent::Module`:
+
+```rust
+context.events.publish(AppEvent::Module {
+    module: "messages".into(),   // wer veröffentlicht
+    kind: "signal".into(),       // was, im Vokabular dieses Moduls
+    data: serde_json::json!({ "snr": -2.5, "path_len": 2 }),
+});
+```
+
+Der Kern trägt das nur weiter und liest es nicht — Begründung in
+[ADR-0007](decisions/0007-modul-ereignisse.md). Daraus folgen drei Pflichten:
+
+- **Wer veröffentlicht, dokumentiert die Nutzlast** in seinem eigenen Modul.
+  Es gibt keine Typprüfung, die das ersetzt.
+- **Wer empfängt, filtert auf `module` und `kind`** und überspringt eine
+  Nutzlast, die nicht passt, statt daran zu scheitern.
+- **Keine Geheimnisse in `data`.** Der Ereignisstrom unter `/api/v1/events`
+  gibt diese Ereignisse an den Browser weiter.
+
+Umgesetzt zwischen `messages` und `telemetry`: Der SNR kommt mit jeder
+Nachricht herein, gehört aber in die Zeitreihe des Telemetriemoduls.
+
 ## Geplante Module
 
 Reihenfolge und Zuschnitt aus [`roadmap.md`](roadmap.md). Die Tabelle ist zu
@@ -100,8 +123,8 @@ pflegen, sobald sich etwas ändert.
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
 | `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — Kontakte unter `/api/v1/nodes/contacts`, Sichtungen unter `/api/v1/nodes/adverts` |
-| `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **teilweise** — Empfang unter `/api/v1/messages/received`; Senden und Kanäle offen |
-| `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **teilweise** — Batterie unter `/api/v1/telemetry/battery`; Empfangsqualität offen |
+| `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — `/api/v1/messages/{received,channel-received,channels,send,channel-send}` |
+| `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/battery` und `/api/v1/telemetry/signal`; fremde Nodes offen |
 | `map` | Geografische Darstellung bekannter Positionen | angedacht |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |
 | `alerts` | Benachrichtigung, wenn ein Node ausfällt | angedacht |

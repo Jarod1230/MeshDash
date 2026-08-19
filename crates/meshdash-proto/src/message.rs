@@ -66,6 +66,19 @@ impl From<u8> for TextType {
 }
 
 impl TextType {
+    /// The value as it travels on the wire.
+    ///
+    /// Round-trips an unknown type rather than flattening it to a known one:
+    /// what came in as 7 goes out as 7.
+    pub fn as_byte(self) -> u8 {
+        match self {
+            Self::Plain => 0,
+            Self::CliData => 1,
+            Self::SignedPlain => 2,
+            Self::Unknown(value) => value,
+        }
+    }
+
     /// How many bytes sit between the timestamp and the text.
     ///
     /// Only signed messages carry a signature prefix. Assuming a fixed size
@@ -339,5 +352,12 @@ mod tests {
             Message::parse(&payload),
             Err(MessageError::TooShort { .. })
         ));
+    }
+
+    #[test]
+    fn a_text_type_survives_the_round_trip() {
+        for byte in [0u8, 1, 2, 7, 255] {
+            assert_eq!(TextType::from(byte).as_byte(), byte);
+        }
     }
 }

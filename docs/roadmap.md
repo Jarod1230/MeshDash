@@ -91,7 +91,7 @@ diese Tabelle.
       Merkmal `embed-frontend` im Binary (`just build`), Abbruch auf SIGINT und
       SIGTERM ohne abgeschnittene Anfragen
 
-## Schritt 6 — Erste Module
+## Schritt 6 — Erste Module ✅ erledigt
 
 In dieser Reihenfolge, jedes für sich abgeschlossen:
 
@@ -101,16 +101,15 @@ In dieser Reihenfolge, jedes für sich abgeschlossen:
    - [x] Kontakte abrufen, mit Erst- und Letztsichtung
    - [x] **Nachbarn** — beide Advert-Pushes ausgewertet, mit Sichtungsverlauf
          unter `/api/v1/nodes/adverts`
-3. **`messages`** — Direktnachrichten und Kanäle.
+3. [x] **`messages`** — Direktnachrichten und Kanäle.
    - [x] Direktnachrichten empfangen, mit Verlauf
-   - [ ] **Senden** (`CMD_SEND_TXT_MSG`), Nutzlast erst verifizieren
-   - [ ] **Kanäle** — empfangen und senden
-4. **`telemetry`** — Batterie und Empfangsqualität über die Zeit.
+   - [x] **Senden** (`CMD_SEND_TXT_MSG`), mit Quittung des Node
+   - [x] **Kanäle** — empfangen und senden, samt Kanalliste ohne Schlüssel
+4. [x] **`telemetry`** — Batterie und Empfangsqualität über die Zeit.
    - [x] Batterie und Speicher des eigenen Node
-   - [ ] **Empfangsqualität** über die Zeit. Der SNR liegt in den Nachrichten,
-         die `messages` abholt; `telemetry` kommt über ein Ereignis auf dem Bus
-         daran — kein CayenneLPP nötig, siehe
-         [`module-system.md`](module-system.md)
+   - [x] **Empfangsqualität** über die Zeit — `messages` veröffentlicht sie als
+         Ereignis, `telemetry` schreibt sie fort. Siehe
+         [ADR-0007](decisions/0007-modul-ereignisse.md)
 
 **Nicht Teil dieses Schritts:** Telemetrie *fremder* Nodes
 (`PUSH_CODE_TELEMETRY_RESPONSE`). Deren Nutzlast ist CayenneLPP, ein

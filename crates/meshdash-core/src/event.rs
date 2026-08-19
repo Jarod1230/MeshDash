@@ -24,7 +24,7 @@ const DEFAULT_CAPACITY: usize = 1024;
 /// Serialises with a `type` field, so a browser can switch on it:
 /// `{"type": "node_connected"}`. Field names are `snake_case`, matching the
 /// rest of the API — see `docs/conventions.md`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppEvent {
     /// The link opened a connection to the node.
@@ -49,6 +49,27 @@ pub enum AppEvent {
         /// API spells binary data elsewhere.
         #[serde(serialize_with = "as_hex")]
         payload: Vec<u8>,
+    },
+
+    /// A module published something other modules may care about.
+    ///
+    /// The core carries this and does not read it: neither the permitted
+    /// `kind` values nor the shape of `data` are its business. Both belong to
+    /// the publishing module and are documented there. See
+    /// `docs/decisions/0007-modul-ereignisse.md`.
+    ///
+    /// A receiver filters on `module` **and** `kind`, and skips a payload that
+    /// does not match its expectations rather than failing on it.
+    ///
+    /// This goes out over `/api/v1/events` as well, so `data` must never carry
+    /// a secret.
+    Module {
+        /// Which module published it.
+        module: String,
+        /// What it is, within that module's own vocabulary.
+        kind: String,
+        /// The payload, shaped by the publishing module.
+        data: serde_json::Value,
     },
 }
 

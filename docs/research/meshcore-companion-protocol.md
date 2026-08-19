@@ -1,6 +1,6 @@
 # MeshCore Companion-Protokoll — Recherchestand
 
-**Stand: 2026-08-19.** Verifikationsstufen nach [`README.md`](README.md).
+**Stand: 2026-08-20.** Verifikationsstufen nach [`README.md`](README.md).
 
 Verifiziert am Firmware-Quellcode (Stufe `SOURCE`) sind:
 
@@ -396,6 +396,22 @@ Commit `d929643`).
 Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
+
+**Ein zu langer Rahmen wird abgeschnitten, nicht verworfen** — Stufe `SOURCE`,
+`ArduinoSerialInterface::checkRecvFrame()`, Commit `d929643`. Der
+Empfangspuffer ist `uint8_t rx_buf[MAX_FRAME_SIZE]`, also genau 176 Byte
+Nutzlast ohne den 3-Byte-Rahmen. Kommt mehr, liest die Firmware weiter, wirft
+den Überhang weg und kürzt die Länge:
+
+```c
+if (_frame_len > MAX_FRAME_SIZE) _frame_len = MAX_FRAME_SIZE;    // truncate
+```
+
+Der Node verarbeitet dann die ersten 176 Byte, **als wären sie der ganze
+Rahmen**. Bei einer Textnachricht heißt das: still gekürzter Text. Bei einem
+Rahmen mit Feldern hinter dem Text hieße es: Unsinn in den hinteren Feldern.
+Wer zu lang sendet, bekommt also keinen Fehler zurück — er bekommt etwas
+Falsches. Die Sendegrenze ist deshalb Pflicht des Absenders, nicht des Node.
 
 **Die beiden Advert-Pushes tragen sehr unterschiedlich viel** — Stufe `SOURCE`,
 `onDiscoveredContact()`, Commit `d929643`. Welcher der beiden kommt, entscheidet

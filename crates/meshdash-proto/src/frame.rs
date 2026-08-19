@@ -28,7 +28,24 @@ pub const MARKER_RADIO_TO_APP: u8 = b'>';
 /// Largest payload the node accepts or emits.
 ///
 /// Source: `MAX_FRAME_SIZE` in firmware `BaseSerialInterface.h`, MeshCore
-/// commit d929643. The firmware drops anything larger instead of splitting it.
+/// commit d929643, together with `uint8_t rx_buf[MAX_FRAME_SIZE]` in
+/// `ArduinoSerialInterface.h` — the receive buffer is exactly this size, and
+/// the length field is not counted in it.
+///
+/// # An oversized frame is truncated, not dropped
+///
+/// `ArduinoSerialInterface::checkRecvFrame()` keeps reading past the buffer and
+/// then cuts the length down:
+///
+/// ```text
+/// if (_frame_len > MAX_FRAME_SIZE) _frame_len = MAX_FRAME_SIZE;    // truncate
+/// ```
+///
+/// So a frame that is too long does not vanish — the node processes its first
+/// 176 bytes as though that were the whole thing. For a text message that means
+/// a silently shortened message; for anything with fields after the text it
+/// would mean garbage. Nothing may be sent that exceeds this, and the sender
+/// must not rely on the node rejecting it.
 pub const MAX_FRAME_SIZE: usize = 176;
 
 /// Errors produced while encoding a frame.

@@ -142,6 +142,12 @@ async fn list_messages(
     read_messages(&context).await.map(Json).map_err(ListError)
 }
 
+/// How many messages one drain fetches at most.
+///
+/// A node that keeps handing over valid messages would otherwise hold the
+/// drain open indefinitely. Whatever is left waits for the next push.
+pub const MAX_MESSAGES_PER_DRAIN: usize = 500;
+
 /// Fetches messages until the node says there are none left.
 ///
 /// Returns how many were stored.
@@ -150,7 +156,10 @@ pub async fn drain_messages(context: &AppContext) -> Result<usize, String> {
 
     // One request per message, as the protocol prescribes: the node hands over
     // exactly one and says when the queue is empty.
-    loop {
+    //
+    // Bounded rather than a plain loop: the exits below all depend on the node
+    // answering sensibly, and a node is exactly the thing that might not.
+    for _ in 0..MAX_MESSAGES_PER_DRAIN {
         let answer = context
             .link
             .request(vec![u8::from(Command::SyncNextMessage)])
@@ -159,7 +168,17 @@ pub async fn drain_messages(context: &AppContext) -> Result<usize, String> {
 
         match answer.first().map(|&opcode| Response::from(opcode)) {
             Some(Response::NoMoreMessages) => break,
-            Some(_) => {}
+            Some(Response::ContactMsgRecv | Response::ContactMsgRecvV3) => {}
+            // Anything else is not an answer to this question. Asking again
+            // would produce the same non-answer, and again after that: the
+            // node ends up flooded with requests while nothing progresses.
+            Some(other) => {
+                tracing::warn!(
+                    ?other,
+                    "node answered the sync command with something else; stopping"
+                );
+                break;
+            }
             None => break,
         }
 
@@ -176,7 +195,12 @@ pub async fn drain_messages(context: &AppContext) -> Result<usize, String> {
         }
     }
 
-    if stored > 0 {
+    if stored == MAX_MESSAGES_PER_DRAIN {
+        tracing::warn!(
+            stored,
+            "stopped at the per-drain limit; the rest waits for the next push"
+        );
+    } else if stored > 0 {
         tracing::info!(stored, "stored waiting messages");
     }
     Ok(stored)

@@ -99,7 +99,7 @@ pflegen, sobald sich etwas ändert.
 | Modul | Zweck | Stand |
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
-| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **teilweise** — Kontakte unter `/api/v1/nodes/contacts`; Nachbarn offen |
+| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — Kontakte unter `/api/v1/nodes/contacts`, Sichtungen unter `/api/v1/nodes/adverts` |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **teilweise** — Empfang unter `/api/v1/messages/received`; Senden und Kanäle offen |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **teilweise** — Batterie unter `/api/v1/telemetry/battery`; Empfangsqualität offen |
 | `map` | Geografische Darstellung bekannter Positionen | angedacht |

@@ -20,6 +20,7 @@
 //! — it silently writes wrong data. Every value needs a source, cited at the
 //! value itself. Unknown opcodes must round-trip, not be dropped.
 
+pub mod advert;
 pub mod battery;
 pub mod contact;
 pub mod device;

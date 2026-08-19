@@ -9,11 +9,16 @@
 //! *our* records, and when we last saw it, is something only MeshDash can know
 //! — a node that forgets a contact would otherwise erase its own history.
 //!
-//! # Adverts are not read yet
+//! # Adverts are the live half
 //!
-//! `PUSH_CODE_ADVERT` would give live sightings without polling, but its
-//! payload layout is unverified. Guessing it would silently write wrong data,
-//! so this module sticks to the contact list, whose layout is source-verified.
+//! The contact listing is a snapshot; adverts tell us who is being heard right
+//! now, without polling. Both pushes are recorded as a sighting, and a new
+//! contact is stored along the way — see [`meshdash_proto::advert`] for why the
+//! two forms carry different amounts of detail.
+//!
+//! A short advert for a contact we do not know yet still gets recorded. The
+//! sighting is true whether or not we have a name for the key; the listing on
+//! the next connection fills in the rest.
 
 use std::sync::Arc;
 
@@ -26,16 +31,18 @@ use meshdash_core::{
     module::{AppContext, Module},
 };
 use meshdash_proto::{
+    advert::Advert,
     contact::Contact,
     opcode::{Command, Response},
 };
 use serde::Serialize;
 
 /// Schema of this module. Versions count from 1, per module.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "known contacts with first and last sighting",
-    sql: "
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "known contacts with first and last sighting",
+        sql: "
         CREATE TABLE nodes_contacts (
             public_key    TEXT    PRIMARY KEY,
             name          TEXT    NOT NULL,
@@ -51,7 +58,28 @@ const MIGRATIONS: &[Migration] = &[Migration {
 
         CREATE INDEX nodes_contacts_last_seen ON nodes_contacts (last_seen);
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        description: "history of advert sightings",
+        sql: "
+        CREATE TABLE nodes_adverts (
+            id          INTEGER PRIMARY KEY,
+            public_key  TEXT    NOT NULL,
+            heard_at    TEXT    NOT NULL,
+            was_new     INTEGER NOT NULL
+        );
+
+        CREATE INDEX nodes_adverts_heard_at ON nodes_adverts (heard_at);
+    ",
+    },
+];
+
+/// How many sightings the listing returns at most.
+///
+/// The table grows with every advert the mesh sends; an unbounded read would
+/// eventually try to serialise all of it into one response.
+const ADVERT_LIMIT: i64 = 200;
 
 /// Keeps track of the contacts the node knows.
 #[derive(Debug, Default)]
@@ -94,7 +122,11 @@ impl Module for NodesModule {
     }
 
     fn routes(&self) -> Option<Router<AppContext>> {
-        Some(Router::new().route("/contacts", get(list_contacts)))
+        Some(
+            Router::new()
+                .route("/contacts", get(list_contacts))
+                .route("/adverts", get(list_adverts)),
+        )
     }
 
     async fn start(&self, context: &AppContext) -> Result<(), String> {
@@ -108,6 +140,14 @@ impl Module for NodesModule {
                     Ok(AppEvent::NodeConnected) => {
                         if let Err(error) = sync_contacts(&context).await {
                             tracing::warn!(error, "could not fetch the contact list");
+                        }
+                    }
+                    Ok(AppEvent::Push { payload }) => {
+                        // Every push lands here; only adverts concern us.
+                        if let Ok(advert) = Advert::parse(&payload)
+                            && let Err(error) = record_advert(&context, &advert).await
+                        {
+                            tracing::error!(%error, "could not record an advert");
                         }
                     }
                     Ok(_) => {}
@@ -203,6 +243,76 @@ pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<()
     .await?;
 
     Ok(())
+}
+
+/// One sighting, as the API reports it.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Sighting {
+    /// Public key that was heard, lowercase hex.
+    pub public_key: String,
+    /// When MeshDash received the advert.
+    pub heard_at: DateTime<Utc>,
+    /// Whether the node had not known this contact before.
+    pub was_new: bool,
+}
+
+/// Answers with the most recent sightings.
+async fn list_adverts(State(context): State<AppContext>) -> Result<Json<Vec<Sighting>>, ListError> {
+    read_adverts(&context).await.map(Json).map_err(ListError)
+}
+
+/// Records one advert: the sighting always, the contact when it came with one.
+pub async fn record_advert(context: &AppContext, advert: &Advert) -> Result<(), sqlx::Error> {
+    let now = Utc::now().to_rfc3339();
+    let public_key = to_hex(advert.public_key());
+    let was_new = matches!(advert, Advert::New(_));
+
+    match advert {
+        Advert::New(contact) => store_contact(context, contact).await?,
+        // A short advert reports that a key was heard and nothing else.
+        // Writing the missing fields as empty would erase what the contact
+        // listing delivered.
+        Advert::Known { .. } => {
+            sqlx::query("UPDATE nodes_contacts SET last_seen = ? WHERE public_key = ?")
+                .bind(&now)
+                .bind(&public_key)
+                .execute(context.db.pool())
+                .await?;
+        }
+    }
+
+    sqlx::query("INSERT INTO nodes_adverts (public_key, heard_at, was_new) VALUES (?, ?, ?)")
+        .bind(&public_key)
+        .bind(&now)
+        .bind(i64::from(was_new))
+        .execute(context.db.pool())
+        .await?;
+
+    Ok(())
+}
+
+/// Reads the most recent sightings, newest first.
+pub async fn read_adverts(context: &AppContext) -> Result<Vec<Sighting>, sqlx::Error> {
+    // The id breaks ties: two adverts can share a timestamp, and then the
+    // order would otherwise be whatever SQLite feels like.
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT public_key, heard_at, was_new FROM nodes_adverts
+         ORDER BY heard_at DESC, id DESC LIMIT ?",
+    )
+    .bind(ADVERT_LIMIT)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(Sighting {
+                public_key: row.0,
+                heard_at: parse_time(&row.1)?,
+                was_new: row.2 != 0,
+            })
+        })
+        .collect())
 }
 
 /// One row of `nodes_contacts`, in the order the query asks for it.

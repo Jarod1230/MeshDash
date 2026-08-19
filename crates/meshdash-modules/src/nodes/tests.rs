@@ -162,3 +162,87 @@ async fn fetches_when_the_node_becomes_reachable() {
 
     assert_eq!(read_contacts(&context).await.unwrap().len(), 1);
 }
+
+/// A short advert: the push opcode and a public key.
+fn known_advert_frame(key: u8) -> Vec<u8> {
+    let mut payload = vec![0u8; 33];
+    payload[0] = u8::from(meshdash_proto::opcode::Push::Advert);
+    payload[1..33].copy_from_slice(&[key; 32]);
+    payload
+}
+
+/// A long advert: a contact frame under the new-advert opcode.
+fn new_advert_frame(key: u8, name: &str) -> Vec<u8> {
+    let mut payload = contact_frame(key, name, &[3, 4]);
+    payload[0] = u8::from(meshdash_proto::opcode::Push::NewAdvert);
+    payload
+}
+
+/// Hands the module a push and waits for it to be processed.
+async fn push(context: &AppContext, payload: Vec<u8>) {
+    context.events.publish(AppEvent::Push { payload });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+}
+
+#[tokio::test]
+async fn a_new_advert_stores_the_contact_it_carries() {
+    let context = context_with(vec![]).await;
+
+    push(&context, new_advert_frame(0xCD, "Nachbar")).await;
+
+    let contacts = read_contacts(&context).await.unwrap();
+    assert_eq!(contacts.len(), 1);
+    assert_eq!(contacts[0].name, "Nachbar");
+    assert_eq!(contacts[0].path, "0304");
+}
+
+#[tokio::test]
+async fn every_advert_becomes_a_sighting() {
+    let context = context_with(vec![]).await;
+
+    push(&context, new_advert_frame(0xCD, "Nachbar")).await;
+    push(&context, known_advert_frame(0xCD)).await;
+
+    let sightings = read_adverts(&context).await.unwrap();
+    assert_eq!(sightings.len(), 2);
+    assert!(sightings.iter().all(|s| s.public_key == "cd".repeat(32)));
+    // Newest first: the short one arrived last.
+    assert!(!sightings[0].was_new);
+    assert!(sightings[1].was_new);
+}
+
+#[tokio::test]
+async fn a_short_advert_moves_the_last_sighting_forward() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[])])).await;
+    sync_contacts(&context).await.unwrap();
+    let before = read_contacts(&context).await.unwrap()[0].last_seen;
+
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    push(&context, known_advert_frame(0xAA)).await;
+
+    let contacts = read_contacts(&context).await.unwrap();
+    let after = &contacts[0];
+    assert!(after.last_seen > before);
+    // A short advert says "heard", not "changed" — the details stay.
+    assert_eq!(after.name, "Node");
+}
+
+#[tokio::test]
+async fn a_short_advert_for_an_unknown_key_is_still_recorded() {
+    let context = context_with(vec![]).await;
+
+    push(&context, known_advert_frame(0x11)).await;
+
+    // The sighting is true even without a name for the key.
+    assert_eq!(read_adverts(&context).await.unwrap().len(), 1);
+    assert!(read_contacts(&context).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ignores_pushes_that_are_not_adverts() {
+    let context = context_with(vec![]).await;
+
+    push(&context, vec![0x83, 0x00]).await;
+
+    assert!(read_adverts(&context).await.unwrap().is_empty());
+}

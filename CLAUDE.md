@@ -10,13 +10,22 @@ spricht über Serial oder TCP mit einem MeshCore-Companion-Node, persistiert des
 Ereignisse und stellt sie einem React-Frontend als REST-API und WebSocket-Stream
 bereit. Ausgeliefert wird ein einzelnes Binary mit eingebettetem Frontend.
 
-**Projektstand: Gerüst steht (Schritt 1 der Roadmap erledigt).**
-Der Cargo-Workspace mit fünf leeren Crates, das Frontend-Gerüst und die CI
-bauen grün durch. **Funktionalität gibt es noch keine** — kein Protokoll-Codec,
-keine Datenbank, keine Route, kein Modul. Als Nächstes ist Schritt 2 dran: das
-Serial- und TCP-Framing ist seit dem 2026-08-16 am Firmware-Quellcode
-verifiziert und damit nicht mehr blockiert. **Die Opcodes sind es nicht** — für
-sie gilt Regel 1 unten unverändert.
+**Projektstand: Backend steht (Schritte 1 bis 6 der Roadmap erledigt).**
+Protokoll-Codec, Transport mit Reconnect, Kern mit Datenbank und Event-Bus,
+HTTP-Server mit Authentifizierung und WebSocket sowie vier Module — `system`,
+`nodes`, `messages`, `telemetry`. Der Dienst läuft und liefert Daten unter
+`/api/v1/`.
+
+**Was fehlt: die Oberfläche.** Das Frontend ist eine Platzhalterseite mit leerer
+Modul-Registry; Schritt 7 baut sie aus. Den Stand im Einzelnen führt
+`docs/roadmap.md`.
+
+**Zum Protokoll:** Framing, sämtliche Opcodes und die bisher benötigten
+Nutzlasten sind am Firmware-Quellcode verifiziert (Commit `d929643`). Nicht
+verifiziert und deshalb nicht umgesetzt sind `RESP_CODE_STATS`,
+`PUSH_CODE_TELEMETRY_RESPONSE` (CayenneLPP) sowie die Bedeutung der Bytes `type`
+und `flags` eines Kontakts. Für alles Unverifizierte gilt Regel 1 unten
+unverändert — auch dann, wenn danebenliegende Werte längst belegt sind.
 
 ## Wo was steht
 
@@ -89,6 +98,9 @@ Nach einer Änderung mitziehen — das ist Teil der Aufgabe, nicht optional:
 - **Neues Modul?** → Tabelle in `docs/module-system.md` ergänzen.
 - **Neue Konfigurationsoption?** → `docs/configuration.md`.
 - **Nutzersichtbare Änderung?** → `CHANGELOG.md` unter `[Unreleased]`.
+- **Roadmap-Schritt abgeschlossen?** → Standangaben mitziehen: der Abschnitt
+  „Projektstand" oben, der Statusblock in `README.md` und der Kopfkommentar
+  jedes berührten Crates. Die veralten still — niemand merkt es beim Bauen.
 
 ## Arbeitsweise
 

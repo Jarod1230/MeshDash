@@ -12,11 +12,6 @@
 //! itself, serial and TCP frames by a length header. Putting the length prefix
 //! into the shared interface would make BLE impossible to add later without a
 //! rewrite, so each implementation does its own framing.
-//!
-//! # Step 3 in progress
-//!
-//! The trait and the mock exist. Serial and TCP do not yet — see
-//! `docs/roadmap.md`.
 
 pub mod mock;
 pub mod serial;

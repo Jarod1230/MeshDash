@@ -59,14 +59,17 @@ Dazu: geschützte API mit Bearer-Token, ein Ereignisstrom über WebSocket unter
 `/api/v1/events`, das eingebettete Dashboard und geordnetes Herunterfahren auf
 SIGINT und SIGTERM.
 
-**Was noch nicht geht:** alles Fachliche. Die Modul-Registry ist leer — unter
-`/api/v1/` gibt es also nichts abzurufen, und das Dashboard hat nichts
-anzuzeigen. Module kommen mit Schritt 6, siehe [`roadmap.md`](roadmap.md).
+Dazu vier Module unter `/api/v1/`: `system`, `nodes`, `messages` und
+`telemetry`.
+
+**Was noch nicht geht:** die Oberfläche. Die Frontend-Registry ist leer, das
+eingebettete Dashboard ist eine Platzhalterseite. Sie wird mit Schritt 7
+ausgebaut, siehe [`roadmap.md`](roadmap.md).
 
 ## Arbeitsabläufe
 
 ```bash
-# Backend starten (gibt derzeit nur die Version aus)
+# Backend starten (verbindet sich mit dem Node und lauscht)
 just dev-server        # cargo run -p meshdash-server
 
 # Frontend im Entwicklungsmodus, Proxy /api auf das Backend

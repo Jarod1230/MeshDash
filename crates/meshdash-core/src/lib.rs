@@ -1,10 +1,6 @@
 //! The parts every module needs: configuration, SQLite storage, the event bus,
 //! the `Link` to the node, and the module registry.
 //!
-//! # Scaffolding only
-//!
-//! Nothing is implemented yet. Step 4 of `docs/roadmap.md` fills this in.
-//!
 //! # Rule for this crate
 //!
 //! This crate knows **no domain concepts**. It has no idea what a node, a

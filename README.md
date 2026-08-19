@@ -6,14 +6,15 @@ MeshDash verbindet sich mit einem MeshCore-Companion-Node und macht daraus eine
 Web-App: Nodes und Nachbarn im Blick, Nachrichtenverlauf, Telemetrie über die Zeit,
 Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 
-> **Status: Frühe Implementierung — die unterste Schicht entsteht.**
-> Cargo-Workspace, Frontend und CI bauen grün durch. Fertig ist der
-> **Frame-Codec** in `meshdash-proto`: Er setzt Frames aus einem Bytestrom
-> zusammen und kodiert ausgehende. Das zugrunde liegende Wire-Format ist am
-> Firmware-Quellcode verifiziert, nicht geraten.
+> **Status: Das Backend läuft, die Oberfläche fehlt.**
+> MeshDash spricht über Serial oder TCP mit einem Companion-Node, verbindet
+> sich nach einem Abriss selbsttätig neu, speichert nach SQLite und liefert
+> unter `/api/v1/` Verbindungsstatus, Kontakte und Nachbarn, Nachrichten und
+> Kanäle sowie Batterie- und Empfangsqualitätsverläufe. Nachrichten lassen sich
+> auch senden. Live-Ereignisse laufen über WebSocket.
 >
-> **Noch nicht vorhanden:** die Opcodes über der Frame-Ebene, Transport,
-> Datenbank, API und sämtliche Module. Es gibt also noch nichts zu bedienen.
+> **Noch nicht vorhanden:** die Weboberfläche. Das eingebettete Frontend ist
+> eine Platzhalterseite — zu bedienen gibt es MeshDash also nur über die API.
 > Der Stand im Einzelnen: [`docs/roadmap.md`](docs/roadmap.md).
 
 ---

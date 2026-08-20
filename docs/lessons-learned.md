@@ -550,3 +550,42 @@ abhängt.
 
 **Belege:** `telemetry/mod.rs` gegen die drei anderen Module und
 `server/src/events.rs`, die alle warnen.
+
+---
+
+## 2026-08-20 — „Wird verworfen" und „wird abgeschnitten" sind nicht dasselbe
+
+**Kontext:** Bei der Nachprüfung blieb ein Wert übrig, den ich nicht selbst
+belegen konnte: `MAX_FRAME_SIZE = 176`. Die Quelle stand im Code
+(`BaseSerialInterface.h`), die Datei lag aber nicht vor.
+
+**Problem:** Der Wert stimmte. Der Satz daneben nicht:
+
+> The firmware **drops** anything larger instead of splitting it.
+
+`ArduinoSerialInterface::checkRecvFrame()` verwirft nichts. Sie liest weiter,
+behält die ersten 176 Byte und kürzt die Länge:
+`if (_frame_len > MAX_FRAME_SIZE) _frame_len = MAX_FRAME_SIZE;`. Der Node
+verarbeitet also einen **verstümmelten** Rahmen, als wäre er vollständig.
+
+Der Unterschied entscheidet, wem die Sorgfalt obliegt. Bei „wird verworfen"
+wäre ein zu langer Rahmen ein lauter Fehlschlag, den man bemerkt. Tatsächlich
+ist es ein stiller Datenfehler: gekürzter Text, oder — bei einem Rahmen mit
+Feldern hinter dem Text — Unsinn in den hinteren Feldern. Die Grenze
+durchzusetzen ist damit Pflicht des Absenders, nicht Absicherung des Node.
+
+Bemerkenswert ist, wo der Fehler saß: nicht im Wert, sondern in der **Prosa**
+neben einem korrekt belegten Wert. Regel 1 verlangt eine Quelle für den Wert;
+sie hat nicht verhindert, dass die Erklärung daneben eine Vermutung war.
+
+**Konsequenz:**
+
+1. **Auch die Aussage über das Verhalten braucht einen Beleg**, nicht nur die
+   Zahl. „Wird abgelehnt", „wird ignoriert", „wird gekürzt" sind drei
+   verschiedene Verträge.
+2. **Eine nicht einsehbare Quelldatei ist eine offene Stelle**, kein erledigter
+   Beleg — auch wenn der Dateiname im Kommentar steht. Nachholen, sobald sie
+   erreichbar ist; hier ging es über die GitHub-API in zwei Minuten.
+
+**Belege:** `ArduinoSerialInterface.{h,cpp}` und `BaseSerialInterface.h`,
+MeshCore Commit `d929643`.

@@ -142,8 +142,16 @@ Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 - **`alerts`** — Benachrichtigung bei Node-Ausfall
 - **BLE-Transport** — siehe [ADR-0003](decisions/0003-transport-priorisierung.md)
 - **Mehrere Gateways gleichzeitig** — siehe „Offene Punkte" in `architecture.md`
-- **Telemetrie fremder Nodes** — CayenneLPP als Fremdformat, braucht eine
-  Abhängigkeitsentscheidung
+- **Telemetrie fremder Nodes** — entschieden in
+  [ADR-0009](decisions/0009-cayennelpp.md): selbst dekodieren, angefragt über
+  `CMD_SEND_BINARY_REQ`. In drei Schritten, jeder für sich prüfbar:
+  - [x] Dekoder und Anfrage-/Antwortkodierung in `meshdash-proto`
+        (`lpp`, `binary_request`)
+  - [ ] Modul `telemetry` fragt Nachbarn und speichert, was zurückkommt.
+        Offen sind dabei **Betriebsfragen**, keine Protokollfragen: wie oft
+        gefragt wird, welche Knoten überhaupt, und was mit einem Node
+        geschieht, der nie antwortet.
+  - [ ] Oberfläche: fremde Messwerte je Knoten
 - **Aufbewahrung und Verdichtung von Telemetrie**
 - Docker-Image, Release-Automatisierung, ARM-Builds für den Raspberry Pi
 

@@ -12,6 +12,11 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Grundlage für Telemetrie fremder Nodes.** MeshDash kann die Sensordaten
+  lesen, die andere Knoten im CayenneLPP-Format senden — Spannung, Temperatur,
+  Luftdruck, Position und mehr —, und die passende Anfrage dafür stellen.
+  Genutzt wird das noch nicht; das Modul und die Anzeige folgen.
+
 - **Die Oberfläche ist vollständig.** Alle vier Module haben eine Seite:
   Knoten mit Liste und Netzansicht, Nachrichten zum Lesen und Senden,
   Telemetrie mit Kurven für Batterie und Empfangsqualität. Die Netzansicht

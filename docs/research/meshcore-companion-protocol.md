@@ -397,6 +397,81 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**Telemetrie fremder Nodes — der Weg dorthin**, Stufe `SOURCE`, Commit
+`d929643`. Eine Telemetrieantwort kommt **nur auf eigene Anfrage**: Die Firmware
+vergleicht das Tag (`tag == pending_telemetry` in `onContactResponse()`). Wer
+nur mithört, bekommt nie etwas.
+
+Anzufragen ist über `CMD_SEND_BINARY_REQ` (50) — `CMD_SEND_TELEMETRY_REQ` (39)
+trägt im Quelltext „can deprecate, in favour of CMD_SEND_BINARY_REQ":
+
+```text
+0    1   Opcode 50
+1   32   voller Pubkey des Empfängers (nicht das 6-Byte-Präfix)
+33   n   Anfragedaten
+```
+
+Die Anfragedaten für Telemetrie sind 9 Byte (`CMD_SEND_PATH_DISCOVERY_REQ` in
+`handleCmdFrame()` baut sie genauso):
+
+```text
+0    1   REQ_TYPE_GET_TELEMETRY_DATA = 0x03
+1    1   inverse Berechtigungsmaske, also ~(gewünschte Rechte)
+2    3   reserviert, null
+5    4   Zufallsbytes, damit der Paket-Hash eindeutig wird
+```
+
+Die **Zufallsbytes sind nicht schmückend**: Ohne sie sähen zwei gleiche
+Anfragen identisch aus und die zweite würde als Dublette verworfen.
+
+Berechtigungen (`SensorManager.h`): `TELEM_PERM_BASE` `0x01` (enthält die
+Batterie), `TELEM_PERM_LOCATION` `0x02`, `TELEM_PERM_ENVIRONMENT` `0x04`.
+Der LPP-Kanal des Geräts selbst ist `TELEM_CHANNEL_SELF` = 1; Sensoren zählen
+ab 2 aufwärts.
+
+Der Node antwortet **sofort** mit `RESP_CODE_SENT` (10 Byte, Tag in Byte 2..6)
+und **später**, wenn die Gegenstelle antwortet, mit
+
+```text
+PUSH_CODE_BINARY_RESPONSE (0x8C)
+0    1   Opcode
+1    1   reserviert
+2    4   Tag (u32 LE), passend zu RESP_CODE_SENT
+6    n   Nutzlast — die CayenneLPP-Daten
+```
+
+**Anders als beim alten Weg steht hier kein Absender drin**, nur das Tag. Wer
+wissen will, von wem die Werte stammen, muss sich Tag und Kontakt selbst merken.
+Zum Vergleich der abgekündigte Weg: `PUSH_CODE_TELEMETRY_RESPONSE` (`0x8B`) mit
+Opcode, reserviertem Byte, 6-Byte-Präfix und dann den Daten.
+
+**Das CayenneLPP-Format** — Stufe `SOURCE` über `LPPDataHelpers.h`, das eine
+vollständige Typtabelle **und** mit `LPPReader` eine Referenzimplementierung
+enthält. Aufbau ist eine Kette aus:
+
+```text
+[ Kanal: u8 ][ Typ: u8 ][ Daten: feste Breite je Typ ]
+```
+
+Drei Eigenheiten, jede davon eine Falle:
+
+- **Big-Endian.** `getFloat()` schiebt `value = (value << 8) + buffer[i]` —
+  andersherum als das gesamte übrige MeshCore-Protokoll. Vertauscht liefert es
+  keinen Fehler, sondern plausible falsche Zahlen.
+- **Kanal 0 heißt Ende der Daten**, nicht „Kanal null" (`readHeader()` gibt
+  `channel != 0` zurück).
+- **Werte sind ganzzahlig mit Multiplikator**, teils vorzeichenbehaftet:
+  Temperatur 2 Byte ÷ 10 mit Vorzeichen, Spannung 2 Byte ÷ 100 ohne, GPS
+  3 Byte je Breite/Länge ÷ 10000 mit Vorzeichen und 3 Byte Höhe ÷ 100.
+
+Die vollständige Typtabelle steht in `LPPDataHelpers.h` und ist in
+`meshdash_proto::lpp` mit Quellenangabe je Wert abgebildet.
+
+**Nebenbei geklärt: das unterste Bit von `contact.flags`.** In
+`onContactRequest()` steht `uint8_t cp = contact.flags >> 1; // LSB used as
+'favourite' bit`. Damit ist Bit 0 der Favoriten-Schalter und die oberen Bits
+tragen Telemetrie-Berechtigungen. Die übrigen Bits bleiben unverifiziert.
+
 **Ein zu langer Rahmen wird abgeschnitten, nicht verworfen** — Stufe `SOURCE`,
 `ArduinoSerialInterface::checkRecvFrame()`, Commit `d929643`. Der
 Empfangspuffer ist `uint8_t rx_buf[MAX_FRAME_SIZE]`, also genau 176 Byte
@@ -555,11 +630,9 @@ Opcodes. Sie lassen sich einzeln in `handleCmdFrame()` und den `on…Recv()`-
 Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 
 1. Feldaufteilung von `RESP_CODE_SELF_INFO` (Identität und Funkkonfiguration).
-2. Bedeutung der Werte in `type` und `flags` eines Kontakts — die Struktur ist
-   belegt, die Kodierung dieser beiden Bytes nicht.
-3. Aufbau von `RESP_CODE_STATS` je Statistiktyp und von
-   `PUSH_CODE_TELEMETRY_RESPONSE` (CayenneLPP — die Firmware nutzt dafür eine
-   eigene Bibliothek, das Format ist also nicht projektspezifisch).
+2. Bedeutung der Werte in `type` eines Kontakts und der oberen Bits von
+   `flags`. Bit 0 von `flags` ist belegt (Favorit, siehe oben), der Rest nicht.
+3. Aufbau von `RESP_CODE_STATS` je Statistiktyp.
 4. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Pfad-Antworten.
    Für Nachrichten ist sie geklärt: ein Byte, `0xFF` heißt „kein Flood-Pfad".
 5. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.

@@ -39,5 +39,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0006](0006-authentifizierung.md) | Einzelnes Token, kein ungeschützter Start nach außen | Angenommen |
 | [0007](0007-modul-ereignisse.md) | Module tauschen Daten über ein generisches Ereignis aus | Angenommen |
 | [0008](0008-frontend-bausteine.md) | react-router, eigener Datenabruf, eigenes SVG, Systemschriften | Angenommen |
+| [0009](0009-cayennelpp.md) | CayenneLPP selbst dekodieren, über `CMD_SEND_BINARY_REQ` | Angenommen |
 
 Vorlage: [`template.md`](template.md).

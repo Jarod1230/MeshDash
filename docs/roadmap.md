@@ -116,20 +116,21 @@ In dieser Reihenfolge, jedes für sich abgeschlossen:
 Fremdformat — das braucht eine eigene Abhängigkeitsentscheidung und steht
 unter „Danach".
 
-## Schritt 7 — Frontend-Ausbau
+## Schritt 7 — Frontend-Ausbau ✅ erledigt
 
 - [x] **Shell** mit Modul-Registry, Navigation, Hell/Dunkel und Token-Anmeldung.
       Gestaltung und Bausteine nach
       [ADR-0008](decisions/0008-frontend-bausteine.md).
 - [x] **`system`** — Verbindung, ihr Verlauf als Band und die Node-Identität.
-- [ ] **`nodes`** — Kontakte und Sichtungen. Dazu die **Topologieansicht**:
-      wer hört wen, gezeichnet aus Pfadlängen und Sichtungen. Sie gehört
-      hierher und nicht auf die Übersicht, weil sie ohne echte Pfaddaten nur
-      eine erfundene Anordnung wäre.
-- [ ] **`messages`** — Direktnachrichten und Kanäle, lesen und senden.
-- [ ] **`telemetry`** — Batterie und Empfangsqualität als Kurven (eigenes SVG).
-- [ ] **Live-Aktualisierung über WebSocket** — heute lädt jede Seite beim
-      Öffnen; der Ereignisstrom liegt bereit und wird noch nicht genutzt.
+- [x] **`nodes`** — Kontakte und Sichtungen als Liste, dazu die
+      **Netzansicht**: Abstand vom Mittelpunkt heißt Zwischenstationen, die
+      Richtung bedeutet nichts. Bewusst keine Karte — Koordinaten meldet kaum
+      ein Knoten, und eine erfundene Anordnung sähe aus wie eine.
+- [x] **`messages`** — Direktnachrichten und Kanäle, lesen und senden.
+- [x] **`telemetry`** — Batterie und Empfangsqualität als Kurven in eigenem
+      SVG, mit Unterbrechungen dort, wo nichts gemessen wurde.
+- [x] **Live-Aktualisierung über WebSocket** — jede Seite sagt, worauf sie
+      reagieren will; die Kopfzeile zeigt, ob der Strom steht.
 
 ## Danach
 

@@ -12,6 +12,20 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Die Oberfläche ist vollständig.** Alle vier Module haben eine Seite:
+  Knoten mit Liste und Netzansicht, Nachrichten zum Lesen und Senden,
+  Telemetrie mit Kurven für Batterie und Empfangsqualität. Die Netzansicht
+  ordnet nach Zwischenstationen statt nach Orten — eine Karte wäre erfunden,
+  solange kaum ein Knoten Koordinaten meldet.
+- **Die Seiten aktualisieren sich von selbst.** Trifft ein Advert ein oder
+  meldet der Node wartende Nachrichten, lädt die betroffene Seite nach; die
+  Kopfzeile zeigt, ob der Ereignisstrom steht. Wo er nicht steht, sagt sie das
+  auch — eine veraltete Seite und ein stilles Mesh sehen sonst gleich aus.
+- **Nachrichten senden aus der Oberfläche**, an einen Kontakt oder in einen
+  Kanal. Bei einer Direktnachricht steht dabei, ob der Node sie als Flood
+  ausgesendet hat und welche Quittung er erwartet; bei einem Kanal steht, dass
+  es keine gibt.
+
 - **Eine Oberfläche.** MeshDash lässt sich zum ersten Mal bedienen statt nur
   abzufragen: Navigation aus der Modul-Registry, Hell- und Dunkelansicht, und
   eine Übersichtsseite, die zeigt, ob der Node da ist — und ob er es geblieben

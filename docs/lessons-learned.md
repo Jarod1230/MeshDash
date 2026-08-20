@@ -589,3 +589,36 @@ sie hat nicht verhindert, dass die Erklärung daneben eine Vermutung war.
 
 **Belege:** `ArduinoSerialInterface.{h,cpp}` und `BaseSerialInterface.h`,
 MeshCore Commit `d929643`.
+
+---
+
+## 2026-08-20 — Etwas mit CSS zu verstecken heißt nicht, dass es weg ist
+
+**Kontext:** Ausbau der Oberfläche (Schritt 7). Die Kopfzeile sollte auf
+schmalen Schirmen zweizeilig sein, auf breiten einzeilig.
+
+**Problem:** Der erste Versuch war, die Bedienelemente zweimal zu setzen — eine
+Fassung mit `sm:hidden`, eine mit `hidden sm:flex`. Sieht in beiden Breiten
+richtig aus. Aufgefallen ist es nur, weil ein Test scheiterte: „Found multiple
+elements with the role button and name /hellen Ansicht/".
+
+Der Test hatte recht, und zwar nicht bloß technisch. `display: none` blendet für
+das Auge aus, aber im Dokument stehen zwei Schaltflächen mit derselben
+Beschriftung. Wer mit einer Bildschirmleseausgabe arbeitet, hört sie doppelt und
+weiß nicht, welche gemeint ist; wer mit der Tastatur navigiert, tabbt eventuell
+durch tote Elemente.
+
+Die Lösung war kein zweites Element, sondern eine Anordnung: ein einziger Satz
+Bedienelemente, per `order` und `flex-wrap` mal in die erste, mal in die zweite
+Zeile gesetzt.
+
+**Konsequenz:**
+
+1. **Responsive Varianten dupliziert man nicht, man ordnet sie um.** `order`,
+   `flex-wrap` und Grid-Bereiche kosten nichts und lassen das Dokument in Ruhe.
+2. **Ein Test, der „mehrere Elemente gefunden" meldet, ist ein Fund, kein
+   Hindernis.** Der naheliegende Reflex — genauer selektieren — hätte den
+   Mangel zugedeckt.
+3. Beim Prüfen im Browser gehören schmale Breiten dazu: Die Fehler dieser
+   Sitzung — Knoten außerhalb der Zeichenfläche, überlappende Beschriftungen,
+   eine vierzeilige Navigation — waren allesamt in keiner Testausgabe zu sehen.

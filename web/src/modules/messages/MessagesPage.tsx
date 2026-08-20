@@ -1,0 +1,156 @@
+import { useState } from 'react';
+import { SignalBars, SignalValue } from '../../ui/Signal';
+import { Empty, Failed, Loading } from '../../ui/States';
+import { SendForm } from './SendForm';
+import type { Channel, ChannelMessage, DirectMessage } from './types';
+import { useLiveReload, type AppEvent } from '../../lib/events';
+import { useNow } from '../../lib/useNow';
+import { useResource } from '../../lib/useResource';
+import { exactTime, relativeTime } from '../../lib/time';
+import { isMessageWaiting } from '../../lib/pushes';
+
+/**
+ * What came in over the air, and what goes out.
+ *
+ * Direct messages and channel messages are kept apart rather than merged into
+ * one stream: a channel message has no sender the interface could name — the
+ * sending firmware writes the name into the text — so a combined list would
+ * have a column that is empty for half its rows.
+ */
+export function MessagesPage() {
+  const now = useNow();
+  const direct = useResource<DirectMessage[]>('/messages/received?limit=100');
+  const channel = useResource<ChannelMessage[]>('/messages/channel-received?limit=100');
+  const channels = useResource<Channel[]>('/messages/channels');
+  const [tab, setTab] = useState<'direkt' | 'kanäle'>('direkt');
+
+  // The node rings the bell; the backend fetches, then we reload.
+  useLiveReload(
+    (event: AppEvent) => event.type === 'push' && isMessageWaiting(event.payload),
+    () => {
+      direct.reload();
+      channel.reload();
+    },
+  );
+
+  const reloadAll = () => {
+    direct.reload();
+    channel.reload();
+  };
+
+  if (direct.error !== null && direct.data === null) {
+    return (
+      <div className="rounded-lg border border-mesh-border bg-mesh-surface">
+        <Failed error={direct.error} onRetry={direct.reload} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border border-mesh-border bg-mesh-surface">
+        <header className="border-b border-mesh-border px-4 py-2.5">
+          <h2 className="text-sm text-mesh-text">Senden</h2>
+        </header>
+        <SendForm channels={channels.data ?? []} onSent={reloadAll} />
+      </section>
+
+      <div className="flex gap-1" role="tablist" aria-label="Art der Nachrichten">
+        {(['direkt', 'kanäle'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="tab"
+            aria-selected={tab === option}
+            onClick={() => setTab(option)}
+            className={`rounded-md border px-3 py-1 text-sm capitalize focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+              tab === option
+                ? 'border-mesh-accent text-mesh-text'
+                : 'border-mesh-border text-mesh-muted hover:text-mesh-text'
+            }`}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+
+      <section className="rounded-lg border border-mesh-border bg-mesh-surface">
+        {tab === 'direkt' ? (
+          direct.data === null ? (
+            <Loading what="Die Nachrichten" />
+          ) : direct.data.length === 0 ? (
+            <Empty>
+              Noch keine Direktnachricht empfangen. Was hereinkommt, bleibt hier stehen — auch
+              nachdem der Node seine eigene Warteschlange geleert hat.
+            </Empty>
+          ) : (
+            <ul className="divide-y divide-mesh-border">
+              {direct.data.map((message) => (
+                <li key={message.id} className="px-4 py-3">
+                  <div className="flex items-baseline justify-between gap-4">
+                    {/* Foreign text, rendered as text and never as markup. */}
+                    <p className="min-w-0 text-mesh-text">{message.text}</p>
+                    <span
+                      className="tabular shrink-0 text-xs text-mesh-muted"
+                      title={exactTime(message.received_at)}
+                    >
+                      {relativeTime(message.received_at, new Date(now))}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-mesh-faint">
+                    <SignalBars snr={message.snr} />
+                    <SignalValue snr={message.snr} />
+                    <span className="tabular">von {message.sender_prefix}</span>
+                    <span>
+                      {message.path_len === null
+                        ? 'direkt empfangen'
+                        : `über ${message.path_len} ${message.path_len === 1 ? 'Station' : 'Stationen'}`}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : channel.data === null ? (
+          <Loading what="Die Kanalnachrichten" />
+        ) : channel.data.length === 0 ? (
+          <Empty>
+            In den Kanälen war es bisher still. Kanalnachrichten kommen über dieselbe Warteschlange
+            wie Direktnachrichten herein.
+          </Empty>
+        ) : (
+          <ul className="divide-y divide-mesh-border">
+            {channel.data.map((message) => (
+              <li key={message.id} className="px-4 py-3">
+                <div className="flex items-baseline justify-between gap-4">
+                  <p className="min-w-0 text-mesh-text">{message.text}</p>
+                  <span
+                    className="tabular shrink-0 text-xs text-mesh-muted"
+                    title={exactTime(message.received_at)}
+                  >
+                    {relativeTime(message.received_at, new Date(now))}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-3 text-xs text-mesh-faint">
+                  <SignalBars snr={message.snr} />
+                  <SignalValue snr={message.snr} />
+                  <span>
+                    {channelName(channels.data, message.channel_index)}
+                  </span>
+                  {/* No sender: the sending firmware puts the name into the
+                      text itself, so there is nothing here to attribute. */}
+                  <span>Absender steht im Text</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function channelName(channels: readonly Channel[] | null, index: number): string {
+  const found = channels?.find((channel) => channel.channel_index === index);
+  return found?.name !== undefined && found.name !== '' ? found.name : `Kanal ${index}`;
+}

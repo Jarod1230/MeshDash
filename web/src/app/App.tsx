@@ -1,5 +1,6 @@
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { modules } from '../modules';
+import { EventStream, useStreamLive } from '../lib/events';
 import { ThemeToggle } from './Theme';
 import { TokenGate } from './TokenGate';
 
@@ -13,18 +14,20 @@ import { TokenGate } from './TokenGate';
 export function App() {
   return (
     <TokenGate>
-      <div className="min-h-screen bg-mesh-bg text-mesh-text">
-        <Header />
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-          <PageTitle />
-          <Routes>
-            {modules.map((module) => (
-              <Route key={module.id} path={module.path} element={<module.component />} />
-            ))}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </main>
-      </div>
+      <EventStream>
+        <div className="min-h-screen bg-mesh-bg text-mesh-text">
+          <Header />
+          <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+            <PageTitle />
+            <Routes>
+              {modules.map((module) => (
+                <Route key={module.id} path={module.path} element={<module.component />} />
+              ))}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </main>
+        </div>
+      </EventStream>
     </TokenGate>
   );
 }
@@ -32,9 +35,23 @@ export function App() {
 function Header() {
   return (
     <header className="border-b border-mesh-border bg-mesh-surface">
-      <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
-        <span className="py-3 text-sm uppercase tracking-[0.14em] text-mesh-accent">MeshDash</span>
-        <nav aria-label="Hauptnavigation" className="-mb-px flex flex-wrap gap-1 self-end">
+      {/* One row on a wide screen, two on a narrow one — but each control
+          exists exactly once. Duplicating them and hiding one with CSS would
+          leave a screen reader with two theme buttons. */}
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 px-4 sm:px-6">
+        <span className="order-1 py-3 text-sm uppercase tracking-[0.14em] text-mesh-accent">
+          MeshDash
+        </span>
+
+        <span className="order-2 ml-auto flex items-center gap-3 sm:order-3">
+          <LiveIndicator />
+          <ThemeToggle />
+        </span>
+
+        <nav
+          aria-label="Hauptnavigation"
+          className="order-3 -mb-px flex w-full gap-1 overflow-x-auto sm:order-2 sm:w-auto sm:self-end"
+        >
           {modules.map((module) => (
             <NavLink
               key={module.id}
@@ -44,7 +61,7 @@ function Header() {
                 // The active tab is marked by the accent and a rule under it
                 // rather than by a filled box: on the light theme a filled box
                 // sits at 0.96 against a 1.0 surface and all but disappears.
-                `border-b-2 px-2.5 py-1.5 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+                `shrink-0 border-b-2 px-2.5 py-1.5 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
                   isActive
                     ? 'border-mesh-accent text-mesh-text'
                     : 'border-transparent text-mesh-muted hover:text-mesh-text'
@@ -55,10 +72,36 @@ function Header() {
             </NavLink>
           ))}
         </nav>
-        <span className="flex-1" />
-        <ThemeToggle />
       </div>
     </header>
+  );
+}
+
+/**
+ * Whether the page is currently being told about changes.
+ *
+ * Worth showing: without it, a stale page and a quiet mesh look exactly the
+ * same. The wording says what is true — the stream is connected — rather than
+ * claiming the data is current.
+ */
+function LiveIndicator() {
+  const live = useStreamLive();
+
+  return (
+    <span
+      className="flex items-center gap-1.5 text-xs text-mesh-muted"
+      title={
+        live
+          ? 'Änderungen treffen sofort ein'
+          : 'Kein Ereignisstrom — die Seiten laden nur beim Öffnen'
+      }
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-mesh-accent' : 'bg-mesh-faint'}`}
+        aria-hidden="true"
+      />
+      {live ? 'live' : 'nicht live'}
+    </span>
   );
 }
 

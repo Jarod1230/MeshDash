@@ -193,6 +193,12 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   MeshDash fragt deshalb niemanden, obwohl der Node schon 25 Kontakte kennt —
   am echten Gerät beobachtet. Der saubere Weg wäre, dass `nodes` seine Kontakte
   als Ereignis veröffentlicht ([ADR-0007](decisions/0007-modul-ereignisse.md)).
+- **MeshDash meldet sich nie beim Node an.** `CMD_APP_START` wird nirgends
+  gesendet — es gibt es bisher nur in Tests. Damit erfährt der Dienst nie den
+  **eigenen** Schlüssel, die eigene Position und die Sendeleistung, denn die
+  stehen ausschließlich in der Antwort darauf (`RESP_CODE_SELF_INFO`). Die
+  Baufunktion existiert jetzt; angeschlossen wird sie, sobald die Antwort
+  gelesen werden kann.
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

@@ -54,8 +54,9 @@ use meshdash_core::{
 };
 use meshdash_proto::{
     channel::{ChannelInfo, ChannelMessage},
+    command,
     message::{Message, TextType},
-    opcode::{self, Command, Push, Response},
+    opcode::{self, Push, Response},
     send::{self, SendReceipt},
 };
 use serde::{Deserialize, Serialize};
@@ -340,7 +341,7 @@ pub async fn drain_messages(context: &AppContext) -> Result<usize, String> {
     for _ in 0..MAX_MESSAGES_PER_DRAIN {
         let answer = context
             .link
-            .request(vec![u8::from(Command::SyncNextMessage)])
+            .request(command::sync_next_message())
             .await
             .map_err(|error| error.to_string())?;
 
@@ -475,7 +476,7 @@ pub async fn sync_channels(context: &AppContext) -> Result<usize, String> {
     for index in 0..=MAX_CHANNEL_INDEX {
         let answer = context
             .link
-            .request(vec![u8::from(Command::GetChannel), index])
+            .request(command::get_channel(index))
             .await
             .map_err(|error| error.to_string())?;
 

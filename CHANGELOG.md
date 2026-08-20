@@ -10,6 +10,14 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Added
+
+- **Die meisten Protokollkommandos lassen sich jetzt bauen.** Zwanzig weitere
+  Kommandos — Node umbenennen, Position setzen, Uhr stellen, Advert aussenden,
+  Pfad zurücksetzen, Kontakt teilen oder löschen, an- und abmelden, Statistiken
+  und Kennwerte abfragen, neu starten. Angeschlossen sind sie noch nicht; das
+  folgt modulweise.
+
 ### Fixed
 
 - **Wege durchs Mesh wurden falsch gelesen.** Das Längenbyte einer Route ist

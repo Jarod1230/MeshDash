@@ -397,6 +397,24 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**`CMD_APP_START` braucht mindestens acht Byte** — Stufe `HARDWARE`,
+`handleCmdFrame()`, Commit `d929643`, am Gerät bestätigt:
+
+```text
+0    1  Opcode 1
+1    7  reserviert („reserved future" im Quelltext)
+8    n  Name der Anwendung, bis Frame-Ende
+```
+
+Ein kürzerer Rahmen **wird stillschweigend ignoriert**: Der Zweig greift nicht,
+es kommt weder Antwort noch Fehler. Das Kommando ist der Sitzungsbeginn aus
+Sicht des Node — er protokolliert den Namen, setzt einen halb gelaufenen
+Kontaktdurchlauf zurück (`_iter_started = false`) und antwortet mit
+`RESP_CODE_SELF_INFO`. Am Testgerät waren das 66 Byte, beginnend mit
+`05 01 16 16` — Opcode, `ADV_TYPE_CHAT`, Sendeleistung, Maximalleistung, dann
+der eigene Pubkey. **Nur über diesen Weg erfährt eine App den eigenen
+Schlüssel.**
+
 **Die Pfadlänge ist keine Länge** — Stufe `HARDWARE`, entdeckt am 2026-08-20 an
 einem echten Companion (Xiao S3 WIO, Firmware v1.17.0), belegt an
 `Packet::isValidPathLen()` und `Packet::writePath()` in `src/Packet.cpp`,

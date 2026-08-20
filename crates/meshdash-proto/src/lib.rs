@@ -31,6 +31,7 @@ pub mod advert;
 pub mod battery;
 pub mod binary_request;
 pub mod channel;
+pub mod command;
 pub mod contact;
 pub mod device;
 pub mod frame;

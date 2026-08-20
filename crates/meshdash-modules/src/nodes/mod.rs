@@ -30,11 +30,7 @@ use meshdash_core::{
     event::AppEvent,
     module::{AppContext, Module},
 };
-use meshdash_proto::{
-    advert::Advert,
-    contact::Contact,
-    opcode::{Command, Response},
-};
+use meshdash_proto::{advert::Advert, command, contact::Contact, opcode::Response};
 use serde::Serialize;
 
 /// Schema of this module. Versions count from 1, per module.
@@ -231,7 +227,7 @@ pub async fn sync_contacts(context: &AppContext) -> Result<usize, String> {
     let frames = context
         .link
         .request_until(
-            vec![u8::from(Command::GetContacts)],
+            command::get_contacts(),
             Box::new(|frame: &[u8]| {
                 frame
                     .first()

@@ -12,6 +12,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Alle Meldungen des Node werden verstanden.** Anmeldungen an Repeatern,
+  Statusantworten, Pfadänderungen, Sendebestätigungen, Traceroute-Antworten,
+  Roh- und Steuerdaten, verdrängte Kontakte, voller Kontaktspeicher. Was eine
+  neuere Firmware schickt und diese Fassung nicht kennt, wird vollständig
+  aufbewahrt statt verworfen.
+
+### Added
+
 - **Die Antworten des Node lassen sich lesen.** Eigene Identität samt Schlüssel
   und Funkeinstellungen, Uhrzeit, Kennwerte, Statistiken zu Funk und Paketen,
   bekannte Routen und die Variablen angeschlossener Sensoren. Der **private**

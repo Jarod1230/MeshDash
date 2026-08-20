@@ -56,7 +56,8 @@ use meshdash_proto::{
     channel::{ChannelInfo, ChannelMessage},
     command,
     message::{Message, TextType},
-    opcode::{self, Push, Response},
+    opcode::Response,
+    push::PushEvent,
     send::{self, SendReceipt},
 };
 use serde::{Deserialize, Serialize};
@@ -273,7 +274,7 @@ impl Module for MessagesModule {
                     Ok(AppEvent::Push { payload }) => {
                         // The node only rings the bell; the messages are
                         // fetched separately.
-                        if is_message_waiting(&payload) {
+                        if matches!(PushEvent::parse(&payload), Ok(PushEvent::MessageWaiting)) {
                             if let Err(error) = drain_messages(&context).await {
                                 tracing::warn!(error, "could not fetch waiting messages");
                             }
@@ -301,13 +302,6 @@ impl Module for MessagesModule {
 
         Ok(())
     }
-}
-
-/// Whether a push announces waiting messages.
-fn is_message_waiting(payload: &[u8]) -> bool {
-    payload
-        .first()
-        .is_some_and(|&opcode| opcode::is_push(opcode) && Push::from(opcode) == Push::MsgWaiting)
 }
 
 /// Answers with the stored messages, newest first.

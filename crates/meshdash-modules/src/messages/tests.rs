@@ -9,6 +9,8 @@ use meshdash_core::{
 };
 use meshdash_transport::mock::{MockTransport, SentFrames, Step};
 
+use meshdash_proto::opcode::Push;
+
 use super::*;
 
 async fn context_with(script: Vec<Step>) -> AppContext {

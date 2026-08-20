@@ -59,8 +59,9 @@ use meshdash_core::{
 };
 use meshdash_proto::{
     battery::{self, BatteryAndStorage},
-    binary_request::{self, BinaryResponse, Telemetry},
+    binary_request::{self, Telemetry},
     lpp::{self, Value},
+    push::PushEvent,
     send::SendReceipt,
 };
 use serde::{Deserialize, Serialize};
@@ -447,17 +448,16 @@ pub async fn read_neighbour_samples(
 
 /// Reacts to a push: adverts say whom to ask, responses are the answers.
 async fn handle_push(context: &AppContext, payload: &[u8], pending: &PendingRequests) {
-    // An advert carries the full key a request needs. Both forms start with
-    // it, so the short one is enough — see meshdash_proto::advert.
-    if let Ok(advert) = meshdash_proto::advert::Advert::parse(payload) {
-        if let Err(error) = note_heard(context, advert.public_key()).await {
-            tracing::error!(%error, "could not note that a node was heard");
+    let response = match PushEvent::parse(payload) {
+        // An advert carries the full key a request needs.
+        Ok(PushEvent::Advert(advert)) => {
+            if let Err(error) = note_heard(context, advert.public_key()).await {
+                tracing::error!(%error, "could not note that a node was heard");
+            }
+            return;
         }
-        return;
-    }
-
-    let Ok(response) = BinaryResponse::parse(payload) else {
-        return;
+        Ok(PushEvent::BinaryResponse(response)) => response,
+        _ => return,
     };
 
     // Only the tag comes back, so the sender is whoever we asked under it.

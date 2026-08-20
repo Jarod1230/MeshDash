@@ -177,6 +177,7 @@ fn not_found() -> WithStatus {
 mod tests {
     use super::*;
     use axum::{body::Body, http::Request, routing::get};
+    use meshdash_core::config::ModuleSettings;
     use meshdash_core::{
         db::Database,
         event::EventBus,
@@ -194,7 +195,12 @@ mod tests {
             LinkConfig::default(),
             events.clone(),
         );
-        AppContext { db, events, link }
+        AppContext {
+            db,
+            events,
+            link,
+            settings: ModuleSettings::default(),
+        }
     }
 
     /// A module offering one route.

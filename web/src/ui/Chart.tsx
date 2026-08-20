@@ -58,8 +58,8 @@ export function Chart({
   if (points.length < 2) {
     return (
       <p className="px-4 py-6 text-sm text-mesh-muted">
-        Für eine Kurve braucht es mindestens zwei Messwerte. Bisher liegen{' '}
-        {points.length === 0 ? 'keine' : 'ein Wert'} vor.
+        Für eine Kurve braucht es mindestens zwei Messwerte.{' '}
+        {points.length === 0 ? 'Bisher liegt keiner vor.' : 'Bisher liegt einer vor.'}
       </p>
     );
   }

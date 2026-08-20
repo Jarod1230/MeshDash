@@ -1,6 +1,7 @@
 //! Tests for the nodes module, against a real database and a mock node.
 
 use meshdash_core::{
+    config::ModuleSettings,
     db::Database,
     event::EventBus,
     link::{self, LinkConfig},
@@ -20,7 +21,12 @@ async fn context_with(script: Vec<Step>) -> AppContext {
         LinkConfig::default(),
         events.clone(),
     );
-    let context = AppContext { db, events, link };
+    let context = AppContext {
+        db,
+        events,
+        link,
+        settings: ModuleSettings::default(),
+    };
 
     let mut registry = ModuleRegistry::new();
     registry.register(Box::new(NodesModule)).unwrap();

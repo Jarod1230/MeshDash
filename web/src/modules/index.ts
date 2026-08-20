@@ -1,5 +1,8 @@
 import type { UiModule } from './types';
 import { systemModule } from './system';
+import { nodesModule } from './nodes';
+import { messagesModule } from './messages';
+import { telemetryModule } from './telemetry';
 
 /**
  * The module registry.
@@ -7,6 +10,11 @@ import { systemModule } from './system';
  * A new module appends exactly one entry here and adds nothing anywhere else.
  * The order is the order of the navigation.
  */
-export const modules: readonly UiModule[] = [systemModule];
+export const modules: readonly UiModule[] = [
+  systemModule,
+  nodesModule,
+  messagesModule,
+  telemetryModule,
+];
 
 export type { UiModule };

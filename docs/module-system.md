@@ -128,12 +128,28 @@ pflegen, sobald sich etwas ändert.
 | Modul | Zweck | Stand |
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/{status,connections}`, mit Oberfläche |
-| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — `/api/v1/nodes/{contacts,adverts}`, mit Liste und Netzansicht |
+| `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade, Position | **umgesetzt** — `/api/v1/nodes/{contacts,adverts}`, mit Liste, Netz- und Kartenansicht |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — `/api/v1/messages/{received,channel-received,channels,send,channel-send}`, mit Oberfläche |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/{battery,signal,neighbours}`; Nachbarabfrage abschaltbar |
-| `map` | Geografische Darstellung bekannter Positionen | angedacht |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |
 | `alerts` | Benachrichtigung, wenn ein Node ausfällt | angedacht |
+
+## Wann eine Darstellung kein eigenes Modul ist
+
+Die Karte war als Modul `map` geplant und ist keines geworden. Der Grund steht
+in [ADR-0010](decisions/0010-karte.md) und ist verallgemeinerbar: Ein Modul
+beantwortet **eine fachliche Frage**. „Wo sind meine Knoten" ist keine andere
+Frage als „welche Knoten habe ich", sondern dieselbe in anderer Darstellung —
+und die Positionen gehören bereits `nodes`.
+
+Ein eigenes Modul hätte sich denselben Bestand über den Ereignisbus noch einmal
+aufbauen müssen, nur um die Regel „keine fremden Tabellen" einzuhalten. Die
+Regel schützt vor **Kopplung**, nicht vor Darstellung; sie so zu befolgen hätte
+eine dritte Kopie derselben Daten erzeugt, die auseinanderlaufen kann.
+
+Faustregel: Eine neue **Sicht** auf vorhandene Daten gehört in das Modul, dem
+die Daten gehören. Ein neues Modul entsteht, wenn eine Frage hinzukommt, die
+eigene Daten braucht.
 
 ## Ein Modul anlegen
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Empty, Failed, Loading } from '../../ui/States';
+import { Map } from './Map';
 import { Topology } from './Topology';
 import { hopCount, shortKey, type KnownContact, type Sighting } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
@@ -19,7 +20,7 @@ export function NodesPage() {
   const now = useNow();
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const sightings = useResource<Sighting[]>('/nodes/adverts?limit=50');
-  const [view, setView] = useState<'liste' | 'netz'>('liste');
+  const [view, setView] = useState<'liste' | 'netz' | 'karte'>('liste');
 
   // An advert means someone was heard; both listings change.
   useLiveReload(
@@ -59,7 +60,7 @@ export function NodesPage() {
         </dl>
 
         <div className="flex gap-1" role="tablist" aria-label="Darstellung">
-          {(['liste', 'netz'] as const).map((option) => (
+          {(['liste', 'netz', 'karte'] as const).map((option) => (
             <button
               key={option}
               type="button"
@@ -81,6 +82,8 @@ export function NodesPage() {
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">
         {view === 'netz' ? (
           <Topology contacts={contacts.data} now={now} />
+        ) : view === 'karte' ? (
+          <Map contacts={contacts.data} now={now} />
         ) : contacts.data.length === 0 ? (
           <Empty>
             Der Node kennt noch keine Kontakte. Sie erscheinen, sobald er welche meldet oder ein

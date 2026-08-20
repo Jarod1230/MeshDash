@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Eine Karte.** Unter „Knoten" gibt es neben Liste und Netz jetzt eine
+  Kartenansicht: wer wo steht, mit Maßstabsleiste und Norden oben. Bewusst
+  **ohne Kartenkacheln** — MeshDash läuft oft in Netzen ohne Uplink, wo eine
+  Kachelkarte grau bliebe, und ein Kartenblick soll nicht jedes Mal einem
+  fremden Server verraten, wo das Mesh steht. Wer den Straßenzusammenhang
+  braucht, öffnet einen Knoten mit einem Klick in OpenStreetMap.
+
 - **Telemetrie fremder Knoten.** MeshDash kann Nachbarn nach ihren Messwerten
   fragen — Spannung, Temperatur, Position und was sonst an Sensoren hängt — und
   zeigt sie unter „Andere Knoten". **Standardmäßig aus:** Jede Anfrage geht über

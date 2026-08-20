@@ -136,7 +136,12 @@ unter „Danach".
 
 Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 
-- **`map`** — Positionen auf einer Karte
+- [x] **Karte** — umgesetzt als dritte Ansicht im Modul `nodes`, nicht als
+  eigenes Modul; ohne Kartenkacheln, siehe
+  [ADR-0010](decisions/0010-karte.md). Offen: Positionen aus der
+  Nachbartelemetrie erscheinen dort noch nicht — sie gehören `telemetry` und
+  bräuchten den Weg über ein Ereignis nach
+  [ADR-0007](decisions/0007-modul-ereignisse.md).
 - **`admin`** — Repeater-Fernadministration. Braucht vorher eine Antwort auf die
   Frage nach den Zugangsdaten, siehe [`../SECURITY.md`](../SECURITY.md)
 - **`alerts`** — Benachrichtigung bei Node-Ausfall

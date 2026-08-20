@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Die Antworten des Node lassen sich lesen.** Eigene Identität samt Schlüssel
+  und Funkeinstellungen, Uhrzeit, Kennwerte, Statistiken zu Funk und Paketen,
+  bekannte Routen und die Variablen angeschlossener Sensoren. Der **private**
+  Schlüssel des Node wird ausdrücklich nicht gelesen.
+
+### Added
+
 - **Die meisten Protokollkommandos lassen sich jetzt bauen.** Zwanzig weitere
   Kommandos — Node umbenennen, Position setzen, Uhr stellen, Advert aussenden,
   Pfad zurücksetzen, Kontakt teilen oder löschen, an- und abmelden, Statistiken

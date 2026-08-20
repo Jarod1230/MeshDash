@@ -665,3 +665,41 @@ gelesen, weil das Feld „path_len" heißt und nach einer Länge aussieht.
 `src/Packet.cpp`, `OUT_PATH_UNKNOWN` in `src/helpers/ContactInfo.h`, MeshCore
 Commit `d929643`; festgehalten in
 [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
+
+---
+
+## 2026-08-20 — Zwei benachbarte Felder, zwei Einheiten
+
+**Kontext:** `RESP_CODE_SELF_INFO` auslesen — die Antwort, die ein Node auf die
+Anmeldung gibt. Frequenz und Bandbreite stehen dort direkt nebeneinander, beide
+als `u32`, beide von der Firmware mit demselben Ausdruck geschrieben:
+
+```c
+uint32_t freq = _prefs.freq * 1000;
+uint32_t bw   = _prefs.bw * 1000;
+```
+
+**Problem:** Gleicher Ausdruck, verschiedene Einheiten. `_prefs.freq` ist ein
+Float in **Megahertz**, `_prefs.bw` einer in **Kilohertz**. Auf der Leitung
+steht deshalb Kilohertz neben Hertz. Beide Felder als Hertz zu lesen ergibt
+keinen Fehler — es ergibt eine Frequenz von 870 kHz, ein Band, auf dem niemand
+ein Mesh betreibt.
+
+Aufgefallen ist es nur, weil das Prüfprogramm den Wert **ausgedruckt** hat und
+`869618 Hz` sich falsch las. Ein Test gegen selbstgebaute Bytes hätte
+bestätigt, was ich ohnehin annahm; die Zahl auf dem Bildschirm hat
+widersprochen.
+
+**Konsequenz:**
+
+1. **Bei Zahlen mit physikalischer Einheit gehört die Einheit in den Feldnamen**
+   — `frequency_khz`, nicht `frequency`. Ein falsch benanntes Feld pflanzt sich
+   durch jede Umrechnung fort, die darauf aufbaut.
+2. **Der Ausdruck in der Firmware sagt nichts über die Einheit.** `x * 1000`
+   verrät nicht, was `x` war. Die Deklaration verrät es — hier ein
+   `constrain(_prefs.freq, 150.0f, 2500.0f)`, das nur in Megahertz Sinn ergibt.
+3. **Werte einmal ansehen, nicht nur zusichern.** Ein `assert_eq!` prüft gegen
+   die eigene Erwartung. Ein ausgedruckter Wert prüft gegen die Wirklichkeit.
+
+**Belege:** `NodePrefs.h` (`float freq`, `float bw`), `MyMesh.cpp` Zeilen 943
+und 1072, MeshCore Commit `d929643`; am Gerät gelesen als `869618` / `62500`.

@@ -397,6 +397,72 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**`RESP_CODE_SELF_INFO` (5)** — Stufe `HARDWARE`, am Gerät gelesen und gegen
+`handleCmdFrame()` geprüft. Damit ist die letzte große offene Nutzlast geklärt:
+
+```text
+0    1  Opcode
+1    1  Advert-Typ, als den sich der Node ausgibt
+2    1  Sendeleistung in dBm
+3    1  höchste Sendeleistung des Boards
+4   32  eigener Pubkey
+36   4  Breite (i32 LE, Mikrograd; 0 = nicht gesetzt)
+40   4  Länge (i32 LE, Mikrograd)
+44   1  multi_acks (v7+)
+45   1  advert_loc_policy
+46   1  Telemetrie-Rechte, drei Zwei-Bit-Felder (v5+)
+47   1  Kontakte nur von Hand hinzufügen
+48   4  Frequenz in **Kilohertz** (u32)
+52   4  Bandbreite in **Hertz** (u32)
+56   1  Spreizfaktor
+57   1  Coderate
+58   n  Node-Name bis Frame-Ende
+```
+
+**Die beiden Funkzahlen tragen verschiedene Einheiten.** `_prefs.freq` ist ein
+Float in **Megahertz** (die Firmware begrenzt ihn auf 150…2500) und geht mal
+tausend hinaus — auf der Leitung also **Kilohertz**. `_prefs.bw` ist ein Float
+in **Kilohertz** und geht ebenso mal tausend hinaus — also **Hertz**. Zwei
+benachbarte Felder, zwei Einheiten. Ein echtes Gerät meldete `869618` und
+`62500`: 869,618 MHz bei 62,5 kHz. Als Hertz gelesen käme die Frequenz auf
+870 kHz heraus, ein Band, auf dem niemand ein Mesh betreibt.
+
+**`RESP_CODE_STATS` (24)** — Stufe `HARDWARE` für den Typ 0, `SOURCE` für die
+übrigen. Nach dem Opcode folgt der Statistiktyp, dann dessen Zähler:
+
+```text
+Typ 0 (core), 11 Byte:    2 Batterie mV (u16), 4 Laufzeit s (u32),
+                          2 Fehlerflags (u16), 1 Warteschlange
+Typ 1 (radio), 14 Byte:   2 Rauschgrenze (i16), 1 RSSI (i8), 1 SNR×4 (i8),
+                          4 Sendezeit s, 4 Empfangszeit s
+Typ 2 (packets), 30 Byte: 7 × u32 — empfangen, gesendet, davon Flood und
+                          direkt in beide Richtungen, Empfangsfehler
+```
+
+Die **Fehlerflags bleiben unausgewertet**: Ihre Bedeutung steht nirgends im
+Companion-Quelltext, und ein falsch benanntes Flag ist schlimmer als ein
+unbenanntes.
+
+**Weitere kleine Antworten**, alle `SOURCE`, Uhr und Kennwerte zusätzlich
+`HARDWARE`:
+
+- `RESP_CODE_CURR_TIME` (9), 5 B: Sekunden seit der Epoche (u32).
+- `RESP_CODE_TUNING_PARAMS` (23), 9 B: Empfangsverzögerung und
+  Advert-Flood-Verzögerung, je u32 in Millisekunden.
+- `RESP_CODE_ADVERT_PATH` (22): Zeitpunkt (u32), Längenbyte der Route (siehe
+  oben — **keine** Byte-Zahl), dann die Route.
+- `RESP_CODE_CUSTOM_VARS` (21): eine Zeichenkette `name:wert,name:wert`, bei
+  140 Byte abgeschnitten, wo auch immer das hinfällt.
+- `RESP_CODE_AUTOADD_CONFIG` (25), 3 B: Flags und maximale Stationszahl.
+- `RESP_CODE_DEFAULT_FLOOD_SCOPE` (28): entweder nur der Opcode (nichts
+  gesetzt) oder Opcode, 31 Byte Name, 16 Byte **Schlüssel**.
+
+**Zwei Antworten werden bewusst nicht gelesen.** `RESP_CODE_PRIVATE_KEY` (14)
+trägt den **privaten** Schlüssel des Node — MeshDash hat keinen Grund, ihn je
+zu halten, also gibt es dafür keinen Parser. Und vom Flood-Scope wird nur der
+Name gelesen, nicht der Schlüssel dahinter. Was nicht gelesen wird, kann nicht
+versehentlich in ein Log, eine API-Antwort oder eine Sicherung geraten.
+
 **`CMD_APP_START` braucht mindestens acht Byte** — Stufe `HARDWARE`,
 `handleCmdFrame()`, Commit `d929643`, am Gerät bestätigt:
 
@@ -691,14 +757,13 @@ Alle verbleibenden Fragen betreffen **Payload-Aufteilungen**, nicht mehr die
 Opcodes. Sie lassen sich einzeln in `handleCmdFrame()` und den `on…Recv()`-
 Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 
-1. Feldaufteilung von `RESP_CODE_SELF_INFO` (Identität und Funkkonfiguration).
-2. Bedeutung der Werte in `type` eines Kontakts und der oberen Bits von
+1. Bedeutung der Werte in `type` eines Kontakts und der oberen Bits von
    `flags`. Bit 0 von `flags` ist belegt (Favorit, siehe oben), der Rest nicht.
-3. Aufbau von `RESP_CODE_STATS` je Statistiktyp.
+2. Bedeutung der Fehlerflags in `RESP_CODE_STATS`, Typ 0.
 4. Aufbau der Pfad-Antworten (`RESP_CODE_ADVERT_PATH`,
    `PUSH_CODE_PATH_DISCOVERY_RESPONSE`). Die **Kodierung** des Längenbytes ist
    geklärt, siehe oben; offen ist der Rahmen dieser beiden Antworten.
-5. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
+4. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
    Version 3 ist gesetzt (`meshdash_proto::device::PROTOCOL_VERSION`), weil sie
    die SNR-Varianten der Nachrichten bringt. Version 8 schaltet Statistiken
    frei — dafür müssen deren Formate aber erst verifiziert sein.

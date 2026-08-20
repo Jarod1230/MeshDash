@@ -1,6 +1,7 @@
 //! Tests for the messages module, against a real database and a mock node.
 
 use meshdash_core::{
+    config::ModuleSettings,
     db::Database,
     event::EventBus,
     link::{self, LinkConfig},
@@ -21,7 +22,12 @@ async fn context_and_record_with(script: Vec<Step>) -> (AppContext, SentFrames) 
     let transport = MockTransport::new(script);
     let record = transport.sent_frames();
     let (link, _task) = link::spawn(transport, LinkConfig::default(), events.clone());
-    let context = AppContext { db, events, link };
+    let context = AppContext {
+        db,
+        events,
+        link,
+        settings: ModuleSettings::default(),
+    };
 
     let mut registry = ModuleRegistry::new();
     registry.register(Box::new(MessagesModule)).unwrap();

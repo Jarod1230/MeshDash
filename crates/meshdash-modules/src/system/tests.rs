@@ -5,6 +5,7 @@
 //! link fit together.
 
 use meshdash_core::{
+    config::ModuleSettings,
     db::Database,
     event::EventBus,
     link::{self, LinkConfig},
@@ -25,7 +26,12 @@ async fn context_with(script: Vec<Step>) -> AppContext {
         events.clone(),
     );
 
-    let context = AppContext { db, events, link };
+    let context = AppContext {
+        db,
+        events,
+        link,
+        settings: ModuleSettings::default(),
+    };
 
     // Migrate through the registry, so the test exercises the same path the
     // binary takes rather than applying migrations by hand.

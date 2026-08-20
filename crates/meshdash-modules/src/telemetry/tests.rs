@@ -1,6 +1,7 @@
 //! Tests for the telemetry module, against a real database and a mock node.
 
 use meshdash_core::{
+    config::ModuleSettings,
     db::Database,
     event::EventBus,
     link::{self, LinkConfig},
@@ -19,7 +20,12 @@ async fn context_with(script: Vec<Step>) -> AppContext {
         LinkConfig::default(),
         events.clone(),
     );
-    let context = AppContext { db, events, link };
+    let context = AppContext {
+        db,
+        events,
+        link,
+        settings: ModuleSettings::default(),
+    };
 
     let mut registry = ModuleRegistry::new();
     registry.register(Box::new(TelemetryModule)).unwrap();
@@ -223,4 +229,214 @@ async fn survives_a_payload_it_does_not_understand() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+}
+
+/// A context whose telemetry module is configured with the given section.
+async fn context_configured(script: Vec<Step>, section: serde_json::Value) -> AppContext {
+    let db = Database::open_in_memory().await.unwrap();
+    let events = EventBus::new();
+    let (link, _task) = link::spawn(
+        MockTransport::new(script),
+        LinkConfig::default(),
+        events.clone(),
+    );
+    let mut settings = ModuleSettings::default();
+    settings.set("telemetry", section);
+    let context = AppContext {
+        db,
+        events,
+        link,
+        settings,
+    };
+
+    let mut registry = ModuleRegistry::new();
+    registry.register(Box::new(TelemetryModule)).unwrap();
+    registry.start_all(&context).await.unwrap();
+    context
+}
+
+/// A short advert, which carries the full key a request needs.
+fn advert(key: u8) -> Vec<u8> {
+    let mut payload = vec![u8::from(meshdash_proto::opcode::Push::Advert)];
+    payload.extend_from_slice(&[key; 32]);
+    payload
+}
+
+/// A binary response carrying one voltage reading.
+fn telemetry_response(tag: u32, millivolts_times_hundred: u16) -> Vec<u8> {
+    let mut frame = vec![u8::from(meshdash_proto::opcode::Push::BinaryResponse), 0];
+    frame.extend_from_slice(&tag.to_le_bytes());
+    frame.push(1); // channel: the node itself
+    frame.push(116); // LPP_VOLTAGE
+    frame.extend_from_slice(&millivolts_times_hundred.to_be_bytes());
+    frame
+}
+
+#[tokio::test]
+async fn asking_other_nodes_is_off_unless_configured() {
+    // It transmits into a band the whole mesh shares, so it is the operator's
+    // decision, not a default. Nothing is sent without being asked for.
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::Push {
+        payload: advert(0xAA),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let asked: Vec<(Option<String>,)> =
+        sqlx::query_as("SELECT last_asked_at FROM telemetry_neighbours")
+            .fetch_all(context.db.pool())
+            .await
+            .unwrap();
+
+    assert_eq!(asked.len(), 1, "the node was noted");
+    assert_eq!(asked[0].0, None, "but never asked");
+}
+
+#[tokio::test]
+async fn an_advert_makes_a_node_worth_asking() {
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::Push {
+        payload: advert(0xBB),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT public_key FROM telemetry_neighbours")
+        .fetch_all(context.db.pool())
+        .await
+        .unwrap();
+
+    assert_eq!(rows[0].0, "bb".repeat(32));
+}
+
+#[tokio::test]
+async fn an_answer_without_a_remembered_question_is_dropped() {
+    // Only the tag comes back. After a restart nobody knows whose it was, and
+    // attributing it to a guess would be worse than losing it.
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::Push {
+        payload: telemetry_response(0xDEAD, 402),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    assert!(
+        read_neighbour_samples(&context, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn stores_what_a_neighbour_reported() {
+    let context = context_with(vec![]).await;
+
+    store_neighbour_readings(
+        &context,
+        &"cc".repeat(32),
+        &[
+            meshdash_proto::lpp::Reading {
+                channel: 1,
+                type_code: 116,
+                value: meshdash_proto::lpp::Value::Number(4.02),
+            },
+            meshdash_proto::lpp::Reading {
+                channel: 2,
+                type_code: 136,
+                value: meshdash_proto::lpp::Value::Position {
+                    latitude: 52.5608,
+                    longitude: 13.2878,
+                    altitude: 30.0,
+                },
+            },
+        ],
+    )
+    .await
+    .unwrap();
+
+    let samples = read_neighbour_samples(&context, 10).await.unwrap();
+
+    assert_eq!(samples.len(), 2);
+    // Newest first: the position was stored last.
+    assert_eq!(samples[0].position, Some([52.5608, 13.2878, 30.0]));
+    assert_eq!(samples[0].value, None, "a position is not a single number");
+    assert_eq!(samples[1].value, Some(4.02));
+}
+
+#[tokio::test]
+async fn a_configured_module_asks_a_node_it_has_heard() {
+    // The receipt's acknowledgement field carries the tag for a request.
+    let mut receipt = vec![u8::from(Response::Sent), 1];
+    receipt.extend_from_slice(&0x00C0_FFEE_u32.to_le_bytes());
+    receipt.extend_from_slice(&3_000_u32.to_le_bytes());
+
+    let context = context_configured(
+        vec![Step::AwaitSent(1), Step::Emit(receipt)],
+        serde_json::json!({ "neighbours": true, "every_minutes": 1 }),
+    )
+    .await;
+
+    context.events.publish(AppEvent::Push {
+        payload: advert(0xDD),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let settings = Settings {
+        neighbours: true,
+        every_minutes: 1,
+        silent_after_hours: 24,
+    };
+    let pending = PendingRequests::default();
+    ask_one_neighbour(&context, &settings, &pending).await;
+
+    let asked: Vec<(Option<String>,)> =
+        sqlx::query_as("SELECT last_asked_at FROM telemetry_neighbours")
+            .fetch_all(context.db.pool())
+            .await
+            .unwrap();
+    assert!(asked[0].0.is_some(), "the turn was recorded");
+
+    // And the answer to that tag is now attributable.
+    assert_eq!(
+        pending.take(0x00C0_FFEE).as_deref(),
+        Some("dd".repeat(32)).as_deref()
+    );
+}
+
+#[tokio::test]
+async fn a_node_silent_too_long_is_not_worth_transmitting_at() {
+    let context = context_with(vec![]).await;
+    sqlx::query("INSERT INTO telemetry_neighbours (public_key, last_heard_at) VALUES (?, ?)")
+        .bind("ee".repeat(32))
+        .bind((Utc::now() - chrono::Duration::hours(48)).to_rfc3339())
+        .execute(context.db.pool())
+        .await
+        .unwrap();
+
+    let settings = Settings {
+        neighbours: true,
+        every_minutes: 1,
+        silent_after_hours: 24,
+    };
+    ask_one_neighbour(&context, &settings, &PendingRequests::default()).await;
+
+    let asked: Vec<(Option<String>,)> =
+        sqlx::query_as("SELECT last_asked_at FROM telemetry_neighbours")
+            .fetch_all(context.db.pool())
+            .await
+            .unwrap();
+    assert_eq!(asked[0].0, None, "nothing was sent");
+}
+
+#[test]
+fn two_requests_in_a_row_carry_different_nonces() {
+    // Identical packets hash the same and the second is dropped, so polling
+    // would work exactly once.
+    let first = nonce_from_clock();
+    std::thread::sleep(std::time::Duration::from_micros(50));
+    let second = nonce_from_clock();
+
+    assert_ne!(first, second);
 }

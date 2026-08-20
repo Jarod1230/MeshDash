@@ -17,6 +17,7 @@
 //! there is no authentication token, so nothing is exposed by accident.
 
 use std::{
+    collections::BTreeMap,
     net::SocketAddr,
     path::{Path, PathBuf},
 };
@@ -47,6 +48,58 @@ pub struct Config {
     pub node: NodeConfig,
     /// How much to log.
     pub log: LogConfig,
+    /// Settings that belong to modules rather than to the core.
+    ///
+    /// The core does not read these — it carries them. What a section means
+    /// is the module's business, which is why the value stays untyped here.
+    /// See `docs/module-system.md`.
+    pub modules: ModuleSettings,
+}
+
+/// The `[modules.<name>]` sections, kept as they were written.
+///
+/// A `BTreeMap` rather than a `HashMap` so the order is stable when the
+/// configuration is written back out or compared in a test.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(transparent)]
+pub struct ModuleSettings(BTreeMap<String, serde_json::Value>);
+
+impl ModuleSettings {
+    /// Reads one module's section into its own settings type.
+    ///
+    /// A missing section yields the type's default, so a module works without
+    /// being configured. A section that does not fit is an error rather than
+    /// a silent fallback: a misspelled option that quietly does nothing is the
+    /// same trap `deny_unknown_fields` exists to prevent elsewhere.
+    pub fn get<T>(&self, module: &str) -> Result<T, ModuleSettingsError>
+    where
+        T: Default + serde::de::DeserializeOwned,
+    {
+        let Some(section) = self.0.get(module) else {
+            return Ok(T::default());
+        };
+
+        serde_json::from_value(section.clone()).map_err(|error| ModuleSettingsError {
+            module: module.to_owned(),
+            reason: error.to_string(),
+        })
+    }
+
+    /// Stores a section. Used by tests and by anything assembling settings by
+    /// hand rather than from a file.
+    pub fn set(&mut self, module: &str, value: serde_json::Value) {
+        self.0.insert(module.to_owned(), value);
+    }
+}
+
+/// A module's section could not be read.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[error("the [modules.{module}] section could not be read: {reason}")]
+pub struct ModuleSettingsError {
+    /// Which module's section.
+    pub module: String,
+    /// What serde complained about.
+    pub reason: String,
 }
 
 /// Settings for the HTTP server.
@@ -387,6 +440,30 @@ mod tests {
     }
 
     #[test]
+    fn carries_a_module_section_from_the_file() {
+        // The core does not know what these mean — it only has to not reject
+        // them. Before this existed, deny_unknown_fields refused to start at
+        // the sight of a [modules.…] section.
+        Jail::expect_with(|jail| {
+            jail.create_file(
+                DEFAULT_FILE,
+                r#"
+                [modules.telemetry]
+                neighbours = true
+                every_minutes = 45
+                "#,
+            )?;
+
+            let config = Config::load().unwrap();
+            let section: serde_json::Value = config.modules.get("telemetry").unwrap();
+
+            assert_eq!(section["neighbours"], serde_json::json!(true));
+            assert_eq!(section["every_minutes"], serde_json::json!(45));
+            Ok(())
+        });
+    }
+
+    #[test]
     fn reads_settings_from_the_file() {
         Jail::expect_with(|jail| {
             jail.create_file(
@@ -488,5 +565,71 @@ mod tests {
             assert_eq!(config.log.filter, "trace");
             Ok(())
         });
+    }
+}
+
+#[cfg(test)]
+mod module_settings_tests {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, Default, Deserialize, PartialEq)]
+    #[serde(default, deny_unknown_fields)]
+    struct Example {
+        enabled: bool,
+        every_minutes: u32,
+    }
+
+    #[test]
+    fn a_module_without_a_section_gets_its_defaults() {
+        // A module has to work unconfigured; that is what makes a section
+        // optional rather than required.
+        let settings = ModuleSettings::default();
+
+        assert_eq!(
+            settings.get::<Example>("telemetry").unwrap(),
+            Example::default()
+        );
+    }
+
+    #[test]
+    fn reads_a_section_into_the_module_type() {
+        let mut settings = ModuleSettings::default();
+        settings.set(
+            "telemetry",
+            serde_json::json!({ "enabled": true, "every_minutes": 30 }),
+        );
+
+        assert_eq!(
+            settings.get::<Example>("telemetry").unwrap(),
+            Example {
+                enabled: true,
+                every_minutes: 30
+            }
+        );
+    }
+
+    #[test]
+    fn a_section_that_does_not_fit_is_an_error() {
+        // Not a silent fallback to defaults: an option nobody notices is
+        // wrong is the trap deny_unknown_fields exists to prevent.
+        let mut settings = ModuleSettings::default();
+        settings.set("telemetry", serde_json::json!({ "enabeld": true }));
+
+        let error = settings.get::<Example>("telemetry").unwrap_err();
+
+        assert_eq!(error.module, "telemetry");
+        assert!(error.reason.contains("enabeld"), "names the offending key");
+    }
+
+    #[test]
+    fn one_module_cannot_see_another_section() {
+        let mut settings = ModuleSettings::default();
+        settings.set("nodes", serde_json::json!({ "enabled": true }));
+
+        assert_eq!(
+            settings.get::<Example>("telemetry").unwrap(),
+            Example::default()
+        );
     }
 }

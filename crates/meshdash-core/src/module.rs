@@ -22,7 +22,10 @@
 
 use axum::Router;
 
-use crate::{db::Database, db::DatabaseError, db::Migration, event::EventBus, link::LinkHandle};
+use crate::{
+    config::ModuleSettings, db::Database, db::DatabaseError, db::Migration, event::EventBus,
+    link::LinkHandle,
+};
 
 /// What the core hands a module so it can do its work.
 ///
@@ -36,6 +39,11 @@ pub struct AppContext {
     pub events: EventBus,
     /// Sends commands to the node.
     pub link: LinkHandle,
+    /// The `[modules.<name>]` sections, for a module to read its own.
+    ///
+    /// Untyped on purpose: the core carries these and does not interpret
+    /// them. A module reads its section with [`ModuleSettings::get`].
+    pub settings: ModuleSettings,
 }
 
 /// Why a module could not be brought up.
@@ -230,7 +238,12 @@ mod tests {
             events.clone(),
         );
 
-        AppContext { db, events, link }
+        AppContext {
+            db,
+            events,
+            link,
+            settings: ModuleSettings::default(),
+        }
     }
 
     /// A module that records whether it was started.

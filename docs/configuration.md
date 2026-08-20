@@ -75,15 +75,27 @@ port = 5000
 [log]
 # Entspricht RUST_LOG. Die Umgebungsvariable gewinnt.
 filter = "meshdash=info"
+
+# Abschnitte unter [modules.<name>] gehören dem jeweiligen Modul. Der Kern
+# trägt sie nur weiter und liest sie nicht; was eine Option bedeutet, steht
+# beim Modul. Siehe module-system.md.
+[modules.telemetry]
+# Andere Knoten nach ihren Messwerten fragen. Standardmäßig aus: Jede Anfrage
+# geht über Funk und belegt Sendezeit im Band, das sich das ganze Mesh teilt.
+# Das ist eine Entscheidung des Betreibers, keine Voreinstellung.
+neighbours = false
+# Minuten zwischen zwei Anfragen. Es wird immer nur *ein* Knoten pro Runde
+# gefragt, reihum.
+every_minutes = 30
+# Knoten, die so lange nichts von sich hören ließen, werden übersprungen —
+# an etwas zu senden, das nicht da ist, kostet nur Sendezeit.
+silent_after_hours = 24
 ```
 
 ## Was noch fehlt
 
 Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
 
-- **`[modules.<name>]`** — die vier vorhandenen Module brauchen bislang keine
-  Konfiguration, deshalb liest sie auch keines. Gelesen wird die Sektion vom
-  Modul, nicht vom Kern; ein Modul, das eine Option braucht, bringt sie mit.
 - **`[node.mock]` mit Skriptdatei** — der Mock-Transport spielt Skripte ab, die
   im Code zusammengesetzt werden, und lädt keine Dateien. Eine Option dafür
   anzubieten, würde eine Fähigkeit vortäuschen. Sie ergibt Sinn, sobald es

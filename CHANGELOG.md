@@ -12,6 +12,16 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Telemetrie fremder Knoten.** MeshDash kann Nachbarn nach ihren Messwerten
+  fragen — Spannung, Temperatur, Position und was sonst an Sensoren hängt — und
+  zeigt sie unter „Andere Knoten". **Standardmäßig aus:** Jede Anfrage geht über
+  Funk und belegt Sendezeit im Band, das sich das ganze Mesh teilt. Einschalten
+  über `[modules.telemetry] neighbours = true`; gefragt wird dann ein Knoten pro
+  Runde, reihum, und nur solche, die kürzlich zu hören waren.
+- **Module können konfiguriert werden.** Abschnitte unter `[modules.<name>]`
+  reicht der Kern an das Modul weiter, ohne sie zu deuten. Bisher hätte eine
+  solche Sektion den Start sogar verhindert.
+
 - **Grundlage für Telemetrie fremder Nodes.** MeshDash kann die Sensordaten
   lesen, die andere Knoten im CayenneLPP-Format senden — Spannung, Temperatur,
   Luftdruck, Position und mehr —, und die passende Anfrage dafür stellen.

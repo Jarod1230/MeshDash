@@ -4,7 +4,8 @@ import { Empty, Failed, Loading } from '../../ui/States';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
 import { useResource } from '../../lib/useResource';
-import { relativeTime } from '../../lib/time';
+import { exactTime, relativeTime } from '../../lib/time';
+import { typeName, typeUnit } from './lppTypes';
 
 /** What `/api/v1/telemetry/battery` answers. */
 interface BatterySample {
@@ -12,6 +13,17 @@ interface BatterySample {
   readonly millivolts: number;
   readonly storage_used_kib: number;
   readonly storage_total_kib: number;
+}
+
+/** What `/api/v1/telemetry/neighbours` answers. */
+interface NeighbourSample {
+  readonly public_key: string;
+  readonly at: string;
+  readonly channel: number;
+  readonly type_code: number;
+  readonly value: number | null;
+  readonly axes: readonly [number, number, number] | null;
+  readonly position: readonly [number, number, number] | null;
 }
 
 /** What `/api/v1/telemetry/signal` answers. */
@@ -33,6 +45,7 @@ interface SignalSample {
 export function TelemetryPage() {
   const now = useNow();
   const battery = useResource<BatterySample[]>('/telemetry/battery?limit=500');
+  const neighbours = useResource<NeighbourSample[]>('/telemetry/neighbours?limit=200');
   const signal = useResource<SignalSample[]>('/telemetry/signal?limit=500');
 
   // Every stored message announces its reception quality on the bus.
@@ -151,8 +164,68 @@ export function TelemetryPage() {
           </>
         )}
       </section>
+
+      <section className="rounded-lg border border-mesh-border bg-mesh-surface">
+        <header className="flex flex-wrap items-baseline gap-3 border-b border-mesh-border px-4 py-2.5">
+          <h2 className="text-sm text-mesh-text">Andere Knoten</h2>
+          <span className="text-xs text-mesh-faint">
+            was Nachbarn über sich selbst gemeldet haben
+          </span>
+        </header>
+        {neighbours.data === null ? (
+          <Loading what="Die Werte anderer Knoten" />
+        ) : neighbours.data.length === 0 ? (
+          <Empty>
+            Bisher hat kein anderer Knoten etwas gemeldet. Danach gefragt wird nur, wenn{' '}
+            <code className="text-mesh-accent">[modules.telemetry] neighbours</code> eingeschaltet
+            ist — jede Anfrage belegt Sendezeit im gemeinsamen Band.
+          </Empty>
+        ) : (
+          <ul className="divide-y divide-mesh-border text-sm">
+            {neighbours.data.slice(0, 30).map((sample) => (
+              <li
+                key={`${sample.public_key}-${sample.at}-${sample.channel}-${sample.type_code}`}
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2"
+              >
+                <span className="tabular text-xs text-mesh-faint">
+                  {sample.public_key.slice(0, 6)}
+                </span>
+                <span className="text-mesh-muted">{typeName(sample.type_code)}</span>
+                <span className="tabular text-mesh-text">{describe(sample)}</span>
+                {sample.channel !== 1 && (
+                  <span className="text-xs text-mesh-faint">Sensor {sample.channel}</span>
+                )}
+                <span
+                  className="tabular ml-auto text-xs text-mesh-muted"
+                  title={exactTime(sample.at)}
+                >
+                  {relativeTime(sample.at, new Date(now))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
+}
+
+/** One reading in words, whichever shape it has. */
+function describe(sample: NeighbourSample): string {
+  const unit = typeUnit(sample.type_code);
+
+  if (sample.position !== null) {
+    const [latitude, longitude, altitude] = sample.position;
+    return `${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°, ${altitude.toFixed(0)} m`;
+  }
+
+  if (sample.axes !== null) {
+    return sample.axes.map((axis) => axis.toFixed(2)).join(' / ') + (unit === '' ? '' : ` ${unit}`);
+  }
+
+  if (sample.value === null) return '—';
+
+  return `${sample.value.toFixed(2)}${unit === '' ? '' : ` ${unit}`}`;
 }
 
 function Figure({

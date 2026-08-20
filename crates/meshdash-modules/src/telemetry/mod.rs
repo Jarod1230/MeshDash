@@ -17,11 +17,28 @@
 //! coupling the module rules prescribe — see
 //! `docs/decisions/0007-modul-ereignisse.md`.
 //!
-//! # Only the attached node, for now
+//! # Asking other nodes costs airtime, so it is off by default
 //!
-//! Telemetry from other nodes travels as CayenneLPP inside
-//! `PUSH_CODE_TELEMETRY_RESPONSE`. That is a foreign format and needs its own
-//! decision before anything reads it; this module sticks to what is verified.
+//! Readings from another node have to be requested over the air — nothing
+//! arrives unasked (ADR-0009). Every request occupies the shared band that the
+//! whole mesh uses, and in the European bands there is a duty cycle to respect.
+//!
+//! So this is opt-in, and deliberately slow when switched on: **one node per
+//! round**, in turn, and only nodes heard recently. A node that has been silent
+//! for a day is not worth transmitting at.
+//!
+//! ```toml
+//! [modules.telemetry]
+//! neighbours = true       # off unless asked for
+//! every_minutes = 30      # one request per interval, taking turns
+//! ```
+//!
+//! # An answer does not say who sent it
+//!
+//! `PUSH_CODE_BINARY_RESPONSE` carries only the tag of the request. This module
+//! therefore remembers which contact a tag belongs to — in memory, because a
+//! restart loses the pending requests anyway and an answer to a question
+//! nobody remembers asking is not worth storing.
 //!
 //! # What this costs on disk
 //!
@@ -40,7 +57,12 @@ use meshdash_core::{
     event::AppEvent,
     module::{AppContext, Module},
 };
-use meshdash_proto::battery::{self, BatteryAndStorage};
+use meshdash_proto::{
+    battery::{self, BatteryAndStorage},
+    binary_request::{self, BinaryResponse, Telemetry},
+    lpp::{self, Value},
+    send::SendReceipt,
+};
 use serde::{Deserialize, Serialize};
 
 /// Schema of this module. Versions count from 1, per module.
@@ -75,7 +97,73 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX telemetry_signal_samples_at ON telemetry_signal_samples (at);
     ",
     },
+    Migration {
+        version: 3,
+        description: "readings other nodes reported about themselves",
+        sql: "
+        CREATE TABLE telemetry_neighbour_samples (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key  TEXT    NOT NULL,
+            at          TEXT    NOT NULL,
+            channel     INTEGER NOT NULL,
+            type_code   INTEGER NOT NULL,
+            -- One of these three shapes is filled, depending on the type.
+            value       REAL,
+            axis_x      REAL,
+            axis_y      REAL,
+            axis_z      REAL,
+            latitude    REAL,
+            longitude   REAL,
+            altitude    REAL
+        );
+
+        CREATE INDEX telemetry_neighbour_samples_at
+            ON telemetry_neighbour_samples (at);
+        CREATE INDEX telemetry_neighbour_samples_key
+            ON telemetry_neighbour_samples (public_key);
+
+        -- Whom to ask, and when they were last worth asking.
+        --
+        -- Kept here rather than read from the nodes module: a module does not
+        -- read another's tables (docs/module-system.md), and 'when did we last
+        -- ask this node' belongs to nobody else anyway. The keys come from
+        -- advert pushes, which carry the full 32-byte key a request needs.
+        CREATE TABLE telemetry_neighbours (
+            public_key     TEXT PRIMARY KEY,
+            last_heard_at  TEXT NOT NULL,
+            last_asked_at  TEXT
+        );
+    ",
+    },
 ];
+
+/// How this module may be configured, under `[modules.telemetry]`.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Settings {
+    /// Whether to ask other nodes for their readings at all.
+    ///
+    /// Off by default: this transmits into a shared band on the operator's
+    /// behalf, which is their decision to make, not a default to inherit.
+    pub neighbours: bool,
+    /// Minutes between two requests. One node is asked per interval.
+    pub every_minutes: u64,
+    /// Do not ask a node that has not been heard in this many hours.
+    pub silent_after_hours: i64,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            neighbours: false,
+            // Half an hour per node is slow on purpose. With ten reachable
+            // neighbours that is a full round in five hours — plenty for a
+            // battery curve, and gentle on a band everyone shares.
+            every_minutes: 30,
+            silent_after_hours: 24,
+        }
+    }
+}
 
 /// How often the node is asked.
 ///
@@ -94,9 +182,41 @@ const DEFAULT_LIMIT: i64 = 500;
 /// Largest number of readings a single request may ask for.
 const MAX_LIMIT: i64 = 5_000;
 
+/// How long a tag stays valid before the answer is given up on.
+///
+/// The node's own estimate travels in the receipt, but a mesh can be slow and
+/// an answer that arrives after this is no longer attributable to anyone.
+const TAG_LIFETIME: Duration = Duration::from_secs(300);
+
 /// Records battery and storage over time.
 #[derive(Debug, Default)]
 pub struct TelemetryModule;
+
+/// Which contact a pending request belongs to.
+///
+/// In memory only: a restart loses the pending requests, and an answer to a
+/// question nobody remembers asking cannot be attributed to a node.
+#[derive(Debug, Default, Clone)]
+struct PendingRequests(Arc<std::sync::Mutex<Vec<(u32, String, std::time::Instant)>>>);
+
+impl PendingRequests {
+    fn remember(&self, tag: u32, public_key: String) {
+        let Ok(mut pending) = self.0.lock() else {
+            return;
+        };
+        pending.retain(|(_, _, since)| since.elapsed() < TAG_LIFETIME);
+        pending.push((tag, public_key, std::time::Instant::now()));
+    }
+
+    /// Takes the contact a tag belongs to, if the tag is still known.
+    fn take(&self, tag: u32) -> Option<String> {
+        let mut pending = self.0.lock().ok()?;
+        let index = pending
+            .iter()
+            .position(|(candidate, ..)| *candidate == tag)?;
+        Some(pending.remove(index).1)
+    }
+}
 
 /// One stored reception-quality reading.
 #[derive(Debug, Serialize, PartialEq)]
@@ -152,12 +272,15 @@ impl Module for TelemetryModule {
         Some(
             Router::new()
                 .route("/battery", get(list_samples))
-                .route("/signal", get(list_signal_samples)),
+                .route("/signal", get(list_signal_samples))
+                .route("/neighbours", get(list_neighbour_samples)),
         )
     }
 
     async fn start(&self, context: &AppContext) -> Result<(), String> {
         let context = Arc::new(context.clone());
+        let pending = PendingRequests::default();
+        let pending_for_events = pending.clone();
 
         // One task listens, so a fresh connection is sampled at once instead of
         // waiting out the interval.
@@ -167,6 +290,12 @@ impl Module for TelemetryModule {
             loop {
                 match events.recv().await {
                     Ok(AppEvent::NodeConnected) => take_sample(&on_connect).await,
+                    Ok(AppEvent::Push { payload }) => {
+                        // Two kinds of push matter here: an advert tells us a
+                        // node is worth asking, a binary response is an answer
+                        // to something we asked.
+                        handle_push(&on_connect, &payload, &pending_for_events).await;
+                    }
                     // Reception quality is not ours to ask for; it is
                     // announced by whoever received the packet.
                     Ok(AppEvent::Module { module, kind, data })
@@ -188,6 +317,29 @@ impl Module for TelemetryModule {
             }
         });
 
+        // Asking other nodes is opt-in; see the note at the top of this file.
+        let settings: Settings = context
+            .settings
+            .get("telemetry")
+            .map_err(|error| error.to_string())?;
+
+        if settings.neighbours {
+            let asking = Arc::clone(&context);
+            let pending_for_task = pending.clone();
+            tokio::spawn(async move {
+                let mut ticker =
+                    tokio::time::interval(Duration::from_secs(settings.every_minutes * 60));
+                ticker.tick().await;
+
+                loop {
+                    ticker.tick().await;
+                    ask_one_neighbour(&asking, &settings, &pending_for_task).await;
+                }
+            });
+        } else {
+            tracing::debug!("not asking other nodes: [modules.telemetry] neighbours is off");
+        }
+
         // The other keeps the curve going.
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(SAMPLE_INTERVAL);
@@ -203,6 +355,296 @@ impl Module for TelemetryModule {
 
         Ok(())
     }
+}
+
+/// One reading another node reported, as the API returns it.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct NeighbourSample {
+    /// Whose reading, lowercase hex.
+    pub public_key: String,
+    /// When MeshDash received it.
+    pub at: DateTime<Utc>,
+    /// Which sensor of that node. 1 is the node itself.
+    pub channel: u8,
+    /// The LPP type code, passed through rather than named: what a code means
+    /// is the sensor's business, and inventing names would be guessing.
+    pub type_code: u8,
+    /// A single value, where the type has one.
+    pub value: Option<f64>,
+    /// Three axes, where the type has them.
+    pub axes: Option<[f64; 3]>,
+    /// A position, where the type is one.
+    pub position: Option<[f64; 3]>,
+}
+
+/// Answers with what other nodes reported, newest first.
+async fn list_neighbour_samples(
+    State(context): State<AppContext>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Vec<NeighbourSample>>, ListError> {
+    read_neighbour_samples(&context, query.effective_limit())
+        .await
+        .map(Json)
+        .map_err(ListError)
+}
+
+/// One row of `telemetry_neighbour_samples`.
+type NeighbourRow = (
+    String,
+    String,
+    i64,
+    i64,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+);
+
+/// Reads what other nodes reported, newest first.
+pub async fn read_neighbour_samples(
+    context: &AppContext,
+    limit: i64,
+) -> Result<Vec<NeighbourSample>, sqlx::Error> {
+    let rows: Vec<NeighbourRow> = sqlx::query_as(
+        "SELECT public_key, at, channel, type_code, value,
+                axis_x, axis_y, axis_z, latitude, longitude, altitude
+         FROM telemetry_neighbour_samples ORDER BY id DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(NeighbourSample {
+                public_key: row.0,
+                at: match DateTime::parse_from_rfc3339(&row.1) {
+                    Ok(time) => time.with_timezone(&Utc),
+                    Err(error) => {
+                        tracing::error!(%error, "stored timestamp is not RFC 3339");
+                        return None;
+                    }
+                },
+                channel: row.2 as u8,
+                type_code: row.3 as u8,
+                value: row.4,
+                axes: match (row.5, row.6, row.7) {
+                    (Some(x), Some(y), Some(z)) => Some([x, y, z]),
+                    _ => None,
+                },
+                position: match (row.8, row.9, row.10) {
+                    (Some(lat), Some(lon), Some(alt)) => Some([lat, lon, alt]),
+                    _ => None,
+                },
+            })
+        })
+        .collect())
+}
+
+/// Reacts to a push: adverts say whom to ask, responses are the answers.
+async fn handle_push(context: &AppContext, payload: &[u8], pending: &PendingRequests) {
+    // An advert carries the full key a request needs. Both forms start with
+    // it, so the short one is enough — see meshdash_proto::advert.
+    if let Ok(advert) = meshdash_proto::advert::Advert::parse(payload) {
+        if let Err(error) = note_heard(context, advert.public_key()).await {
+            tracing::error!(%error, "could not note that a node was heard");
+        }
+        return;
+    }
+
+    let Ok(response) = BinaryResponse::parse(payload) else {
+        return;
+    };
+
+    // Only the tag comes back, so the sender is whoever we asked under it.
+    let Some(public_key) = pending.take(response.tag) else {
+        tracing::debug!(
+            tag = response.tag,
+            "an answer to a question we no longer remember"
+        );
+        return;
+    };
+
+    let decoded = lpp::decode(&response.payload);
+    if let Some(stopped) = &decoded.stopped {
+        // Worth saying: it means a sensor type this build does not know, and
+        // that everything after it in that payload was lost.
+        tracing::warn!(%stopped, "stopped reading a neighbour's telemetry early");
+    }
+
+    if let Err(error) = store_neighbour_readings(context, &public_key, &decoded.readings).await {
+        tracing::error!(%error, "could not store a neighbour's telemetry");
+    }
+}
+
+/// Remembers that a node was heard, so it becomes worth asking.
+async fn note_heard(context: &AppContext, public_key: &[u8; 32]) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO telemetry_neighbours (public_key, last_heard_at)
+         VALUES (?, ?)
+         ON CONFLICT (public_key) DO UPDATE SET last_heard_at = excluded.last_heard_at",
+    )
+    .bind(to_hex(public_key))
+    .bind(Utc::now().to_rfc3339())
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
+
+/// Asks the node that has waited longest for its turn.
+///
+/// One per round, on purpose: every request goes out over a band the whole
+/// mesh shares. Nodes silent beyond `silent_after_hours` are skipped — no
+/// point transmitting at something that is not there.
+async fn ask_one_neighbour(context: &AppContext, settings: &Settings, pending: &PendingRequests) {
+    let cutoff = (Utc::now() - chrono::Duration::hours(settings.silent_after_hours)).to_rfc3339();
+
+    // Never asked comes first, then whoever was asked longest ago.
+    let candidate: Option<(String,)> = match sqlx::query_as(
+        "SELECT public_key FROM telemetry_neighbours
+         WHERE last_heard_at > ?
+         ORDER BY last_asked_at IS NOT NULL, last_asked_at, public_key
+         LIMIT 1",
+    )
+    .bind(&cutoff)
+    .fetch_optional(context.db.pool())
+    .await
+    {
+        Ok(found) => found,
+        Err(error) => {
+            tracing::error!(%error, "could not pick a node to ask");
+            return;
+        }
+    };
+
+    let Some((public_key,)) = candidate else {
+        tracing::debug!("nobody has been heard recently enough to ask");
+        return;
+    };
+
+    let Some(key_bytes) = from_hex(&public_key) else {
+        tracing::error!(public_key, "stored key is not readable hex");
+        return;
+    };
+
+    // Four bytes that differ from last time, or the second request to the
+    // same node would hash identically to the first and be dropped as a
+    // duplicate. Not cryptographic randomness and not required to be: the
+    // firmware calls it a "blob to help make packet-hash unique", so being
+    // different is the whole job. A clock in nanoseconds does that without
+    // pulling in a dependency for it.
+    let nonce = nonce_from_clock();
+    let frame = binary_request::encode_telemetry_request(&key_bytes, Telemetry::ALL, nonce);
+
+    match context.link.request(frame).await {
+        Ok(answer) => match SendReceipt::parse(&answer) {
+            // The receipt's acknowledgement field carries the tag here; the
+            // frame layout is the same as for a sent message.
+            Ok(receipt) => {
+                if let Some(tag) = receipt.expected_ack {
+                    pending.remember(tag, public_key.clone());
+                }
+                if let Err(error) = note_asked(context, &public_key).await {
+                    tracing::error!(%error, "could not note that a node was asked");
+                }
+                tracing::info!(node = public_key, "asked a node for its telemetry");
+            }
+            Err(error) => tracing::warn!(%error, "the node refused the telemetry request"),
+        },
+        Err(error) => tracing::warn!(%error, "could not send a telemetry request"),
+    }
+}
+
+/// Four bytes that differ between calls. See the note at the call site.
+fn nonce_from_clock() -> [u8; 4] {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.subsec_nanos())
+        .unwrap_or(0);
+
+    nanos.to_le_bytes()
+}
+
+/// Records that a node has had its turn, so the next round picks another.
+async fn note_asked(context: &AppContext, public_key: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE telemetry_neighbours SET last_asked_at = ? WHERE public_key = ?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(public_key)
+        .execute(context.db.pool())
+        .await?;
+
+    Ok(())
+}
+
+/// Stores what another node reported about itself.
+pub async fn store_neighbour_readings(
+    context: &AppContext,
+    public_key: &str,
+    readings: &[lpp::Reading],
+) -> Result<(), sqlx::Error> {
+    let now = Utc::now().to_rfc3339();
+
+    for reading in readings {
+        let (value, axes, position) = match &reading.value {
+            Value::Number(value) => (Some(*value), None, None),
+            Value::Axes { x, y, z } => (None, Some((*x, *y, *z)), None),
+            Value::Position {
+                latitude,
+                longitude,
+                altitude,
+            } => (None, None, Some((*latitude, *longitude, *altitude))),
+        };
+
+        sqlx::query(
+            "INSERT INTO telemetry_neighbour_samples
+                (public_key, at, channel, type_code, value,
+                 axis_x, axis_y, axis_z, latitude, longitude, altitude)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(public_key)
+        .bind(&now)
+        .bind(i64::from(reading.channel))
+        .bind(i64::from(reading.type_code))
+        .bind(value)
+        .bind(axes.map(|(x, ..)| x))
+        .bind(axes.map(|(_, y, _)| y))
+        .bind(axes.map(|(.., z)| z))
+        .bind(position.map(|(lat, ..)| lat))
+        .bind(position.map(|(_, lon, _)| lon))
+        .bind(position.map(|(.., alt)| alt))
+        .execute(context.db.pool())
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Turns bytes into lowercase hex, as the API spells binary data.
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes.iter().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    })
+}
+
+/// Reads a full 32-byte key back from hex.
+fn from_hex(text: &str) -> Option<[u8; 32]> {
+    if text.len() != 64 {
+        return None;
+    }
+
+    let mut key = [0u8; 32];
+    for (index, byte) in key.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(text.get(index * 2..index * 2 + 2)?, 16).ok()?;
+    }
+
+    Some(key)
 }
 
 /// Asks the node once and stores what it says.

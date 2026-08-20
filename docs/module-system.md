@@ -62,7 +62,13 @@ Das ist der Lackmustest für den Schnitt.
 - eigene Routen unter `/api/v1/<modul>/…` anbieten
 - auf dem Event-Bus mithören und selbst Ereignisse veröffentlichen
 - Kommandos über den `Link` an den Node schicken
-- eigene Konfiguration unter `[modules.<modul>]` lesen
+- eigene Konfiguration unter `[modules.<modul>]` lesen —
+  `context.settings.get::<MeineOptionen>("modul")`. Der Kern trägt den
+  Abschnitt nur weiter; was darin steht, weiß nur das Modul. Fehlt der
+  Abschnitt, gilt der Standardwert des Typs, damit ein Modul auch
+  unkonfiguriert läuft. Ein Abschnitt, der **nicht passt**, ist ein Fehler und
+  kein stiller Rückfall — eine verschriebene Option, die wirkungslos bleibt,
+  fällt sonst niemandem auf.
 
 **Darf nicht:**
 
@@ -124,7 +130,7 @@ pflegen, sobald sich etwas ändert.
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/{status,connections}`, mit Oberfläche |
 | `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — `/api/v1/nodes/{contacts,adverts}`, mit Liste und Netzansicht |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — `/api/v1/messages/{received,channel-received,channels,send,channel-send}`, mit Oberfläche |
-| `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/{battery,signal}` mit Kurven; fremde Nodes offen |
+| `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/{battery,signal,neighbours}`; Nachbarabfrage abschaltbar |
 | `map` | Geografische Darstellung bekannter Positionen | angedacht |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |
 | `alerts` | Benachrichtigung, wenn ein Node ausfällt | angedacht |

@@ -147,11 +147,9 @@ Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
   `CMD_SEND_BINARY_REQ`. In drei Schritten, jeder für sich prüfbar:
   - [x] Dekoder und Anfrage-/Antwortkodierung in `meshdash-proto`
         (`lpp`, `binary_request`)
-  - [ ] Modul `telemetry` fragt Nachbarn und speichert, was zurückkommt.
-        Offen sind dabei **Betriebsfragen**, keine Protokollfragen: wie oft
-        gefragt wird, welche Knoten überhaupt, und was mit einem Node
-        geschieht, der nie antwortet.
-  - [ ] Oberfläche: fremde Messwerte je Knoten
+  - [x] Modul `telemetry` fragt Nachbarn und speichert, was zurückkommt —
+        abschaltbar, standardmäßig aus, ein Knoten pro Runde
+  - [x] Oberfläche: fremde Messwerte je Knoten
 - **Aufbewahrung und Verdichtung von Telemetrie**
 - Docker-Image, Release-Automatisierung, ARM-Builds für den Raspberry Pi
 

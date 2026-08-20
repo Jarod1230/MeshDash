@@ -72,7 +72,12 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     // disconnect.
     let (link, prepared_link) = link::prepare(transport, LinkConfig::default(), events.clone());
 
-    let context = AppContext { db, events, link };
+    let context = AppContext {
+        db,
+        events,
+        link,
+        settings: config.modules.clone(),
+    };
 
     // The one place modules are switched on. Removing one means deleting its
     // line here and its directory — nothing else, see docs/module-system.md.

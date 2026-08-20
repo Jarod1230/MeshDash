@@ -73,6 +73,48 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX nodes_adverts_heard_at ON nodes_adverts (heard_at);
     ",
     },
+    Migration {
+        version: 3,
+        description: "routes are stored as stations and hops, not as a byte count",
+        sql: "
+        -- The length byte of a route packs two fields: how many stations,
+        -- and how many bytes each takes (meshdash_proto::path). Reading it as
+        -- a plain byte count made 0xFF — the firmware's marker for 'no route'
+        -- — into a 64-hop journey, and 64 into sixty-four stations when it
+        -- means none. Real hardware carries these values constantly.
+        --
+        -- `path` becomes nullable and gains a station count beside it, which
+        -- is not derivable from the byte length. SQLite cannot drop NOT NULL
+        -- in place, so the table is rebuilt.
+        CREATE TABLE nodes_contacts_rebuilt (
+            public_key    TEXT    PRIMARY KEY,
+            name          TEXT    NOT NULL,
+            contact_type  INTEGER NOT NULL,
+            flags         INTEGER NOT NULL,
+            path          TEXT,
+            stations      INTEGER,
+            latitude      INTEGER,
+            longitude     INTEGER,
+            last_advert   INTEGER NOT NULL,
+            first_seen    TEXT    NOT NULL,
+            last_seen     TEXT    NOT NULL
+        );
+
+        -- Old paths were decoded with the wrong rule, so none of them can be
+        -- trusted and no station count can be recovered from them. Both are
+        -- dropped; the next contact listing — one arrives on every connection
+        -- — fills them in correctly.
+        INSERT INTO nodes_contacts_rebuilt
+            SELECT public_key, name, contact_type, flags, NULL, NULL,
+                   latitude, longitude, last_advert, first_seen, last_seen
+            FROM nodes_contacts;
+
+        DROP TABLE nodes_contacts;
+        ALTER TABLE nodes_contacts_rebuilt RENAME TO nodes_contacts;
+
+        CREATE INDEX nodes_contacts_last_seen ON nodes_contacts (last_seen);
+    ",
+    },
 ];
 
 /// How many sightings the listing returns at most.
@@ -97,8 +139,17 @@ pub struct KnownContact {
     pub contact_type: u8,
     /// Firmware flags, likewise unread.
     pub flags: u8,
-    /// The known route, as hex hop bytes.
-    pub path: String,
+    /// The known route as hex hop bytes, or `None` when the node has no route
+    /// to this contact.
+    ///
+    /// An empty string is not the same thing: it means reachable directly.
+    pub path: Option<String>,
+    /// How many stations the route passes through, or `None` without a route.
+    ///
+    /// Not derivable from `path`: a station can take more than one byte, so
+    /// the hop count and the byte count are different numbers. See
+    /// `meshdash_proto::path`.
+    pub stations: Option<u8>,
     /// Latitude in degrees, if known.
     pub latitude: Option<f64>,
     /// Longitude in degrees, if known.
@@ -216,14 +267,15 @@ pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<()
     // with it the answer to "since when do we know this node".
     sqlx::query(
         "INSERT INTO nodes_contacts
-            (public_key, name, contact_type, flags, path, latitude, longitude,
-             last_advert, first_seen, last_seen)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (public_key, name, contact_type, flags, path, stations, latitude,
+             longitude, last_advert, first_seen, last_seen)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (public_key) DO UPDATE SET
             name = excluded.name,
             contact_type = excluded.contact_type,
             flags = excluded.flags,
             path = excluded.path,
+            stations = excluded.stations,
             latitude = excluded.latitude,
             longitude = excluded.longitude,
             last_advert = excluded.last_advert,
@@ -233,7 +285,8 @@ pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<()
     .bind(&contact.name)
     .bind(i64::from(contact.contact_type))
     .bind(i64::from(contact.flags))
-    .bind(to_hex(&contact.path))
+    .bind(contact.path.as_ref().map(|route| to_hex(&route.hops)))
+    .bind(contact.path.as_ref().map(|route| i64::from(route.stations)))
     .bind(contact.latitude.map(i64::from))
     .bind(contact.longitude.map(i64::from))
     .bind(i64::from(contact.last_advert))
@@ -321,7 +374,8 @@ type ContactRow = (
     String,
     i64,
     i64,
-    String,
+    Option<String>,
+    Option<i64>,
     Option<i64>,
     Option<i64>,
     i64,
@@ -332,8 +386,8 @@ type ContactRow = (
 /// Reads every known contact, most recently seen first.
 pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sqlx::Error> {
     let rows: Vec<ContactRow> = sqlx::query_as(
-        "SELECT public_key, name, contact_type, flags, path, latitude, longitude,
-                last_advert, first_seen, last_seen
+        "SELECT public_key, name, contact_type, flags, path, stations, latitude,
+                longitude, last_advert, first_seen, last_seen
          FROM nodes_contacts ORDER BY last_seen DESC, public_key",
     )
     .fetch_all(context.db.pool())
@@ -348,11 +402,12 @@ pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sq
                 contact_type: row.2 as u8,
                 flags: row.3 as u8,
                 path: row.4,
-                latitude: row.5.map(|value| value as f64 / 1e6),
-                longitude: row.6.map(|value| value as f64 / 1e6),
-                last_advert: row.7 as u32,
-                first_seen: parse_time(&row.8)?,
-                last_seen: parse_time(&row.9)?,
+                stations: row.5.map(|value| value as u8),
+                latitude: row.6.map(|value| value as f64 / 1e6),
+                longitude: row.7.map(|value| value as f64 / 1e6),
+                last_advert: row.8 as u32,
+                first_seen: parse_time(&row.9)?,
+                last_seen: parse_time(&row.10)?,
             })
         })
         .collect())

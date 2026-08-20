@@ -1,4 +1,4 @@
-import { hopCount, type KnownContact } from './types';
+import { describeRoute, type KnownContact } from './types';
 
 /**
  * Who hears whom, drawn from what the node actually knows.
@@ -43,8 +43,11 @@ export function place(contacts: readonly KnownContact[], now: number): Placed[] 
   const byRing = new Map<number, KnownContact[]>();
 
   for (const contact of contacts) {
-    // A direct neighbour has no hops in between; it sits on the first ring.
-    const hops = Math.min(hopCount(contact.path) + 1, MAX_RING);
+    // A contact with no known route is not zero hops away. It goes on the
+    // outermost ring and is drawn as unreachable, rather than pretending to
+    // a distance nobody measured.
+    const hops =
+      contact.stations === null ? MAX_RING : Math.min(contact.stations + 1, MAX_RING);
     const ring = byRing.get(hops) ?? [];
     ring.push(contact);
     byRing.set(hops, ring);
@@ -118,7 +121,11 @@ export function Topology({
             y1={CENTRE}
             x2={node.x}
             y2={node.y}
-            className={node.stale ? 'stroke-mesh-border' : 'stroke-mesh-accent-dim'}
+            className={
+              node.stale || node.contact.stations === null
+                ? 'stroke-mesh-border'
+                : 'stroke-mesh-accent-dim'
+            }
             strokeWidth={1}
             strokeDasharray={node.hops > 1 ? '3 3' : undefined}
           />
@@ -151,7 +158,7 @@ export function Topology({
               </text>
             )}
             <title>
-              {node.contact.name} · {node.hops === 1 ? 'direkt' : `${node.hops - 1} Zwischenstationen`}
+              {node.contact.name} · {describeRoute(node.contact.stations)}
             </title>
           </g>
         ))}
@@ -159,6 +166,7 @@ export function Topology({
 
       <figcaption className="mt-3 text-xs text-mesh-faint">
         In der Mitte steht der eigene Node. Der Abstand heißt Zwischenstationen, nicht Entfernung;
+        Knoten ohne bekannten Weg stehen ganz außen und sind grau angebunden;
         die Richtung bedeutet nichts — Koordinaten meldet kaum ein Knoten, und eine erfundene
         Anordnung sähe aus wie eine Karte, ohne eine zu sein. Blass heißt: seit über einem Tag
         nicht gehört.

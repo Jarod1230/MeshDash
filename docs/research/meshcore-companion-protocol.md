@@ -1,6 +1,6 @@
 # MeshCore Companion-Protokoll — Recherchestand
 
-**Stand: 2026-08-20.** Verifikationsstufen nach [`README.md`](README.md).
+**Stand: 2026-08-20.** Erstmals gegen echte Hardware geprüft. Verifikationsstufen nach [`README.md`](README.md).
 
 Verifiziert am Firmware-Quellcode (Stufe `SOURCE`) sind:
 
@@ -397,6 +397,50 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**Die Pfadlänge ist keine Länge** — Stufe `HARDWARE`, entdeckt am 2026-08-20 an
+einem echten Companion (Xiao S3 WIO, Firmware v1.17.0), belegt an
+`Packet::isValidPathLen()` und `Packet::writePath()` in `src/Packet.cpp`,
+Commit `d929643`:
+
+```c
+uint8_t hash_count = path_len & 63;
+uint8_t hash_size  = (path_len >> 6) + 1;
+if (hash_size == 4) return false;            // reserviert
+return hash_count * hash_size <= MAX_PATH_SIZE;
+```
+
+Das eine Byte trägt **zwei Felder**:
+
+```text
+Bit  7 6 5 4 3 2 1 0
+     \_/ \_________/
+      |       └── Anzahl der Zwischenstationen (0..63)
+      └────────── Bytes je Station, minus eins (0..2; 3 ist reserviert)
+```
+
+Die belegte Byte-Zahl im Pfadfeld ist `hash_count * hash_size`, **nicht**
+`path_len`. Daraus folgen zwei Werte, die als schlichte Byte-Zahl gelesen
+stillschweigend falsch sind:
+
+| Byte | naive Lesart | tatsächlich |
+| --- | --- | --- |
+| `64` | 64 Stationen | **0 Stationen**, Hashes zu 2 Byte |
+| `255` (`0xFF`) | 255 Stationen | **kein gültiger Pfad** — genau das nutzt die Firmware als `OUT_PATH_UNKNOWN` (`src/helpers/ContactInfo.h`) |
+
+**So fiel es auf:** Von 25 Kontakten eines echten Node meldeten 22 den Wert
+`0xFF` und einer den Wert `64`. MeshDash zeigte daraufhin ein Mesh, in dem fast
+alles 64 Stationen entfernt lag — plausibel genug, um in der Datenbank zu
+landen, und mit einem selbstgebauten Mock nie sichtbar, weil dieser dieselbe
+falsche Annahme abbildete.
+
+Umgesetzt in `meshdash_proto::path`; genutzt von `contact`, `message` und
+`channel`, die alle dasselbe Byte tragen.
+
+**`OUT_PATH_UNKNOWN` ist `0xFF`** und heißt „kein Weg zu diesem Kontakt
+bekannt". Das ist etwas anderes als ein Weg über null Stationen — der heißt
+„direkt erreichbar". Wer beides gleich behandelt, macht aus einem
+unerreichbaren Knoten den nächstgelegenen.
+
 **Telemetrie fremder Nodes — der Weg dorthin**, Stufe `SOURCE`, Commit
 `d929643`. Eine Telemetrieantwort kommt **nur auf eigene Anfrage**: Die Firmware
 vergleicht das Tag (`tag == pending_telemetry` in `onContactResponse()`). Wer
@@ -633,8 +677,9 @@ Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 2. Bedeutung der Werte in `type` eines Kontakts und der oberen Bits von
    `flags`. Bit 0 von `flags` ist belegt (Favorit, siehe oben), der Rest nicht.
 3. Aufbau von `RESP_CODE_STATS` je Statistiktyp.
-4. Genaue Kodierung der Pfadangaben (`path`, `path_len`) in den Pfad-Antworten.
-   Für Nachrichten ist sie geklärt: ein Byte, `0xFF` heißt „kein Flood-Pfad".
+4. Aufbau der Pfad-Antworten (`RESP_CODE_ADVERT_PATH`,
+   `PUSH_CODE_PATH_DISCOVERY_RESPONSE`). Die **Kodierung** des Längenbytes ist
+   geklärt, siehe oben; offen ist der Rahmen dieser beiden Antworten.
 5. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
    Version 3 ist gesetzt (`meshdash_proto::device::PROTOCOL_VERSION`), weil sie
    die SNR-Varianten der Nachrichten bringt. Version 8 schaltet Statistiken

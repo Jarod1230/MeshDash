@@ -135,8 +135,6 @@ pub enum MessageError {
 /// Where the sender prefix starts, per variant.
 const HEADER_V3: usize = 4;
 const HEADER_PLAIN: usize = 1;
-/// Marks a packet that did not travel as a flood.
-const NO_FLOOD_PATH: u8 = 0xFF;
 
 impl Message {
     /// Reads a message payload, opcode byte included.
@@ -199,8 +197,10 @@ impl Message {
             // Stored multiplied by four, and signed: LoRa decodes below the
             // noise floor, so negative values are ordinary.
             snr: carries_snr.then(|| f32::from(payload[1] as i8) / 4.0),
-            // 0xFF marks a packet that did not travel as a flood.
-            path_len: (raw_path_len != NO_FLOOD_PATH).then_some(raw_path_len),
+            // The byte encodes stations and their width; 0xFF is the
+            // firmware's marker for "did not travel as a flood". See
+            // crate::path — read as a plain count it is quietly wrong.
+            path_len: crate::path::decode(raw_path_len).map(|shape| shape.stations),
             text_type,
             sent_at,
             signature_prefix,

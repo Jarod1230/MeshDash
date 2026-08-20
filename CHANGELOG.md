@@ -10,6 +10,16 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Wege durchs Mesh wurden falsch gelesen.** Das Längenbyte einer Route ist
+  keine Byte-Zahl, sondern trägt zwei Felder: wie viele Zwischenstationen, und
+  wie breit jede ist. Dadurch zeigte MeshDash bei einem echten Node fast jeden
+  Kontakt als „64 Stationen entfernt" — tatsächlich war für 22 von 25 gar kein
+  Weg bekannt und einer war direkt erreichbar. Aufgefallen beim ersten Test mit
+  echter Hardware. Betroffen waren Kontaktliste, Netzansicht und die
+  Stationsangabe an Nachrichten.
+
 ### Added
 
 - **Eine Karte.** Unter „Knoten" gibt es neben Liste und Netz jetzt eine

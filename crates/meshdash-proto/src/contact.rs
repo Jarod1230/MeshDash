@@ -7,7 +7,8 @@
 //!
 //! Source: `writeContactRespFrame()` in `examples/companion_radio/MyMesh.cpp`,
 //! MeshCore commit `d929643`. `PUB_KEY_SIZE` (32) and `MAX_PATH_SIZE` (64) from
-//! `src/MeshCore.h` of the same commit.
+//! `src/MeshCore.h` of the same commit; the route encoding lives in
+//! [`crate::path`].
 //!
 //! ```text
 //! offset  size  field
@@ -30,6 +31,14 @@
 //! them mean anything. Reading all 64 would append whatever the previous, longer
 //! path left behind — a route that looks plausible and never existed.
 //!
+//! # The length byte is not a length
+//!
+//! `out_path_len` packs two fields — how many stations, and how many bytes
+//! each takes. See [`crate::path`]; `0xFF` is `OUT_PATH_UNKNOWN` and `64`
+//! means *zero* stations, not sixty-four. Reading the byte as a count turned a
+//! contact list full of unreachable nodes into a mesh where everything sat 64
+//! hops away, which is how real hardware exposed it.
+//!
 //! # Coordinates are micro-degrees
 //!
 //! The firmware multiplies by 1e6 when storing and divides when reading, and
@@ -46,7 +55,6 @@ mod layout {
     pub const FLAGS: usize = 34;
     pub const PATH_LEN: usize = 35;
     pub const PATH: usize = 36;
-    pub const MAX_PATH_SIZE: usize = 64;
     pub const NAME: usize = 100;
     pub const NAME_SIZE: usize = 32;
     pub const LAST_ADVERT: usize = 132;
@@ -55,6 +63,15 @@ mod layout {
     pub const LAST_MODIFIED: usize = 144;
     /// Total length of a contact frame.
     pub const LEN: usize = 148;
+}
+
+/// A route to a contact, as the node knows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Route {
+    /// How many stations the packet passes through. Zero means direct.
+    pub stations: u8,
+    /// The raw hop bytes, `stations × bytes_per_station` of them.
+    pub hops: Vec<u8>,
 }
 
 /// How the node describes one contact.
@@ -66,8 +83,11 @@ pub struct Contact {
     pub contact_type: u8,
     /// Firmware flags, passed through unread.
     pub flags: u8,
-    /// The known route, already cut to its used length.
-    pub path: Vec<u8>,
+    /// The known route, or `None` when the node has none to this contact.
+    ///
+    /// A route with zero stations is not the same as no route: it means
+    /// reachable directly.
+    pub path: Option<Route>,
     /// Display name.
     pub name: String,
     /// When the contact last advertised itself, in seconds.
@@ -133,9 +153,12 @@ impl Contact {
         let mut public_key = [0u8; layout::PUB_KEY_SIZE];
         public_key.copy_from_slice(&payload[layout::PUB_KEY..layout::PUB_KEY + 32]);
 
-        // Never trust the announced length past the field it describes.
-        let path_len = usize::from(payload[layout::PATH_LEN]).min(layout::MAX_PATH_SIZE);
-        let path = payload[layout::PATH..layout::PATH + path_len].to_vec();
+        // The byte says both how many stations and how wide each is; a byte
+        // that describes no valid route means the node has none.
+        let path = crate::path::decode(payload[layout::PATH_LEN]).map(|shape| Route {
+            stations: shape.stations,
+            hops: payload[layout::PATH..layout::PATH + shape.byte_len()].to_vec(),
+        });
 
         Ok(Self {
             public_key,
@@ -232,12 +255,62 @@ mod tests {
     }
 
     #[test]
+    fn treats_the_unknown_marker_as_no_path_at_all() {
+        // 0xFF is OUT_PATH_UNKNOWN, not a length. Clamping it to the field
+        // width yields 64 bytes of padding that read as a 64-hop route —
+        // a plausible-looking journey that never happened. Found against
+        // real hardware, where nearly every contact carries this marker.
+        let mut payload = contact_payload();
+        payload[layout::PATH_LEN] = 0xFF;
+
+        assert_eq!(Contact::parse(&payload).unwrap().path, None);
+    }
+
+    #[test]
+    fn a_known_direct_route_is_an_empty_path_not_an_unknown_one() {
+        // Zero hops means "reachable directly", which is knowledge. It must
+        // not collapse into the same value as "we have no idea".
+        let mut payload = contact_payload();
+        payload[layout::PATH_LEN] = 0;
+
+        assert_eq!(
+            Contact::parse(&payload).unwrap().path,
+            Some(Route {
+                stations: 0,
+                hops: Vec::new()
+            })
+        );
+    }
+
+    #[test]
     fn cuts_the_path_to_its_used_length() {
         // The field is 64 bytes wide whatever the route is. Taking all of it
         // would invent hops from whatever a previous, longer path left there.
         let contact = Contact::parse(&contact_payload()).unwrap();
 
-        assert_eq!(contact.path, vec![1, 2, 3]);
+        assert_eq!(
+            contact.path,
+            Some(Route {
+                stations: 3,
+                hops: vec![1, 2, 3]
+            })
+        );
+    }
+
+    #[test]
+    fn reads_a_route_whose_stations_are_wider_than_one_byte() {
+        // 0x42 = 0b01_000010: two stations, two bytes each.
+        let mut payload = contact_payload();
+        payload[layout::PATH_LEN] = 0x42;
+        payload[layout::PATH..layout::PATH + 4].copy_from_slice(&[1, 2, 3, 4]);
+
+        assert_eq!(
+            Contact::parse(&payload).unwrap().path,
+            Some(Route {
+                stations: 2,
+                hops: vec![1, 2, 3, 4]
+            })
+        );
     }
 
     #[test]
@@ -275,24 +348,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_contact_without_a_path() {
-        let mut payload = contact_payload();
-        payload[layout::PATH_LEN] = 0;
-
-        let contact = Contact::parse(&payload).unwrap();
-
-        assert!(contact.path.is_empty());
-    }
-
-    #[test]
-    fn ignores_a_path_length_beyond_the_field() {
+    fn refuses_a_length_byte_that_describes_no_route() {
         // Must not read past the field, whatever the node claims.
         let mut payload = contact_payload();
         payload[layout::PATH_LEN] = 200;
 
         let contact = Contact::parse(&payload).unwrap();
 
-        assert_eq!(contact.path.len(), layout::MAX_PATH_SIZE);
+        // 200 is 0b11_001000 — the reserved hash size, so not a route at all.
+        assert_eq!(contact.path, None);
     }
 
     #[test]

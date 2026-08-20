@@ -40,5 +40,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0007](0007-modul-ereignisse.md) | Module tauschen Daten über ein generisches Ereignis aus | Angenommen |
 | [0008](0008-frontend-bausteine.md) | react-router, eigener Datenabruf, eigenes SVG, Systemschriften | Angenommen |
 | [0009](0009-cayennelpp.md) | CayenneLPP selbst dekodieren, über `CMD_SEND_BINARY_REQ` | Angenommen |
+| [0010](0010-karte.md) | Karte als Ansicht in `nodes`, ohne Kacheln | Angenommen |
 
 Vorlage: [`template.md`](template.md).

@@ -622,3 +622,46 @@ Zeile gesetzt.
 3. Beim Prüfen im Browser gehören schmale Breiten dazu: Die Fehler dieser
    Sitzung — Knoten außerhalb der Zeichenfläche, überlappende Beschriftungen,
    eine vierzeilige Navigation — waren allesamt in keiner Testausgabe zu sehen.
+
+---
+
+## 2026-08-20 — Der erste echte Node hat zwei Protokollfehler in zehn Minuten gezeigt
+
+**Kontext:** Bis hierher lief alles gegen nachgestellte Nodes. Dann hing zum
+ersten Mal ein echter Companion am USB — ein Xiao S3 WIO mit Firmware v1.17.0.
+
+**Problem:** Die Kontaktliste kam sofort und sah falsch aus. Von 25 Kontakten
+zeigte MeshDash bei 22 einen Pfad aus 64 Nullbytes, bei einem „64 Stationen".
+Dahinter steckten **zwei** Fehler, beide in derselben Zeile Code:
+
+1. `0xFF` in `out_path_len` ist `OUT_PATH_UNKNOWN` — „kein Weg bekannt". Auf die
+   Feldbreite begrenzt wurde daraus eine Reise über 64 Stationen.
+2. Schlimmer: Das Byte ist **gar keine Länge**. Die unteren sechs Bit zählen die
+   Stationen, die oberen zwei sagen, wie viele Bytes jede belegt. `64` heißt
+   deshalb *null* Stationen mit Zwei-Byte-Hashes, nicht vierundsechzig.
+
+Beides warf keinen Fehler. Beides ergab Zahlen, die man einer Oberfläche glaubt.
+
+**Warum kein Test das fand:** Die Mocks stammen von mir, und sie bildeten meine
+eigene Annahme ab — in jedem Testfall stand im Längenbyte genau die Zahl der
+Bytes, die ich danach erwartete. Ein Mock kann eine falsche Annahme nicht
+widerlegen, er bestätigt sie. Die Quelle hätte es gekonnt: `isValidPathLen()`
+stand die ganze Zeit in `Packet.cpp`, drei Zeilen lang, und niemand hat sie
+gelesen, weil das Feld „path_len" heißt und nach einer Länge aussieht.
+
+**Konsequenz:**
+
+1. **Ein Feldname ist keine Spezifikation.** Wo die Firmware eine eigene
+   Prüf- oder Schreibfunktion für ein Feld hat (`isValidPathLen`, `writePath`),
+   ist die zu lesen — nicht die Deklaration.
+2. **Selbstgebaute Testdaten prüfen den Parser, nicht die Annahme.** Sie sind
+   trotzdem richtig; sie beweisen nur weniger, als es aussieht. Was sie nicht
+   ersetzen, ist ein Blick auf echte Bytes.
+3. **Ein Hardwaretest gehört früher.** Zehn Minuten mit einem echten Node haben
+   mehr Protokollfehler gefunden als sechs Wochen Mock-Tests. Nicht weil die
+   Tests schlecht wären, sondern weil sie eine andere Frage beantworten.
+
+**Belege:** `Packet::isValidPathLen()` und `Packet::writePath()` in
+`src/Packet.cpp`, `OUT_PATH_UNKNOWN` in `src/helpers/ContactInfo.h`, MeshCore
+Commit `d929643`; festgehalten in
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).

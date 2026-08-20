@@ -47,8 +47,6 @@ mod layout {
     pub const HEADER_PLAIN: usize = 1;
     /// Index, path length, text type, timestamp.
     pub const FIXED: usize = 1 + 1 + 1 + 4;
-    /// Marks a packet that did not travel as a flood.
-    pub const NO_FLOOD_PATH: u8 = 0xFF;
 
     /// Channel info: index, name, key.
     pub const INFO_INDEX: usize = 1;
@@ -141,7 +139,10 @@ impl ChannelMessage {
             // Stored multiplied by four, and signed: LoRa decodes below the
             // noise floor, so negative values are ordinary.
             snr: carries_snr.then(|| f32::from(payload[1] as i8) / 4.0),
-            path_len: (raw_path_len != layout::NO_FLOOD_PATH).then_some(raw_path_len),
+            // The byte encodes stations and their width; 0xFF is the
+            // firmware's marker for "did not travel as a flood". See
+            // crate::path — read as a plain count it is quietly wrong.
+            path_len: crate::path::decode(raw_path_len).map(|shape| shape.stations),
             text_type: TextType::from(payload[header_len + 2]),
             sent_at,
             // Runs to the end of the frame, unterminated and possibly cut
@@ -205,7 +206,7 @@ mod tests {
     fn plain_message(text: &str) -> Vec<u8> {
         let mut payload = vec![u8::from(Response::ChannelMsgRecv)];
         payload.push(3);
-        payload.push(layout::NO_FLOOD_PATH);
+        payload.push(0xFF); // did not travel as a flood
         payload.push(0);
         payload.extend_from_slice(&1_700_000_000_u32.to_le_bytes());
         payload.extend_from_slice(text.as_bytes());

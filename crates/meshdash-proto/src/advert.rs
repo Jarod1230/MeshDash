@@ -168,7 +168,13 @@ mod tests {
             panic!("expected a new advert");
         };
 
-        assert_eq!(contact.path, vec![7, 8]);
+        assert_eq!(
+            contact.path,
+            Some(crate::contact::Route {
+                stations: 2,
+                hops: vec![7, 8]
+            })
+        );
     }
 
     #[test]

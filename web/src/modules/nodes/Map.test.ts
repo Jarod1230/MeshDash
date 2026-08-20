@@ -8,6 +8,7 @@ const at = (name: string, latitude: number | null, longitude: number | null): Kn
   contact_type: 2,
   flags: 0,
   path: '',
+  stations: 0,
   latitude,
   longitude,
   last_advert: 0,

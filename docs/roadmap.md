@@ -188,6 +188,11 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   zitiert ihn deshalb als technisches Detail unter einer deutschen Zeile, statt
   ihn als Oberflächentext auszugeben. Ein Code je Ursache — Kabel weg, Zeitüberlauf,
   abgewiesen — ließe sich übersetzen und auswerten.
+- **Nachbarabfrage kommt spät in Gang.** `telemetry` erfährt von Knoten nur aus
+  Adverts, weil ihm die Kontaktliste nicht gehört. Ein frisch gestartetes
+  MeshDash fragt deshalb niemanden, obwohl der Node schon 25 Kontakte kennt —
+  am echten Gerät beobachtet. Der saubere Weg wäre, dass `nodes` seine Kontakte
+  als Ereignis veröffentlicht ([ADR-0007](decisions/0007-modul-ereignisse.md)).
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

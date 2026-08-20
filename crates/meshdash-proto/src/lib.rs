@@ -37,4 +37,5 @@ pub mod frame;
 pub mod lpp;
 pub mod message;
 pub mod opcode;
+pub mod path;
 pub mod send;

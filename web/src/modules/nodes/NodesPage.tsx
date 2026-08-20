@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Empty, Failed, Loading } from '../../ui/States';
 import { Map } from './Map';
 import { Topology } from './Topology';
-import { hopCount, shortKey, type KnownContact, type Sighting } from './types';
+import { describeRoute, shortKey, type KnownContact, type Sighting } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
 import { useResource } from '../../lib/useResource';
@@ -183,16 +183,13 @@ function ContactTable({
         <tbody className="divide-y divide-mesh-border">
           {contacts.map((contact) => {
             const silent = (now - new Date(contact.last_seen).getTime()) / 1000 > 86_400;
-            const hops = hopCount(contact.path);
             return (
               <tr key={contact.public_key} className={silent ? 'text-mesh-muted' : ''}>
                 <td className="px-4 py-2 text-mesh-text">{contact.name}</td>
                 <td className="tabular hidden px-4 py-2 text-xs text-mesh-faint sm:table-cell">
                   {shortKey(contact.public_key)}
                 </td>
-                <td className="px-4 py-2 text-mesh-muted">
-                  {hops === 0 ? 'direkt' : hops === 1 ? '1 Station' : `${hops} Stationen`}
-                </td>
+                <td className="px-4 py-2 text-mesh-muted">{describeRoute(contact.stations)}</td>
                 <td
                   className="tabular whitespace-nowrap px-4 py-2 text-right"
                   title={exactTime(contact.last_seen)}

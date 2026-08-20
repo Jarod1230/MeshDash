@@ -107,7 +107,7 @@ async fn writes_the_key_and_path_as_hex() {
         "got {}",
         contacts[0].public_key
     );
-    assert_eq!(contacts[0].path, "010203");
+    assert_eq!(contacts[0].path.as_deref(), Some("010203"));
 }
 
 #[tokio::test]
@@ -199,7 +199,7 @@ async fn a_new_advert_stores_the_contact_it_carries() {
     let contacts = read_contacts(&context).await.unwrap();
     assert_eq!(contacts.len(), 1);
     assert_eq!(contacts[0].name, "Nachbar");
-    assert_eq!(contacts[0].path, "0304");
+    assert_eq!(contacts[0].path.as_deref(), Some("0304"));
 }
 
 #[tokio::test]
@@ -251,4 +251,50 @@ async fn ignores_pushes_that_are_not_adverts() {
     push(&context, vec![0x83, 0x00]).await;
 
     assert!(read_adverts(&context).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_contact_without_a_known_route_stores_no_path() {
+    // The firmware marks that with OUT_PATH_UNKNOWN (0xFF) in the length
+    // field. Real hardware carries it on nearly every contact, and storing it
+    // as 64 zero bytes invented a 64-hop route.
+    let mut frame = contact_frame(0xAA, "Weit weg", &[]);
+    frame[35] = 0xFF; // OUT_PATH_UNKNOWN
+    let context = context_with(listing(vec![frame])).await;
+
+    sync_contacts(&context).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+    assert_eq!(contacts[0].path, None);
+    assert_eq!(contacts[0].stations, None);
+}
+
+#[tokio::test]
+async fn a_direct_contact_is_not_the_same_as_an_unknown_one() {
+    // Zero stations is knowledge: reachable directly. It must stay distinct
+    // from "no idea how to reach them".
+    let context = context_with(listing(vec![contact_frame(0xBB, "Direkt", &[])])).await;
+
+    sync_contacts(&context).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+    assert_eq!(contacts[0].path.as_deref(), Some(""));
+    assert_eq!(contacts[0].stations, Some(0));
+}
+
+#[tokio::test]
+async fn counts_stations_rather_than_bytes() {
+    // Two stations of two bytes each: four bytes of path, but two hops. The
+    // two numbers are different, and only one of them is what an operator
+    // wants to read.
+    let mut frame = contact_frame(0xCC, "Breiter Weg", &[]);
+    frame[35] = 0x42; // 0b01_000010
+    frame[36..40].copy_from_slice(&[1, 2, 3, 4]);
+    let context = context_with(listing(vec![frame])).await;
+
+    sync_contacts(&context).await.unwrap();
+
+    let contacts = read_contacts(&context).await.unwrap();
+    assert_eq!(contacts[0].stations, Some(2));
+    assert_eq!(contacts[0].path.as_deref(), Some("01020304"));
 }

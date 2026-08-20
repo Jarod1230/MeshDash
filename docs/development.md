@@ -62,9 +62,10 @@ SIGINT und SIGTERM.
 Dazu vier Module unter `/api/v1/`: `system`, `nodes`, `messages` und
 `telemetry`.
 
-**Was noch nicht geht:** die Oberfläche. Die Frontend-Registry ist leer, das
-eingebettete Dashboard ist eine Platzhalterseite. Sie wird mit Schritt 7
-ausgebaut, siehe [`roadmap.md`](roadmap.md).
+Die Oberfläche gibt es seit Schritt 7: Shell mit Navigation, Hell/Dunkel und
+Token-Anmeldung, dazu die Übersichtsseite des Moduls `system`. Die Seiten für
+`nodes`, `messages` und `telemetry` folgen, ebenso die Live-Aktualisierung über
+den Ereignisstrom — siehe [`roadmap.md`](roadmap.md).
 
 ## Arbeitsabläufe
 

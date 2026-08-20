@@ -1,40 +1,88 @@
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { modules } from '../modules';
+import { ThemeToggle } from './Theme';
+import { TokenGate } from './TokenGate';
 
 /**
  * Application shell.
  *
- * Scaffolding only — it renders the navigation from the module registry and
- * says so. Routing, live updates and the real dashboard arrive in step 7 of
- * docs/roadmap.md.
+ * Navigation comes from the module registry and from nowhere else: adding a
+ * page means adding a module, never touching this file. See
+ * docs/module-system.md.
  */
 export function App() {
   return (
-    <div className="flex min-h-screen bg-mesh-bg text-mesh-text">
-      <nav className="w-56 shrink-0 border-r border-mesh-border p-5">
-        <div className="mb-6 text-lg font-semibold tracking-tight">MeshDash</div>
-        {modules.length === 0 ? (
-          <p className="text-sm text-mesh-muted">Noch keine Module registriert.</p>
-        ) : (
-          <ul className="space-y-1">
-            {modules.map((m) => (
-              <li key={m.id} className="text-sm text-mesh-muted">
-                {m.title}
-              </li>
+    <TokenGate>
+      <div className="min-h-screen bg-mesh-bg text-mesh-text">
+        <Header />
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+          <PageTitle />
+          <Routes>
+            {modules.map((module) => (
+              <Route key={module.id} path={module.path} element={<module.component />} />
             ))}
-          </ul>
-        )}
-      </nav>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+      </div>
+    </TokenGate>
+  );
+}
 
-      <main className="flex-1 p-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Gerüst</h1>
-        <p className="mt-3 max-w-prose text-mesh-muted">
-          Das Frontend-Gerüst steht und baut. Funktionalität gibt es noch keine — die
-          Modul-Registry ist leer und wird ab Schritt 6 der Roadmap gefüllt.
-        </p>
-        <p className="mt-6 text-sm text-mesh-muted">
-          Nächste Schritte: <code className="text-mesh-accent">docs/roadmap.md</code>
-        </p>
-      </main>
+function Header() {
+  return (
+    <header className="border-b border-mesh-border bg-mesh-surface">
+      <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
+        <span className="py-3 text-sm uppercase tracking-[0.14em] text-mesh-accent">MeshDash</span>
+        <nav aria-label="Hauptnavigation" className="-mb-px flex flex-wrap gap-1 self-end">
+          {modules.map((module) => (
+            <NavLink
+              key={module.id}
+              to={module.path}
+              end={module.path === '/'}
+              className={({ isActive }) =>
+                // The active tab is marked by the accent and a rule under it
+                // rather than by a filled box: on the light theme a filled box
+                // sits at 0.96 against a 1.0 surface and all but disappears.
+                `border-b-2 px-2.5 py-1.5 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+                  isActive
+                    ? 'border-mesh-accent text-mesh-text'
+                    : 'border-transparent text-mesh-muted hover:text-mesh-text'
+                }`
+              }
+            >
+              {module.title}
+            </NavLink>
+          ))}
+        </nav>
+        <span className="flex-1" />
+        <ThemeToggle />
+      </div>
+    </header>
+  );
+}
+
+/** The current module's summary, so every page says what it answers. */
+function PageTitle() {
+  const { pathname } = useLocation();
+  const current = modules.find((module) => module.path === pathname);
+  if (current === undefined) return null;
+
+  return (
+    <div className="mb-5">
+      <h1 className="text-xl text-mesh-text">{current.title}</h1>
+      <p className="mt-0.5 text-sm text-mesh-muted">{current.summary}</p>
+    </div>
+  );
+}
+
+function NotFound() {
+  return (
+    <div className="rounded-lg border border-mesh-border bg-mesh-surface px-4 py-6">
+      <p className="text-mesh-text">Diese Seite gibt es nicht.</p>
+      <p className="mt-1 text-sm text-mesh-muted">
+        Vielleicht gehört sie zu einem Modul, das nicht geladen ist.
+      </p>
     </div>
   );
 }

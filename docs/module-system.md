@@ -121,7 +121,7 @@ pflegen, sobald sich etwas ändert.
 
 | Modul | Zweck | Stand |
 | --- | --- | --- |
-| `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/status` |
+| `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/{status,connections}`, mit Oberfläche |
 | `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade | **umgesetzt** — Kontakte unter `/api/v1/nodes/contacts`, Sichtungen unter `/api/v1/nodes/adverts` |
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — `/api/v1/messages/{received,channel-received,channels,send,channel-send}` |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/battery` und `/api/v1/telemetry/signal`; fremde Nodes offen |
@@ -139,8 +139,11 @@ Der genaue Ablauf steht fest, sobald der Kern existiert. Der Rahmen:
 2. **Backend** — Verzeichnis unter `crates/meshdash-modules/src/<modul>/`,
    `Module`-Trait implementieren, Migrationen unter `migrations/` ablegen,
    in der Registry eintragen.
-3. **Frontend** — Verzeichnis unter `web/src/modules/<modul>/`, Modul-Manifest
-   exportieren, in der Frontend-Registry eintragen.
+3. **Frontend** — Verzeichnis unter `web/src/modules/<modul>/`, ein
+   `UiModule` exportieren (`id`, `title`, `summary`, `path`, `component`) und
+   in `web/src/modules/index.ts` eintragen. Die Navigation entsteht aus dieser
+   Liste; `App.tsx` wird dafür **nicht** angefasst. Bausteine für Signal,
+   Zeitangaben, Karten und Zustände liegen unter `web/src/ui/`.
 4. **Tests** — Routen gegen einen Mock-Link, Event-Handler gegen synthetische
    Ereignisse.
 5. **Dokumentation** — Zeile in der Tabelle oben, Konfigurationsoptionen nach

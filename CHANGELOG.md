@@ -10,6 +10,17 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Added
+
+- **Eine Oberfläche.** MeshDash lässt sich zum ersten Mal bedienen statt nur
+  abzufragen: Navigation aus der Modul-Registry, Hell- und Dunkelansicht, und
+  eine Übersichtsseite, die zeigt, ob der Node da ist — und ob er es geblieben
+  ist. Der Verbindungsverlauf läuft als Band mit, in dem jeder Abriss als Kerbe
+  sichtbar bleibt; die Momentanzeige „verbunden" allein verrät nicht, dass ein
+  Node alle zwei Minuten neu verbindet.
+- **Verbindungsverlauf über die API** unter `/api/v1/system/connections`. Die
+  Ereignisse wurden bereits aufgezeichnet, waren aber nicht abrufbar.
+
 ### Changed
 
 - **Nachrichtenlisten liefern höchstens 500 Einträge** statt alles, was je

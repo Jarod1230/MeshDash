@@ -14,7 +14,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{
+    Json, Router,
+    extract::{Query, State},
+    routing::get,
+};
 use chrono::{DateTime, Utc};
 use meshdash_core::{
     db::Migration,
@@ -22,7 +26,7 @@ use meshdash_core::{
     module::{AppContext, Module},
 };
 use meshdash_proto::device::{self, DeviceInfo};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Schema of this module. Versions count from 1, per module.
 const MIGRATIONS: &[Migration] = &[Migration {
@@ -103,7 +107,11 @@ impl Module for SystemModule {
     }
 
     fn routes(&self) -> Option<Router<AppContext>> {
-        Some(Router::new().route("/status", get(status)))
+        Some(
+            Router::new()
+                .route("/status", get(status))
+                .route("/connections", get(connections)),
+        )
     }
 
     async fn start(&self, context: &AppContext) -> Result<(), String> {
@@ -150,6 +158,75 @@ async fn handle(context: &AppContext, event: AppEvent) {
         // Everything else belongs to other modules.
         AppEvent::Push { .. } | AppEvent::Module { .. } => {}
     }
+}
+
+/// One recorded change of the connection.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct ConnectionEvent {
+    /// When it happened.
+    pub at: DateTime<Utc>,
+    /// Whether this was a connection or a loss.
+    pub connected: bool,
+    /// Why it ended, when it ended.
+    pub reason: Option<String>,
+}
+
+/// How many changes the listing returns unless it asks for fewer.
+const DEFAULT_LIMIT: i64 = 100;
+
+/// Largest number a single request may ask for.
+const MAX_LIMIT: i64 = 1_000;
+
+/// How many changes to return.
+#[derive(Debug, Deserialize, Default)]
+pub struct ListQuery {
+    /// Upper bound, capped at [`MAX_LIMIT`].
+    limit: Option<i64>,
+}
+
+impl ListQuery {
+    fn effective_limit(&self) -> i64 {
+        self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+    }
+}
+
+/// Answers with the recorded connection changes, newest first.
+async fn connections(
+    State(context): State<AppContext>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Vec<ConnectionEvent>>, StatusError> {
+    read_connections(&context, query.effective_limit())
+        .await
+        .map(Json)
+        .map_err(StatusError)
+}
+
+/// Reads the connection history, newest first.
+///
+/// The current state alone cannot answer "is this link stable" — a node that
+/// reconnects every two minutes reports itself as connected each time.
+pub async fn read_connections(
+    context: &AppContext,
+    limit: i64,
+) -> Result<Vec<ConnectionEvent>, sqlx::Error> {
+    let rows: Vec<(String, i64, Option<String>)> = sqlx::query_as(
+        "SELECT at, connected, reason FROM system_connection_events
+         ORDER BY id DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(ConnectionEvent {
+                at: parse_time(&row.0)?,
+                connected: row.1 != 0,
+                reason: row.2,
+            })
+        })
+        .collect())
 }
 
 /// Answers with the current state.

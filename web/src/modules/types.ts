@@ -12,6 +12,8 @@ export interface UiModule {
   readonly id: string;
   /** Label shown in the navigation. German, see ADR-0004. */
   readonly title: string;
+  /** One line saying what the page answers. Shown as the page's subtitle. */
+  readonly summary: string;
   /** Path this module mounts at, relative to the app root. */
   readonly path: string;
   /** The module's page. */

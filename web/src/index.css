@@ -1,10 +1,102 @@
 @import 'tailwindcss';
 
+/*
+ * Two themes, one set of names.
+ *
+ * The palette is not decoration: a mesh dashboard is read at a glance to
+ * answer "is it up, and how well does it hear". So the accents are reserved
+ * for signal — link state, reception quality, a node's presence — and never
+ * spent on chrome. Everything structural is a neutral with a faint blue cast,
+ * the colour of a radio at night.
+ *
+ * Fonts are system stacks only. MeshDash runs on a box in a network that may
+ * have no uplink at all; a webfont would look fine in development and fail in
+ * exactly the situation the product exists for. See ADR-0008.
+ */
 @theme {
   --color-mesh-bg: oklch(0.19 0.02 260);
-  --color-mesh-surface: oklch(0.24 0.02 260);
+  --color-mesh-surface: oklch(0.23 0.02 260);
+  --color-mesh-raised: oklch(0.27 0.02 260);
   --color-mesh-border: oklch(0.32 0.02 260);
-  --color-mesh-text: oklch(0.93 0.01 260);
+  --color-mesh-text: oklch(0.94 0.01 260);
   --color-mesh-muted: oklch(0.68 0.02 260);
-  --color-mesh-accent: oklch(0.72 0.15 195);
+  --color-mesh-faint: oklch(0.48 0.02 260);
+
+  /* Signal colours. Cyan is "carrier present", the one hue that means good. */
+  --color-mesh-accent: oklch(0.75 0.14 195);
+  --color-mesh-accent-dim: oklch(0.45 0.08 195);
+  --color-mesh-warn: oklch(0.78 0.15 75);
+  --color-mesh-bad: oklch(0.65 0.19 25);
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Measurements line up in columns only with tabular figures. */
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+}
+
+/*
+ * The light theme is not the dark one inverted. Outdoors on a phone, contrast
+ * has to survive sunlight, so the accents darken rather than just flip.
+ */
+:root[data-theme='light'] {
+  --color-mesh-bg: oklch(0.98 0.004 260);
+  --color-mesh-surface: oklch(1 0 0);
+  --color-mesh-raised: oklch(0.96 0.005 260);
+  --color-mesh-border: oklch(0.89 0.008 260);
+  --color-mesh-text: oklch(0.24 0.02 260);
+  --color-mesh-muted: oklch(0.48 0.02 260);
+  --color-mesh-faint: oklch(0.65 0.015 260);
+
+  --color-mesh-accent: oklch(0.55 0.13 195);
+  --color-mesh-accent-dim: oklch(0.82 0.06 195);
+  --color-mesh-warn: oklch(0.58 0.14 65);
+  --color-mesh-bad: oklch(0.55 0.19 25);
+}
+
+html {
+  color-scheme: dark;
+  background-color: var(--color-mesh-bg);
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers in tables must not dance when a value changes. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/*
+ * The carrier line: the one animated element in the interface.
+ *
+ * A connected node gets a travelling pulse, a disconnected one a flat line —
+ * the same reading an operator takes off a radio. It is deliberately the only
+ * motion on the page, so that motion always means "the link is alive".
+ */
+@keyframes mesh-carrier {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.carrier-pulse {
+  animation: mesh-carrier 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carrier-pulse {
+    animation: none;
+    transform: none;
+  }
 }

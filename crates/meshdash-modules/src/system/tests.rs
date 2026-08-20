@@ -201,3 +201,46 @@ async fn serialises_a_status_the_way_the_api_promises() {
         "expected RFC 3339, got {since}"
     );
 }
+
+#[tokio::test]
+async fn keeps_a_history_of_connection_changes() {
+    // The current state alone cannot answer "is this link stable": a node that
+    // reconnects every two minutes reports itself connected each time.
+    let context = context_with(vec![]).await;
+
+    record_connection(&context, true, None).await.unwrap();
+    record_connection(&context, false, Some("Kabel gezogen"))
+        .await
+        .unwrap();
+    record_connection(&context, true, None).await.unwrap();
+
+    let history = read_connections(&context, 10).await.unwrap();
+
+    assert_eq!(history.len(), 3);
+    assert!(history[0].connected, "newest first");
+    assert!(!history[1].connected);
+    assert_eq!(history[1].reason.as_deref(), Some("Kabel gezogen"));
+}
+
+#[tokio::test]
+async fn the_history_is_bounded() {
+    let context = context_with(vec![]).await;
+    for _ in 0..10 {
+        record_connection(&context, true, None).await.unwrap();
+    }
+
+    assert_eq!(read_connections(&context, 4).await.unwrap().len(), 4);
+}
+
+#[test]
+fn caps_what_a_request_may_ask_for() {
+    assert_eq!(ListQuery::default().effective_limit(), DEFAULT_LIMIT);
+    assert_eq!(
+        ListQuery {
+            limit: Some(99_999)
+        }
+        .effective_limit(),
+        MAX_LIMIT
+    );
+    assert_eq!(ListQuery { limit: Some(0) }.effective_limit(), 1);
+}

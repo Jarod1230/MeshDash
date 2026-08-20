@@ -118,9 +118,18 @@ unter „Danach".
 
 ## Schritt 7 — Frontend-Ausbau
 
-- Dashboard-Shell mit Modul-Registry, Navigation, Dark/Light
-- Seiten für die vier Module
-- Live-Aktualisierung über WebSocket
+- [x] **Shell** mit Modul-Registry, Navigation, Hell/Dunkel und Token-Anmeldung.
+      Gestaltung und Bausteine nach
+      [ADR-0008](decisions/0008-frontend-bausteine.md).
+- [x] **`system`** — Verbindung, ihr Verlauf als Band und die Node-Identität.
+- [ ] **`nodes`** — Kontakte und Sichtungen. Dazu die **Topologieansicht**:
+      wer hört wen, gezeichnet aus Pfadlängen und Sichtungen. Sie gehört
+      hierher und nicht auf die Übersicht, weil sie ohne echte Pfaddaten nur
+      eine erfundene Anordnung wäre.
+- [ ] **`messages`** — Direktnachrichten und Kanäle, lesen und senden.
+- [ ] **`telemetry`** — Batterie und Empfangsqualität als Kurven (eigenes SVG).
+- [ ] **Live-Aktualisierung über WebSocket** — heute lädt jede Seite beim
+      Öffnen; der Ereignisstrom liegt bereit und wird noch nicht genutzt.
 
 ## Danach
 
@@ -162,6 +171,11 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   Merge nicht mehr geändert werden, bräuchte es je eine neue Migration samt
   Datenumzug — für Kosmetik zu teuer, deshalb bewusst offen gelassen und hier
   vermerkt, statt die Regel stillschweigend zu beugen.
+- **Trennungsgründe maschinenlesbar machen.** `system_connection_events.reason`
+  ist heute ein englischer Freitext aus der Transportschicht. Die Oberfläche
+  zitiert ihn deshalb als technisches Detail unter einer deutschen Zeile, statt
+  ihn als Oberflächentext auszugeben. Ein Code je Ursache — Kabel weg, Zeitüberlauf,
+  abgewiesen — ließe sich übersetzen und auswerten.
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

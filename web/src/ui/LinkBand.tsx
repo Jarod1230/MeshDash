@@ -13,6 +13,8 @@ import { exactTime, relativeTime } from '../lib/time';
  * and an hour offline is a gap — the same reading a chart recorder gives.
  */
 export interface Change {
+  /** Running number, ascending with arrival. Cursor for the next page. */
+  readonly id: number;
   readonly at: string;
   readonly connected: boolean;
   readonly reason: string | null;

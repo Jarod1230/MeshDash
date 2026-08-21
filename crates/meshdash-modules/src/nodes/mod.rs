@@ -133,11 +133,14 @@ const MIGRATIONS: &[Migration] = &[
     },
 ];
 
-/// How many sightings the listing returns at most.
+/// Largest number of sightings a single request may ask for.
 ///
 /// The table grows with every advert the mesh sends; an unbounded read would
 /// eventually try to serialise all of it into one response.
 const ADVERT_LIMIT: i64 = 200;
+
+/// Largest number a single request may ask for.
+const MAX_ADVERT_LIMIT: i64 = 2_000;
 
 /// Keeps track of the contacts the node knows.
 #[derive(Debug, Default)]
@@ -336,6 +339,11 @@ fn announce_contact(context: &AppContext, contact: &Contact) {
 /// One sighting, as the API reports it.
 #[derive(Debug, Serialize, PartialEq)]
 pub struct Sighting {
+    /// Running number, ascending with arrival.
+    ///
+    /// Doubles as the cursor for paging: ask for `before=<id>` to get what
+    /// came before this one.
+    pub id: i64,
     /// Public key that was heard, lowercase hex.
     pub public_key: String,
     /// When MeshDash received the advert.
@@ -349,6 +357,10 @@ pub struct Sighting {
 pub struct SightingQuery {
     /// Only sightings of this public key, lowercase hex.
     node: Option<String>,
+    /// Only sightings older than this one — the id of the last one seen.
+    before: Option<i64>,
+    /// How many to return.
+    limit: Option<i64>,
 }
 
 /// Answers with the most recent sightings.
@@ -356,10 +368,18 @@ async fn list_adverts(
     State(context): State<AppContext>,
     Query(query): Query<SightingQuery>,
 ) -> Result<Json<Vec<Sighting>>, ListError> {
-    read_adverts(&context, query.node.as_deref())
-        .await
-        .map(Json)
-        .map_err(ListError)
+    read_adverts(
+        &context,
+        query.node.as_deref(),
+        query.before,
+        query
+            .limit
+            .unwrap_or(ADVERT_LIMIT)
+            .clamp(1, MAX_ADVERT_LIMIT),
+    )
+    .await
+    .map(Json)
+    .map_err(ListError)
 }
 
 /// Records one advert: the sighting always, the contact when it came with one.
@@ -399,16 +419,21 @@ pub async fn record_advert(context: &AppContext, advert: &Advert) -> Result<(), 
 pub async fn read_adverts(
     context: &AppContext,
     node: Option<&str>,
+    before: Option<i64>,
+    limit: i64,
 ) -> Result<Vec<Sighting>, sqlx::Error> {
-    // The id breaks ties: two adverts can share a timestamp, and then the
-    // order would otherwise be whatever SQLite feels like.
-    let rows: Vec<(String, String, i64)> = sqlx::query_as(
-        "SELECT public_key, heard_at, was_new FROM nodes_adverts
+    // Paged by id rather than by timestamp: two adverts can share a
+    // timestamp, and a cursor that is not unique either repeats a row or
+    // skips one.
+    let rows: Vec<(i64, String, String, i64)> = sqlx::query_as(
+        "SELECT id, public_key, heard_at, was_new FROM nodes_adverts
          WHERE (?1 IS NULL OR public_key = ?1)
-         ORDER BY heard_at DESC, id DESC LIMIT ?2",
+           AND (?2 IS NULL OR id < ?2)
+         ORDER BY id DESC LIMIT ?3",
     )
     .bind(node)
-    .bind(ADVERT_LIMIT)
+    .bind(before)
+    .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -416,9 +441,10 @@ pub async fn read_adverts(
         .into_iter()
         .filter_map(|row| {
             Some(Sighting {
-                public_key: row.0,
-                heard_at: parse_time(&row.1)?,
-                was_new: row.2 != 0,
+                id: row.0,
+                public_key: row.1,
+                heard_at: parse_time(&row.2)?,
+                was_new: row.3 != 0,
             })
         })
         .collect())

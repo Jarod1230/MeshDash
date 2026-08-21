@@ -2,7 +2,9 @@ import { Carrier } from '../../ui/Carrier';
 import { LinkBand, type Change } from '../../ui/LinkBand';
 import { Empty, Failed, Loading } from '../../ui/States';
 import { useNow } from '../../lib/useNow';
+import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
+import { More } from '../../ui/More';
 import { duration, exactTime, relativeTime } from '../../lib/time';
 
 /** What `/api/v1/system/status` answers. */
@@ -31,12 +33,15 @@ interface NodeIdentity {
  * state gets the width, the largest figure and the band, while the node's
  * firmware — interesting once, then never again — is a single line of text.
  */
+/** How many connection changes one page of the history holds. */
+const HISTORY_PAGE = 200;
+
 export function SystemPage() {
   // A ticking clock, so "vor 2 Min" keeps counting instead of freezing at
   // whatever it said when the page happened to render.
   const now = useNow();
   const status = useResource<SystemStatus>('/system/status');
-  const history = useResource<Change[]>('/system/connections?limit=200');
+  const history = usePagedResource<Change>('/system/connections', HISTORY_PAGE);
 
   if (status.error !== null && status.data === null) {
     return (
@@ -56,7 +61,7 @@ export function SystemPage() {
 
   const { connected, since, reason, node } = status.data;
   const held = since === null ? null : (now - new Date(since).getTime()) / 1000;
-  const drops = (history.data ?? []).filter((change) => !change.connected);
+  const drops = (history.items ?? []).filter((change) => !change.connected);
 
   return (
     <div className="space-y-4">
@@ -95,10 +100,10 @@ export function SystemPage() {
         </div>
 
         <div className="mt-5">
-          {history.error !== null && history.data === null ? (
+          {history.error !== null && history.items === null ? (
             <p className="text-xs text-mesh-faint">Der Verlauf konnte nicht geladen werden.</p>
           ) : (
-            <LinkBand changes={history.data ?? []} now={now} />
+            <LinkBand changes={history.items ?? []} now={now} />
           )}
         </div>
       </section>
@@ -108,10 +113,8 @@ export function SystemPage() {
           <h2 className="text-sm text-mesh-text">Abbrüche</h2>
           <span className="text-xs text-mesh-faint">
             {drops.length === 0
-              ? 'keine aufgezeichnet'
-              : drops.length > 8
-                ? `${drops.length} aufgezeichnet, die letzten acht`
-                : `${drops.length} aufgezeichnet`}
+              ? 'keine im geladenen Zeitraum'
+              : `${drops.length} im geladenen Zeitraum`}
           </span>
         </header>
 
@@ -122,8 +125,8 @@ export function SystemPage() {
           </Empty>
         ) : (
           <ul className="divide-y divide-mesh-border text-sm">
-            {drops.slice(0, 8).map((drop) => (
-              <li key={drop.at} className="px-4 py-2.5">
+            {drops.map((drop) => (
+              <li key={drop.id} className="px-4 py-2.5">
                 <div className="flex items-baseline justify-between gap-4">
                   <span className="text-mesh-text">Verbindung abgerissen</span>
                   <span className="tabular shrink-0 text-mesh-muted" title={exactTime(drop.at)}>
@@ -142,6 +145,9 @@ export function SystemPage() {
               </li>
             ))}
           </ul>
+        )}
+        {history.hasMore && (
+          <More onClick={history.loadMore} loading={history.loadingMore} what="Verbindungswechsel" />
         )}
       </section>
 

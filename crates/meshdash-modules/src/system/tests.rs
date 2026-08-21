@@ -220,7 +220,7 @@ async fn keeps_a_history_of_connection_changes() {
         .unwrap();
     record_connection(&context, true, None).await.unwrap();
 
-    let history = read_connections(&context, 10).await.unwrap();
+    let history = read_connections(&context, 10, None).await.unwrap();
 
     assert_eq!(history.len(), 3);
     assert!(history[0].connected, "newest first");
@@ -235,7 +235,7 @@ async fn the_history_is_bounded() {
         record_connection(&context, true, None).await.unwrap();
     }
 
-    assert_eq!(read_connections(&context, 4).await.unwrap().len(), 4);
+    assert_eq!(read_connections(&context, 4, None).await.unwrap().len(), 4);
 }
 
 #[test]
@@ -243,10 +243,18 @@ fn caps_what_a_request_may_ask_for() {
     assert_eq!(ListQuery::default().effective_limit(), DEFAULT_LIMIT);
     assert_eq!(
         ListQuery {
-            limit: Some(99_999)
+            limit: Some(99_999),
+            before: None
         }
         .effective_limit(),
         MAX_LIMIT
     );
-    assert_eq!(ListQuery { limit: Some(0) }.effective_limit(), 1);
+    assert_eq!(
+        ListQuery {
+            limit: Some(0),
+            before: None
+        }
+        .effective_limit(),
+        1
+    );
 }

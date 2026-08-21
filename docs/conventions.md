@@ -75,6 +75,13 @@ inhaltlichen Änderungen vermischt.
 - Fehler mit passendem Statuscode und einem Rumpf der Form
   `{"error": {"code": "...", "message": "..."}}`.
 - Listen sind seitenweise abrufbar, sobald sie unbegrenzt wachsen können.
+- Geblättert wird per Cursor, nicht per Offset: `?limit=<n>&before=<id>` liefert
+  die nächstältere Seite, jeder Eintrag trägt dafür ein aufsteigendes `id`. Ein
+  Offset verschiebt sich unter dem Leser — jedes Advert, das währenddessen
+  hereinkommt, schiebt die älteren Zeilen um eins nach hinten, und Seite zwei
+  wiederholte, was Seite eins schon zeigte.
+- Die Antwort bleibt ein Array. Kein Umschlag mit `next`-Feld: der Cursor ist
+  das `id` des letzten Eintrags, den der Aufrufer ohnehin in der Hand hat.
 
 ## Datenbank
 

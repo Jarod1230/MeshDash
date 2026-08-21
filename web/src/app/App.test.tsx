@@ -23,9 +23,9 @@ const STATUS = {
 
 /** Two seconds offline, six hours ago — enough for the band to have a notch. */
 const HISTORY = [
-  { at: new Date(Date.now() - 4 * 3600 * 1000 - 12 * 60 * 1000).toISOString(), connected: true, reason: null },
-  { at: new Date(Date.now() - 6 * 3600 * 1000).toISOString(), connected: false, reason: 'Kabel gezogen' },
-  { at: new Date(Date.now() - 9 * 3600 * 1000).toISOString(), connected: true, reason: null },
+  { id: 3, at: new Date(Date.now() - 4 * 3600 * 1000 - 12 * 60 * 1000).toISOString(), connected: true, reason: null },
+  { id: 2, at: new Date(Date.now() - 6 * 3600 * 1000).toISOString(), connected: false, reason: 'Kabel gezogen' },
+  { id: 1, at: new Date(Date.now() - 9 * 3600 * 1000).toISOString(), connected: true, reason: null },
 ];
 
 /** Answers each API path with what that path actually returns. */
@@ -171,6 +171,6 @@ describe('App', () => {
     // technical detail from the transport layer.
     expect(await screen.findByText('Verbindung abgerissen')).toBeInTheDocument();
     expect(screen.getByText('Kabel gezogen')).toBeInTheDocument();
-    expect(screen.getByText('1 aufgezeichnet')).toBeInTheDocument();
+    expect(screen.getByText('1 im geladenen Zeitraum')).toBeInTheDocument();
   });
 });

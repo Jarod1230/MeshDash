@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Ältere Einträge nachladen.** Nachrichten, Kanalnachrichten, die Sichtungen
+  eines Knotens und der Verbindungsverlauf enden nicht mehr an einer festen
+  Obergrenze — ein Knopf holt die nächstältere Seite und hängt sie unten an.
+  Geblättert wird per Cursor (`?before=<id>`), nicht per Offset: Was während des
+  Lesens hereinkommt, verschiebt die Seiten nicht mehr gegeneinander.
+
 - **Eine Seite je Knoten.** Wer ist das, wie weit weg, wann zuletzt gehört, was
   wurde ausgetauscht, was meldet er über sich selbst — alles an einem Ort.
   Erreichbar aus der Knotenliste, von der Karte und aus einem Gespräch heraus.

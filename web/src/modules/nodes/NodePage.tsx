@@ -3,7 +3,9 @@ import { SignalBars, SignalValue } from '../../ui/Signal';
 import { Empty, Failed, Loading } from '../../ui/States';
 import { exactTime, relativeTime } from '../../lib/time';
 import { useNow } from '../../lib/useNow';
+import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
+import { More } from '../../ui/More';
 import { describeRoute, shortKey, type KnownContact, type Sighting } from './types';
 import type { ConversationMessage } from '../messages/types';
 
@@ -28,12 +30,15 @@ interface NeighbourSample {
   readonly position: readonly [number, number, number] | null;
 }
 
+/** How many sightings one page of the history holds. */
+const SIGHTINGS_PAGE = 25;
+
 export function NodePage() {
   const { key = '' } = useParams();
   const now = useNow();
 
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
-  const sightings = useResource<Sighting[]>(`/nodes/adverts?node=${key}`);
+  const sightings = usePagedResource<Sighting>(`/nodes/adverts?node=${key}`, SIGHTINGS_PAGE);
   const readings = useResource<NeighbourSample[]>(`/telemetry/neighbours?node=${key}&limit=50`);
   const thread = useResource<ConversationMessage[]>(
     `/messages/conversation?with=${key.slice(0, 12)}&limit=50`,
@@ -107,29 +112,34 @@ export function NodePage() {
       </section>
 
       <Panel title="Sichtungen" hint="wann dieser Knoten zu hören war">
-        {sightings.data === null ? (
+        {sightings.items === null ? (
           <Loading what="Die Sichtungen" />
-        ) : sightings.data.length === 0 ? (
+        ) : sightings.items.length === 0 ? (
           <Empty>
             Kein Advert dieses Knotens aufgezeichnet. Er ist über die Kontaktliste des eigenen Node
             bekannt, hat sich aber seither nicht selbst gemeldet.
           </Empty>
         ) : (
-          <ul className="divide-y divide-mesh-border text-sm">
-            {sightings.data.slice(0, 10).map((sighting) => (
-              <li
-                key={sighting.heard_at}
-                className="flex items-baseline justify-between gap-4 px-4 py-2"
-              >
-                <span className="text-mesh-muted">
-                  {sighting.was_new ? 'erstmals gehört' : 'gehört'}
-                </span>
-                <span className="tabular text-mesh-text" title={exactTime(sighting.heard_at)}>
-                  {relativeTime(sighting.heard_at, new Date(now))}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-mesh-border text-sm">
+              {sightings.items.map((sighting) => (
+                <li
+                  key={sighting.id}
+                  className="flex items-baseline justify-between gap-4 px-4 py-2"
+                >
+                  <span className="text-mesh-muted">
+                    {sighting.was_new ? 'erstmals gehört' : 'gehört'}
+                  </span>
+                  <span className="tabular text-mesh-text" title={exactTime(sighting.heard_at)}>
+                    {relativeTime(sighting.heard_at, new Date(now))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {sightings.hasMore && (
+              <More onClick={sightings.loadMore} loading={sightings.loadingMore} what="Sichtungen" />
+            )}
+          </>
         )}
       </Panel>
 

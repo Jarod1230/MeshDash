@@ -6,9 +6,14 @@ import { SendForm } from './SendForm';
 import type { Channel, ChannelMessage, Conversation, DirectMessage } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
+import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
+import { More } from '../../ui/More';
 import { exactTime, relativeTime } from '../../lib/time';
 import { isMessageWaiting } from '../../lib/pushes';
+
+/** How many messages one page holds. Big enough that most sessions never page. */
+const PAGE = 100;
 
 /**
  * What came in over the air, and what goes out.
@@ -20,8 +25,8 @@ import { isMessageWaiting } from '../../lib/pushes';
  */
 export function MessagesPage() {
   const now = useNow();
-  const direct = useResource<DirectMessage[]>('/messages/received?limit=100');
-  const channel = useResource<ChannelMessage[]>('/messages/channel-received?limit=100');
+  const direct = usePagedResource<DirectMessage>('/messages/received', PAGE);
+  const channel = usePagedResource<ChannelMessage>('/messages/channel-received', PAGE);
   const channels = useResource<Channel[]>('/messages/channels');
   const [tab, setTab] = useState<'gespräche' | 'direkt' | 'kanäle'>('gespräche');
   const [openConversation, setOpenConversation] = useState<Conversation | null>(null);
@@ -45,7 +50,7 @@ export function MessagesPage() {
     channel.reload();
   };
 
-  if (direct.error !== null && direct.data === null) {
+  if (direct.error !== null && direct.items === null) {
     return (
       <div className="rounded-lg border border-mesh-border bg-mesh-surface">
         <Failed error={direct.error} onRetry={direct.reload} />
@@ -90,16 +95,17 @@ export function MessagesPage() {
             onSelect={setOpenConversation}
           />
         ) : tab === 'direkt' ? (
-          direct.data === null ? (
+          direct.items === null ? (
             <Loading what="Die Nachrichten" />
-          ) : direct.data.length === 0 ? (
+          ) : direct.items.length === 0 ? (
             <Empty>
               Noch keine Direktnachricht empfangen. Was hereinkommt, bleibt hier stehen — auch
               nachdem der Node seine eigene Warteschlange geleert hat.
             </Empty>
           ) : (
-            <ul className="divide-y divide-mesh-border">
-              {direct.data.map((message) => (
+            <>
+              <ul className="divide-y divide-mesh-border">
+                {direct.items.map((message) => (
                 <li key={message.id} className="px-4 py-3">
                   <div className="flex items-baseline justify-between gap-4">
                     {/* Foreign text, rendered as text and never as markup. */}
@@ -121,20 +127,25 @@ export function MessagesPage() {
                         : `über ${message.path_len} ${message.path_len === 1 ? 'Station' : 'Stationen'}`}
                     </span>
                   </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+              {direct.hasMore && (
+                <More onClick={direct.loadMore} loading={direct.loadingMore} what="Nachrichten" />
+              )}
+            </>
           )
-        ) : channel.data === null ? (
+        ) : channel.items === null ? (
           <Loading what="Die Kanalnachrichten" />
-        ) : channel.data.length === 0 ? (
+        ) : channel.items.length === 0 ? (
           <Empty>
             In den Kanälen war es bisher still. Kanalnachrichten kommen über dieselbe Warteschlange
             wie Direktnachrichten herein.
           </Empty>
         ) : (
-          <ul className="divide-y divide-mesh-border">
-            {channel.data.map((message) => (
+          <>
+            <ul className="divide-y divide-mesh-border">
+              {channel.items.map((message) => (
               <li key={message.id} className="px-4 py-3">
                 <div className="flex items-baseline justify-between gap-4">
                   <p className="min-w-0 text-mesh-text">{message.text}</p>
@@ -155,9 +166,13 @@ export function MessagesPage() {
                       text itself, so there is nothing here to attribute. */}
                   <span>Absender steht im Text</span>
                 </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+            {channel.hasMore && (
+              <More onClick={channel.loadMore} loading={channel.loadingMore} what="Kanalnachrichten" />
+            )}
+          </>
         )}
       </section>
     </div>

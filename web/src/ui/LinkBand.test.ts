@@ -8,9 +8,9 @@ describe('toSegments', () => {
   it('turns changes into spans that run up to now', () => {
     // The API answers newest first; the band reads oldest to newest.
     const changes: Change[] = [
-      { at: at(10), connected: true, reason: null },
-      { at: at(12), connected: false, reason: 'Kabel gezogen' },
-      { at: at(60), connected: true, reason: null },
+      { id: 3, at: at(10), connected: true, reason: null },
+      { id: 2, at: at(12), connected: false, reason: 'Kabel gezogen' },
+      { id: 1, at: at(60), connected: true, reason: null },
     ];
 
     const segments = toSegments(changes, now);
@@ -27,7 +27,7 @@ describe('toSegments', () => {
   });
 
   it('skips an entry whose timestamp cannot be read', () => {
-    const segments = toSegments([{ at: 'kaputt', connected: true, reason: null }], now);
+    const segments = toSegments([{ id: 1, at: 'kaputt', connected: true, reason: null }], now);
     expect(segments).toEqual([]);
   });
 });

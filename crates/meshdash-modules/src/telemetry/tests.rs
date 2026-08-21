@@ -55,7 +55,7 @@ fn answers(millivolts: u16) -> Vec<Step> {
 async fn starts_with_no_readings() {
     let context = context_with(vec![]).await;
 
-    assert!(read_samples(&context, 10).await.unwrap().is_empty());
+    assert!(read_samples(&context, 10, None).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -65,7 +65,7 @@ async fn asks_the_node_and_stores_the_reading() {
     let reading = read_battery(&context).await.unwrap();
     store_sample(&context, &reading).await.unwrap();
 
-    let samples = read_samples(&context, 10).await.unwrap();
+    let samples = read_samples(&context, 10, None).await.unwrap();
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].millivolts, 4_100);
     assert_eq!(samples[0].storage_used_kib, 512);
@@ -81,7 +81,7 @@ async fn keeps_every_reading_to_form_a_curve() {
         store_sample(&context, &reading).await.unwrap();
     }
 
-    assert_eq!(read_samples(&context, 100).await.unwrap().len(), 5);
+    assert_eq!(read_samples(&context, 100, None).await.unwrap().len(), 5);
 }
 
 #[tokio::test]
@@ -100,7 +100,7 @@ async fn reports_the_newest_first() {
     .await
     .unwrap();
 
-    let samples = read_samples(&context, 10).await.unwrap();
+    let samples = read_samples(&context, 10, None).await.unwrap();
 
     assert_eq!(samples[0].millivolts, 3_900, "newest first");
 }
@@ -115,7 +115,7 @@ async fn honours_the_limit() {
         store_sample(&context, &reading).await.unwrap();
     }
 
-    assert_eq!(read_samples(&context, 3).await.unwrap().len(), 3);
+    assert_eq!(read_samples(&context, 3, None).await.unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -127,7 +127,7 @@ async fn samples_as_soon_as_the_node_is_reachable() {
     context.events.publish(AppEvent::NodeConnected);
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    let samples = read_samples(&context, 10).await.unwrap();
+    let samples = read_samples(&context, 10, None).await.unwrap();
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].millivolts, 4_050);
 }
@@ -137,7 +137,7 @@ async fn a_silent_node_costs_one_reading_not_the_task() {
     let context = context_with(vec![Step::Drop("silent".into())]).await;
 
     assert!(read_battery(&context).await.is_err());
-    assert!(read_samples(&context, 10).await.unwrap().is_empty());
+    assert!(read_samples(&context, 10, None).await.unwrap().is_empty());
 }
 
 /// A signal announcement as the messages module publishes it.
@@ -162,7 +162,7 @@ async fn records_reception_quality_announced_by_another_module() {
         .publish(signal_event("direct", Some(-2.5), Some(2)));
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let samples = read_signal_samples(&context, 10).await.unwrap();
+    let samples = read_signal_samples(&context, 10, None).await.unwrap();
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].snr, -2.5);
     assert_eq!(samples[0].source, "direct");
@@ -180,7 +180,7 @@ async fn keeps_a_curve_of_readings() {
     }
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let samples = read_signal_samples(&context, 10).await.unwrap();
+    let samples = read_signal_samples(&context, 10, None).await.unwrap();
     assert_eq!(samples.len(), 3);
     assert_eq!(samples[0].snr, 3.0, "newest first");
 }
@@ -194,7 +194,12 @@ async fn skips_an_announcement_without_a_reading() {
     context.events.publish(signal_event("direct", None, None));
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+    assert!(
+        read_signal_samples(&context, 10, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -213,7 +218,12 @@ async fn ignores_announcements_from_other_modules() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+    assert!(
+        read_signal_samples(&context, 10, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -228,7 +238,12 @@ async fn survives_a_payload_it_does_not_understand() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    assert!(read_signal_samples(&context, 10).await.unwrap().is_empty());
+    assert!(
+        read_signal_samples(&context, 10, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A context whose telemetry module is configured with the given section.
@@ -322,7 +337,7 @@ async fn an_answer_without_a_remembered_question_is_dropped() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_neighbour_samples(&context, None, 10)
+        read_neighbour_samples(&context, None, None, 10)
             .await
             .unwrap()
             .is_empty()
@@ -356,7 +371,9 @@ async fn stores_what_a_neighbour_reported() {
     .await
     .unwrap();
 
-    let samples = read_neighbour_samples(&context, None, 10).await.unwrap();
+    let samples = read_neighbour_samples(&context, None, None, 10)
+        .await
+        .unwrap();
 
     assert_eq!(samples.len(), 2);
     // Newest first: the position was stored last.
@@ -456,12 +473,37 @@ async fn neighbour_readings_can_be_asked_for_one_node_only() {
         .await
         .unwrap();
 
-    let alle = read_neighbour_samples(&context, None, 50).await.unwrap();
-    let nur_einer = read_neighbour_samples(&context, Some(&"aa".repeat(32)), 50)
+    let alle = read_neighbour_samples(&context, None, None, 50)
+        .await
+        .unwrap();
+    let nur_einer = read_neighbour_samples(&context, Some(&"aa".repeat(32)), None, 50)
         .await
         .unwrap();
 
     assert_eq!(alle.len(), 2);
     assert_eq!(nur_einer.len(), 1);
     assert_eq!(nur_einer[0].value, Some(4.0));
+}
+
+#[tokio::test]
+async fn a_cursor_continues_the_signal_list() {
+    let context = context_with(vec![]).await;
+    for snr in [1.0, 2.0, 3.0] {
+        context
+            .events
+            .publish(signal_event("channel", Some(snr), None));
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let erste_seite = read_signal_samples(&context, 2, None).await.unwrap();
+    let zweite_seite = read_signal_samples(&context, 2, Some(erste_seite[1].id))
+        .await
+        .unwrap();
+
+    assert_eq!(erste_seite.len(), 2);
+    assert_eq!(zweite_seite.len(), 1);
+    assert!(
+        zweite_seite[0].id < erste_seite[1].id,
+        "the cursor must exclude what the first page already showed"
+    );
 }

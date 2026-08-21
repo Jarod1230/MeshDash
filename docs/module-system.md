@@ -93,6 +93,12 @@ Ereignisse per Broadcast; jedes Modul entscheidet selbst, was es interessiert.
                        └─────────────┘
 ```
 
+**Pushes werden nicht selbst zerlegt.** Was ein `AppEvent::Push` bedeutet,
+beantwortet `meshdash_proto::push::PushEvent::parse` — ein `match` darüber, statt
+Opcodes im Modul zu prüfen. Sonst verteilt sich Protokollwissen über Module, die
+es nichts angeht, und jede neue Firmware müsste an mehreren Stellen nachgezogen
+werden.
+
 Braucht ein Modul Daten eines anderen, gibt es zwei zulässige Wege: das
 besitzende Modul veröffentlicht sie als Ereignis, oder es bietet eine
 ausdrückliche Schnittstelle an. Ein `JOIN` über Modulgrenzen ist keiner davon.

@@ -30,7 +30,9 @@ use meshdash_core::{
     event::AppEvent,
     module::{AppContext, Module},
 };
-use meshdash_proto::{advert::Advert, command, contact::Contact, opcode::Response};
+use meshdash_proto::{
+    advert::Advert, command, contact::Contact, opcode::Response, push::PushEvent,
+};
 use serde::Serialize;
 
 /// Schema of this module. Versions count from 1, per module.
@@ -191,7 +193,7 @@ impl Module for NodesModule {
                     }
                     Ok(AppEvent::Push { payload }) => {
                         // Every push lands here; only adverts concern us.
-                        if let Ok(advert) = Advert::parse(&payload)
+                        if let Ok(PushEvent::Advert(advert)) = PushEvent::parse(&payload)
                             && let Err(error) = record_advert(&context, &advert).await
                         {
                             tracing::error!(%error, "could not record an advert");

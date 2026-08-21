@@ -397,6 +397,41 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**Alle Push-Nutzlasten** — Stufe `SOURCE`, aus den `on…Recv()`-Methoden und
+`processAck()`, Commit `d929643`. Umgesetzt in `meshdash_proto::push`:
+
+```text
+0x81 Pfad geändert        32  Pubkey
+0x82 Sendung bestätigt     4  Quittung, 4 Laufzeit in ms
+0x84 Rohdaten              1  SNR×4, 1 RSSI, 1 reserviert (0xFF), n Nutzlast
+0x85 Anmeldung erfolgt     1  Rechte, 6 Präfix, [4 Tag]
+0x86 Anmeldung abgelehnt   1  reserviert, 6 Präfix
+0x87 Statusantwort         1  reserviert, 6 Präfix, n Nutzlast
+0x88 Empfangsprotokoll     1  SNR×4, 1 RSSI, n das rohe Paket
+0x89 Trace                 1  reserviert, 1 Pfadlänge, 1 Flags, 4 Tag,
+                           4  Prüfcode, n Hashes, m SNR-Werte, 1 SNR der
+                              letzten Strecke
+0x8B Telemetrieantwort     1  reserviert, 6 Präfix, n CayenneLPP
+0x8D Pfadsuche-Antwort     1  reserviert, 6 Präfix, 1 Hinlänge, n Hinweg,
+                           1  Rücklänge, m Rückweg
+0x8E Steuerdaten           1  SNR×4, 1 RSSI, 1 Pfadlänge, n Nutzlast
+0x8F Kontakt verdrängt    32  Pubkey
+0x90 Kontaktspeicher voll  —
+```
+
+Drei Feinheiten:
+
+- **Beim Trace sagen die Flags, wie viele SNR-Werte kommen.** `path_sz = flags
+  & 0x03`, und die Anzahl ist `path_len >> path_sz` — bei einer Verschiebung
+  von eins teilen sich also je zwei Stationen einen Messwert. Wer je Hash einen
+  Wert erwartet, liest bei größeren Gruppen über die Nutzlast hinaus.
+- **Die Anmeldeantwort gibt es in zwei Fassungen.** Die ältere endet nach dem
+  Präfix, die neuere hängt ein Tag an; das zweite Byte trägt bei ihr die
+  Rechte (etwa Administrator), bei der alten immer null.
+- **Eine Sendebestätigung kann mehrfach eintreffen.** Die Firmware sagt es in
+  ihrem eigenen Kommentar: „the same ACK can be received multiple times". Wer
+  daraus zählt, zählt zu hoch.
+
 **`RESP_CODE_SELF_INFO` (5)** — Stufe `HARDWARE`, am Gerät gelesen und gegen
 `handleCmdFrame()` geprüft. Damit ist die letzte große offene Nutzlast geklärt:
 

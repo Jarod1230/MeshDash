@@ -491,6 +491,11 @@ pub struct Conversation {
     pub name: Option<String>,
     /// For a contact: how many known contacts share this prefix.
     pub candidates: usize,
+    /// The contact's full public key, when the prefix resolves to exactly one.
+    ///
+    /// Needed to link anywhere: a six-byte prefix does not address a node.
+    /// `None` when unknown or ambiguous — the same rule as for the name.
+    pub public_key: Option<String>,
     /// The most recent message, whichever direction it went.
     pub last_text: String,
     /// When that was.
@@ -613,6 +618,7 @@ pub async fn read_conversations(
     .await?;
 
     let senders = sender_names(context).await?;
+    let keys = sender_keys(context).await?;
     let channels = channel_names(context).await?;
 
     Ok(rows
@@ -637,12 +643,19 @@ pub async fn read_conversations(
                 }
             };
 
+            // Only where the prefix is unambiguous: linking to a guess would
+            // open a page about the wrong node.
+            let public_key = (partner == Partner::Contact && candidates == 1)
+                .then(|| keys.get(&id).cloned())
+                .flatten();
+
             Some(Conversation {
                 partner,
                 id,
                 name,
                 candidates,
                 last_text: text,
+                public_key,
                 last_at: parse_time(&at)?,
                 last_direction: if direction == "sent" {
                     Direction::Sent
@@ -720,6 +733,20 @@ pub async fn read_conversation(
     messages.reverse();
 
     Ok(messages)
+}
+
+/// Every prefix that resolves to exactly one contact, and that contact's key.
+async fn sender_keys(
+    context: &AppContext,
+) -> Result<std::collections::HashMap<String, String>, sqlx::Error> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT prefix, MIN(public_key) FROM messages_senders
+         GROUP BY prefix HAVING COUNT(*) = 1",
+    )
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(rows.into_iter().collect())
 }
 
 /// Every known channel index and its name.

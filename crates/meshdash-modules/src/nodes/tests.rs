@@ -209,7 +209,7 @@ async fn every_advert_becomes_a_sighting() {
     push(&context, new_advert_frame(0xCD, "Nachbar")).await;
     push(&context, known_advert_frame(0xCD)).await;
 
-    let sightings = read_adverts(&context).await.unwrap();
+    let sightings = read_adverts(&context, None).await.unwrap();
     assert_eq!(sightings.len(), 2);
     assert!(sightings.iter().all(|s| s.public_key == "cd".repeat(32)));
     // Newest first: the short one arrived last.
@@ -240,7 +240,7 @@ async fn a_short_advert_for_an_unknown_key_is_still_recorded() {
     push(&context, known_advert_frame(0x11)).await;
 
     // The sighting is true even without a name for the key.
-    assert_eq!(read_adverts(&context).await.unwrap().len(), 1);
+    assert_eq!(read_adverts(&context, None).await.unwrap().len(), 1);
     assert!(read_contacts(&context).await.unwrap().is_empty());
 }
 
@@ -250,7 +250,7 @@ async fn ignores_pushes_that_are_not_adverts() {
 
     push(&context, vec![0x83, 0x00]).await;
 
-    assert!(read_adverts(&context).await.unwrap().is_empty());
+    assert!(read_adverts(&context, None).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -297,4 +297,21 @@ async fn counts_stations_rather_than_bytes() {
     let contacts = read_contacts(&context).await.unwrap();
     assert_eq!(contacts[0].stations, Some(2));
     assert_eq!(contacts[0].path.as_deref(), Some("01020304"));
+}
+
+#[tokio::test]
+async fn sightings_can_be_asked_for_one_node_only() {
+    // A page about one node should not fetch two hundred rows to show five.
+    let context = context_with(vec![]).await;
+    push(&context, known_advert_frame(0xAA)).await;
+    push(&context, known_advert_frame(0xBB)).await;
+
+    let alle = read_adverts(&context, None).await.unwrap();
+    let nur_einer = read_adverts(&context, Some(&"aa".repeat(32)))
+        .await
+        .unwrap();
+
+    assert_eq!(alle.len(), 2);
+    assert_eq!(nur_einer.len(), 1);
+    assert_eq!(nur_einer[0].public_key, "aa".repeat(32));
 }

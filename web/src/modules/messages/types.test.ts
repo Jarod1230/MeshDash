@@ -6,6 +6,7 @@ const base: Conversation = {
   id: 'a1a1a1a1a1a1',
   name: null,
   candidates: 0,
+  public_key: null,
   last_text: 'Hallo',
   last_at: new Date().toISOString(),
   last_direction: 'received',

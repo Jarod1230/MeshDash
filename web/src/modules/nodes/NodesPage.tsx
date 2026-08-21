@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Link, Route, Routes } from 'react-router-dom';
 import { Empty, Failed, Loading } from '../../ui/States';
 import { Map } from './Map';
+import { NodePage } from './NodePage';
 import { Topology } from './Topology';
 import { describeRoute, shortKey, type KnownContact, type Sighting } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
@@ -17,6 +19,16 @@ import { isAdvert } from '../../lib/pushes';
  * away is it and does it still reply".
  */
 export function NodesPage() {
+  return (
+    <Routes>
+      <Route index element={<NodeList />} />
+      <Route path=":key" element={<NodePage />} />
+    </Routes>
+  );
+}
+
+/** The list, the ring chart and the map — three views of the same set. */
+function NodeList() {
   const now = useNow();
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const sightings = useResource<Sighting[]>('/nodes/adverts?limit=50');
@@ -116,9 +128,16 @@ export function NodesPage() {
                   className="flex items-baseline justify-between gap-4 px-4 py-2"
                 >
                   <span className="min-w-0 truncate">
-                    <span className="text-mesh-text">
-                      {contact?.name ?? 'Unbekannter Knoten'}
-                    </span>
+                    {contact === undefined ? (
+                      <span className="text-mesh-text">Unbekannter Knoten</span>
+                    ) : (
+                      <Link
+                        to={contact.public_key}
+                        className="text-mesh-text hover:text-mesh-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+                      >
+                        {contact.name}
+                      </Link>
+                    )}
                     <span className="tabular ml-2 text-xs text-mesh-faint">
                       {shortKey(sighting.public_key)}
                     </span>
@@ -185,7 +204,14 @@ function ContactTable({
             const silent = (now - new Date(contact.last_seen).getTime()) / 1000 > 86_400;
             return (
               <tr key={contact.public_key} className={silent ? 'text-mesh-muted' : ''}>
-                <td className="px-4 py-2 text-mesh-text">{contact.name}</td>
+                <td className="px-4 py-2">
+                  <Link
+                    to={contact.public_key}
+                    className="text-mesh-text hover:text-mesh-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+                  >
+                    {contact.name}
+                  </Link>
+                </td>
                 <td className="tabular hidden px-4 py-2 text-xs text-mesh-faint sm:table-cell">
                   {shortKey(contact.public_key)}
                 </td>

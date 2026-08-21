@@ -37,7 +37,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{
+    Json, Router,
+    extract::{Query, State},
+    routing::get,
+};
 use chrono::{DateTime, Utc};
 use meshdash_core::{
     db::Migration,
@@ -47,7 +51,7 @@ use meshdash_core::{
 use meshdash_proto::{
     advert::Advert, command, contact::Contact, opcode::Response, push::PushEvent,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Schema of this module. Versions count from 1, per module.
 const MIGRATIONS: &[Migration] = &[
@@ -340,9 +344,22 @@ pub struct Sighting {
     pub was_new: bool,
 }
 
+/// Which sightings to answer with.
+#[derive(Debug, Deserialize, Default)]
+pub struct SightingQuery {
+    /// Only sightings of this public key, lowercase hex.
+    node: Option<String>,
+}
+
 /// Answers with the most recent sightings.
-async fn list_adverts(State(context): State<AppContext>) -> Result<Json<Vec<Sighting>>, ListError> {
-    read_adverts(&context).await.map(Json).map_err(ListError)
+async fn list_adverts(
+    State(context): State<AppContext>,
+    Query(query): Query<SightingQuery>,
+) -> Result<Json<Vec<Sighting>>, ListError> {
+    read_adverts(&context, query.node.as_deref())
+        .await
+        .map(Json)
+        .map_err(ListError)
 }
 
 /// Records one advert: the sighting always, the contact when it came with one.
@@ -376,13 +393,21 @@ pub async fn record_advert(context: &AppContext, advert: &Advert) -> Result<(), 
 }
 
 /// Reads the most recent sightings, newest first.
-pub async fn read_adverts(context: &AppContext) -> Result<Vec<Sighting>, sqlx::Error> {
+///
+/// With a `node` given, only that node's — which is what a page about one
+/// node needs, and what keeps it from fetching two hundred rows to show five.
+pub async fn read_adverts(
+    context: &AppContext,
+    node: Option<&str>,
+) -> Result<Vec<Sighting>, sqlx::Error> {
     // The id breaks ties: two adverts can share a timestamp, and then the
     // order would otherwise be whatever SQLite feels like.
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT public_key, heard_at, was_new FROM nodes_adverts
-         ORDER BY heard_at DESC, id DESC LIMIT ?",
+         WHERE (?1 IS NULL OR public_key = ?1)
+         ORDER BY heard_at DESC, id DESC LIMIT ?2",
     )
+    .bind(node)
     .bind(ADVERT_LIMIT)
     .fetch_all(context.db.pool())
     .await?;

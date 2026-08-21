@@ -55,6 +55,8 @@ export interface Conversation {
   readonly name: string | null;
   /** For a contact: how many known contacts share this prefix. */
   readonly candidates: number;
+  /** The contact's full key, when the prefix resolves to exactly one. */
+  readonly public_key: string | null;
   readonly last_text: string;
   readonly last_at: string;
   readonly last_direction: Direction;

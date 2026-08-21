@@ -378,12 +378,23 @@ pub struct NeighbourSample {
     pub position: Option<[f64; 3]>,
 }
 
+/// Which neighbour readings to answer with.
+#[derive(Debug, Deserialize, Default)]
+pub struct NeighbourQuery {
+    /// Only readings from this public key, lowercase hex.
+    node: Option<String>,
+    /// Upper bound, capped at [`MAX_LIMIT`].
+    limit: Option<i64>,
+}
+
 /// Answers with what other nodes reported, newest first.
 async fn list_neighbour_samples(
     State(context): State<AppContext>,
-    Query(query): Query<ListQuery>,
+    Query(query): Query<NeighbourQuery>,
 ) -> Result<Json<Vec<NeighbourSample>>, ListError> {
-    read_neighbour_samples(&context, query.effective_limit())
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+
+    read_neighbour_samples(&context, query.node.as_deref(), limit)
         .await
         .map(Json)
         .map_err(ListError)
@@ -407,13 +418,17 @@ type NeighbourRow = (
 /// Reads what other nodes reported, newest first.
 pub async fn read_neighbour_samples(
     context: &AppContext,
+    node: Option<&str>,
     limit: i64,
 ) -> Result<Vec<NeighbourSample>, sqlx::Error> {
     let rows: Vec<NeighbourRow> = sqlx::query_as(
         "SELECT public_key, at, channel, type_code, value,
                 axis_x, axis_y, axis_z, latitude, longitude, altitude
-         FROM telemetry_neighbour_samples ORDER BY id DESC LIMIT ?",
+         FROM telemetry_neighbour_samples
+         WHERE (?1 IS NULL OR public_key = ?1)
+         ORDER BY id DESC LIMIT ?2",
     )
+    .bind(node)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;

@@ -732,6 +732,14 @@ Datenbank, null aufgelöste Absender.
 2. **Ein Ersetzen ohne Zusicherung ist ein stiller Fehlschlag.** Jedes
    skriptgesteuerte Ersetzen im Quelltext gehört mit einer Prüfung versehen,
    dass der Anker existierte.
+
+   *Nachtrag vom 2026-08-22:* Genau das ist zwei Änderungen später erneut
+   passiert — eine Routing-Änderung lief ins Leere, die Seite meldete „gibt es
+   nicht", und erst der Blick in die Datei zeigte, dass der Code nie
+   angekommen war. Eine aufgeschriebene Lektion ersetzt die Gewohnheit nicht.
+   Seitdem trägt jedes Ersetzen ein `assert`, und im selben Lauf hat es
+   prompt einen zweiten falschen Anker abgefangen — samt der Datei, die
+   dadurch unangetastet blieb statt halb geschrieben.
 3. Der Modulschnitt macht solche Lücken wahrscheinlicher, nicht seltener: Genau
    weil die Module nichts voneinander wissen, merkt keines, wenn das andere
    schweigt.

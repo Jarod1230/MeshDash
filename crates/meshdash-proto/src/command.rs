@@ -23,27 +23,26 @@
 //! what it must ask the operator first — is decided where the link lives, not
 //! here.
 //!
-//! # What is deliberately absent
+//! # Every branch is covered, and some of them bite
 //!
-//! Not every branch of `handleCmdFrame()` has a builder here, and the ones
-//! missing are missing on purpose:
+//! All 58 command branches of `handleCmdFrame()` have a builder here. That is
+//! a deliberate choice — a command that exists can be used, and verifying its
+//! payload later is harder than verifying it now. It also means this module
+//! contains things a dashboard should think twice about:
 //!
-//! - **`CMD_EXPORT_PRIVATE_KEY` and `CMD_IMPORT_PRIVATE_KEY`** hand around the
-//!   node's identity. A dashboard has no business holding it, and a builder
-//!   that exists is a builder someone calls — the same reason
-//!   [`crate::response`] has no parser for the private key.
-//! - **`CMD_SIGN_START`, `CMD_SIGN_DATA`, `CMD_SIGN_FINISH`** are a three-step
-//!   signing exchange with state on the node. Nothing in MeshDash signs
-//!   anything.
-//! - **`CMD_SEND_RAW_DATA`, `CMD_SEND_RAW_PACKET`, `CMD_SEND_CHANNEL_DATA`,
-//!   `CMD_SEND_CONTROL_DATA`, `CMD_SEND_ANON_REQ`** put arbitrary bytes on the
-//!   air. Their payloads are whatever the sender decides, so a builder would
-//!   only be a thin wrapper around "trust the caller".
-//! - **`CMD_SEND_TELEMETRY_REQ`** is marked for removal in the firmware; see
-//!   `docs/decisions/0009-cayennelpp.md`.
-//! - **`CMD_SET_FLOOD_SCOPE_KEY`, `CMD_SET_PATH_HASH_MODE`,
-//!   `CMD_IMPORT_CONTACT`** have no caller yet. They can be added when
-//!   something needs them, which is also when their payloads get verified.
+//! - **[`export_private_key`] and [`import_private_key`]** move the node's
+//!   identity. Whoever holds that key *is* the node. Most firmware builds have
+//!   these compiled out and answer `RESP_CODE_DISABLED`.
+//! - **[`set_flood_scope_key`] and [`set_default_flood_scope`]** carry shared
+//!   keys.
+//! - **[`send_raw_data`], [`send_raw_packet`], [`send_control_data`],
+//!   [`send_channel_data`], [`send_anonymous_request`]** put bytes of the
+//!   caller's choosing on the air. They are checked for shape, not for sense.
+//! - **[`reboot`] and [`factory_reset`]** interrupt or erase the node.
+//!
+//! None of these is called by MeshDash today. What a module may do with a node
+//! — and what it must ask the operator first — is decided where the link
+//! lives, not here.
 //!
 //! # Two of these destroy things
 //!
@@ -620,6 +619,326 @@ pub fn set_other_params(
     ]
 }
 
+/// Asks the node to hand over its **private** key.
+///
+/// Whoever holds that key is the node: they can sign as it and read what is
+/// sent to it. Most firmware builds are compiled without
+/// `ENABLE_PRIVATE_KEY_EXPORT` and answer `RESP_CODE_DISABLED` instead.
+///
+/// The answer is read by [`crate::response::private_key`], which exists only
+/// because this command does.
+pub fn export_private_key() -> Vec<u8> {
+    vec![u8::from(Command::ExportPrivateKey)]
+}
+
+/// Replaces the node's identity with the given key. `len >= 65`.
+///
+/// Everything the node was — its address in the mesh, its ability to read
+/// messages sent to it — is gone afterwards and replaced by whatever this key
+/// says. The firmware validates the key and reloads its contacts, because
+/// every shared secret computed from the old identity is now wrong.
+pub fn import_private_key(identity: &[u8; 64]) -> Vec<u8> {
+    let mut frame = Vec::with_capacity(65);
+    frame.push(u8::from(Command::ImportPrivateKey));
+    frame.extend_from_slice(identity);
+    frame
+}
+
+/// Imports a contact from an exported advert packet. `len > 99`.
+///
+/// The payload is whatever [`export_contact`] produced on some node — an
+/// advert packet, not a contact record. The firmware parses and verifies it.
+pub fn import_contact(advert_packet: &[u8]) -> Result<Vec<u8>, CommandError> {
+    // The branch needs more than 2 + 32 + 64 bytes in total, so the packet
+    // itself has to exceed 98.
+    if advert_packet.len() < 98 {
+        return Err(CommandError::TooLong {
+            what: "the advert packet (it is too short to be one)",
+            len: advert_packet.len(),
+            allowed: 98,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(1 + advert_packet.len());
+    frame.push(u8::from(Command::ImportContact));
+    frame.extend_from_slice(advert_packet);
+
+    Ok(frame)
+}
+
+/// Sends a request to someone who need not be a contact yet. `len > 33`.
+///
+/// From firmware version 13 the node adds an unknown key as a contact of type
+/// "none" rather than refusing — so this quietly grows the contact list.
+pub fn send_anonymous_request(
+    public_key: &[u8; 32],
+    request: &[u8],
+) -> Result<Vec<u8>, CommandError> {
+    if request.is_empty() {
+        return Err(CommandError::Empty {
+            what: "the request body",
+        });
+    }
+
+    let mut frame = Vec::with_capacity(33 + request.len());
+    frame.push(u8::from(Command::SendAnonReq));
+    frame.extend_from_slice(public_key);
+    frame.extend_from_slice(request);
+
+    Ok(frame)
+}
+
+/// Sends a datagram into a channel. `len >= 4`.
+///
+/// ```text
+/// 1  channel index
+/// 1  route length byte, or 0xFF to flood
+/// n  the route, when one is given
+/// …  the payload
+/// ```
+///
+/// `route` of `None` means flood. A route that the firmware would call invalid
+/// is refused here, because its answer would be a bare `ERR_CODE_ILLEGAL_ARG`
+/// naming neither which field nor why.
+pub fn send_channel_data(
+    channel_index: u8,
+    route: Option<&[u8]>,
+    payload: &[u8],
+) -> Result<Vec<u8>, CommandError> {
+    let mut frame = Vec::with_capacity(3 + payload.len());
+    frame.push(u8::from(Command::SendChannelData));
+    frame.push(channel_index);
+
+    match route {
+        None => frame.push(0xFF), // flood
+        Some(hops) => {
+            let shape = crate::path::PathShape {
+                stations: u8::try_from(hops.len()).map_err(|_| CommandError::TooLong {
+                    what: "the route",
+                    len: hops.len(),
+                    allowed: 63,
+                })?,
+                bytes_per_station: 1,
+            };
+            frame.push(crate::path::encode(shape).ok_or(CommandError::TooLong {
+                what: "the route",
+                len: hops.len(),
+                allowed: 63,
+            })?);
+            frame.extend_from_slice(hops);
+        }
+    }
+
+    frame.extend_from_slice(payload);
+    Ok(frame)
+}
+
+/// Sends control data one hop. `len >= 2`.
+///
+/// The firmware only takes the branch when the **high bit of the first payload
+/// byte is set**; without it the frame falls through and comes back as an
+/// unsupported command. That bit is checked here so the caller learns why.
+pub fn send_control_data(payload: &[u8]) -> Result<Vec<u8>, CommandError> {
+    let Some(&first) = payload.first() else {
+        return Err(CommandError::Empty {
+            what: "the control payload",
+        });
+    };
+
+    if first & 0x80 == 0 {
+        return Err(CommandError::OutOfRange {
+            what: "the first control byte (its high bit must be set)",
+            value: i32::from(first),
+            limit: 0x80,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(1 + payload.len());
+    frame.push(u8::from(Command::SendControlData));
+    frame.extend_from_slice(payload);
+
+    Ok(frame)
+}
+
+/// Sends raw data along a known route. `len >= 6`.
+///
+/// Flooding is **not** supported: the firmware answers a negative route length
+/// with `ERR_CODE_UNSUPPORTED_CMD`. The payload needs at least four bytes.
+pub fn send_raw_data(route: &[u8], payload: &[u8]) -> Result<Vec<u8>, CommandError> {
+    if payload.len() < 4 {
+        return Err(CommandError::TooLong {
+            what: "the payload (the firmware needs at least four bytes)",
+            len: payload.len(),
+            allowed: 4,
+        });
+    }
+
+    let route_len = u8::try_from(route.len()).map_err(|_| CommandError::TooLong {
+        what: "the route",
+        len: route.len(),
+        allowed: 127,
+    })?;
+
+    if route_len > 127 {
+        // The firmware reads this byte as int8_t and rejects negatives.
+        return Err(CommandError::TooLong {
+            what: "the route",
+            len: route.len(),
+            allowed: 127,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(2 + route.len() + payload.len());
+    frame.push(u8::from(Command::SendRawData));
+    frame.push(route_len);
+    frame.extend_from_slice(route);
+    frame.extend_from_slice(payload);
+
+    Ok(frame)
+}
+
+/// Puts an already-formed packet on the air. `len >= 4`.
+///
+/// The node parses it and refuses what it cannot read. Nothing here checks the
+/// packet's contents — that is the point of the command.
+pub fn send_raw_packet(priority: u8, packet: &[u8]) -> Result<Vec<u8>, CommandError> {
+    if packet.len() < 2 {
+        return Err(CommandError::TooLong {
+            what: "the packet",
+            len: packet.len(),
+            allowed: 2,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(2 + packet.len());
+    frame.push(u8::from(Command::SendRawPacket));
+    frame.push(priority);
+    frame.extend_from_slice(packet);
+
+    Ok(frame)
+}
+
+/// Asks a contact for telemetry the old way.
+///
+/// Superseded by [`crate::binary_request::encode_telemetry_request`]: the
+/// firmware marks this "can deprecate, in favour of CMD_SEND_BINARY_REQ". Kept
+/// for nodes whose firmware predates the replacement.
+///
+/// The three bytes after the opcode are reserved and sent as zero; with no key
+/// at all the node reports its **own** telemetry.
+pub fn send_telemetry_request(public_key: Option<&[u8; 32]>) -> Vec<u8> {
+    let mut frame = Vec::with_capacity(36);
+    frame.push(u8::from(Command::SendTelemetryReq));
+    frame.extend_from_slice(&[0, 0, 0]);
+
+    if let Some(key) = public_key {
+        frame.extend_from_slice(key);
+    }
+
+    frame
+}
+
+/// Sets the default flood scope, or clears it.
+///
+/// # This carries a shared key
+///
+/// The scope key decides which nodes relay a flood. Passing `None` clears both
+/// name and key.
+pub fn set_default_flood_scope(scope: Option<(&str, &[u8; 16])>) -> Result<Vec<u8>, CommandError> {
+    let Some((name, key)) = scope else {
+        return Ok(vec![u8::from(Command::SetDefaultFloodScope)]);
+    };
+
+    // The firmware needs a name of one to thirty characters; it measures with
+    // strlen over a 31-byte field, so the terminator has to fit too.
+    if name.is_empty() {
+        return Err(CommandError::Empty {
+            what: "the scope name",
+        });
+    }
+
+    if name.len() > 30 {
+        return Err(CommandError::TooLong {
+            what: "the scope name",
+            len: name.len(),
+            allowed: 30,
+        });
+    }
+
+    let mut frame = vec![0u8; 1 + 31 + 16];
+    frame[0] = u8::from(Command::SetDefaultFloodScope);
+    frame[1..1 + name.len()].copy_from_slice(name.as_bytes());
+    frame[32..48].copy_from_slice(key);
+
+    Ok(frame)
+}
+
+/// Overrides the scope key used for sending, or resets it.
+///
+/// `Some(key)` sets an override, `None` clears it back to the default.
+pub fn set_flood_scope_key(key: Option<&[u8; 16]>) -> Vec<u8> {
+    let mut frame = vec![u8::from(Command::SetFloodScopeKey), 0];
+
+    if let Some(key) = key {
+        frame.extend_from_slice(key);
+    }
+
+    frame
+}
+
+/// Sends without any scope at all — firmware version 12 and up.
+pub fn send_unscoped() -> Vec<u8> {
+    vec![u8::from(Command::SetFloodScopeKey), 1]
+}
+
+/// Chooses how the node hashes path entries. `len >= 3`.
+///
+/// The firmware accepts modes 0, 1 and 2; three or higher is refused.
+pub fn set_path_hash_mode(mode: u8) -> Result<Vec<u8>, CommandError> {
+    if mode >= 3 {
+        return Err(CommandError::OutOfRange {
+            what: "the path hash mode",
+            value: i32::from(mode),
+            limit: 2,
+        });
+    }
+
+    Ok(vec![u8::from(Command::SetPathHashMode), 0, mode])
+}
+
+/// Begins a signing exchange.
+///
+/// The node answers with how many bytes it will accept, then takes them
+/// through [`sign_data`] and produces a signature on [`sign_finish`]. The
+/// buffer lives on the node between the three calls, so an abandoned exchange
+/// leaves it allocated until the next start.
+pub fn sign_start() -> Vec<u8> {
+    vec![u8::from(Command::SignStart)]
+}
+
+/// Adds bytes to the signing buffer. `len > 1`.
+///
+/// Answered with an error when no exchange is open (`ERR_CODE_BAD_STATE`) or
+/// when the buffer would overflow (`ERR_CODE_TABLE_FULL`).
+pub fn sign_data(chunk: &[u8]) -> Result<Vec<u8>, CommandError> {
+    if chunk.is_empty() {
+        return Err(CommandError::Empty {
+            what: "the data to sign",
+        });
+    }
+
+    let mut frame = Vec::with_capacity(1 + chunk.len());
+    frame.push(u8::from(Command::SignData));
+    frame.extend_from_slice(chunk);
+
+    Ok(frame)
+}
+
+/// Finishes the exchange and asks for the signature.
+pub fn sign_finish() -> Vec<u8> {
+    vec![u8::from(Command::SignFinish)]
+}
+
 /// Restarts the node. Pending contact changes are written first.
 ///
 /// The frame carries the word `reboot`; the firmware checks it before acting.
@@ -1033,5 +1352,141 @@ mod tests {
         assert_eq!(frame[1], 1);
         assert_eq!(frame[2], 0b01_01_01, "three two-bit permission fields");
         assert_eq!(frame.len(), 5, "nothing left off");
+    }
+
+    #[test]
+    fn the_key_commands_carry_exactly_what_the_firmware_reads() {
+        assert_eq!(
+            export_private_key(),
+            vec![u8::from(Command::ExportPrivateKey)]
+        );
+
+        let frame = import_private_key(&[0x11; 64]);
+        assert_eq!(frame.len(), 65, "the branch needs len >= 65");
+        assert_eq!(&frame[1..], &[0x11; 64]);
+    }
+
+    #[test]
+    fn a_channel_datagram_floods_when_given_no_route() {
+        // 0xFF is the flood marker here, the same byte that means "no route
+        // known" for a contact.
+        let frame = send_channel_data(2, None, b"daten").unwrap();
+
+        assert_eq!(frame[1], 2);
+        assert_eq!(frame[2], 0xFF);
+        assert_eq!(&frame[3..], b"daten");
+    }
+
+    #[test]
+    fn a_channel_datagram_can_name_its_route() {
+        let frame = send_channel_data(0, Some(&[0x11, 0x22]), b"daten").unwrap();
+
+        assert_eq!(frame[2], 2, "two stations, one byte each");
+        assert_eq!(&frame[3..5], &[0x11, 0x22]);
+        assert_eq!(&frame[5..], b"daten");
+    }
+
+    #[test]
+    fn control_data_needs_the_high_bit_of_its_first_byte() {
+        // Without it the firmware branch does not match at all: no answer, no
+        // error, just an unsupported-command reply from the end of the chain.
+        assert!(send_control_data(&[0x80, 1, 2]).is_ok());
+        assert!(send_control_data(&[0x01, 1, 2]).is_err());
+        assert!(send_control_data(&[]).is_err());
+    }
+
+    #[test]
+    fn raw_data_needs_four_bytes_and_a_route() {
+        // Flooding is not supported here — the firmware answers a negative
+        // route length with ERR_CODE_UNSUPPORTED_CMD.
+        let frame = send_raw_data(&[0x11], b"vier").unwrap();
+
+        assert_eq!(frame[1], 1, "one hop");
+        assert_eq!(&frame[2..3], &[0x11]);
+        assert_eq!(&frame[3..], b"vier");
+
+        assert!(send_raw_data(&[0x11], b"kurz").is_ok());
+        assert!(send_raw_data(&[0x11], b"dre").is_err());
+    }
+
+    #[test]
+    fn a_telemetry_request_without_a_key_asks_the_node_itself() {
+        // Three reserved bytes either way; the key decides whom it is about.
+        assert_eq!(send_telemetry_request(None).len(), 4);
+        assert_eq!(send_telemetry_request(Some(&KEY)).len(), 36);
+        assert_eq!(&send_telemetry_request(Some(&KEY))[1..4], &[0, 0, 0]);
+    }
+
+    #[test]
+    fn a_flood_scope_is_set_or_cleared() {
+        let frame = set_default_flood_scope(Some(("Notfunk", &[0x99; 16]))).unwrap();
+
+        assert_eq!(frame.len(), 48);
+        assert_eq!(&frame[1..8], b"Notfunk");
+        assert_eq!(&frame[32..48], &[0x99; 16]);
+
+        // Clearing is the bare opcode.
+        assert_eq!(set_default_flood_scope(None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn refuses_a_scope_name_that_leaves_no_room_for_its_terminator() {
+        // The firmware measures with strlen over 31 bytes, so 30 characters
+        // is the most that fits.
+        assert!(set_default_flood_scope(Some((&"x".repeat(30), &[0; 16]))).is_ok());
+        assert!(set_default_flood_scope(Some((&"x".repeat(31), &[0; 16]))).is_err());
+        assert!(set_default_flood_scope(Some(("", &[0; 16]))).is_err());
+    }
+
+    #[test]
+    fn the_scope_override_can_be_set_reset_or_switched_off() {
+        assert_eq!(set_flood_scope_key(Some(&[0x77; 16])).len(), 18);
+        assert_eq!(
+            set_flood_scope_key(None),
+            vec![u8::from(Command::SetFloodScopeKey), 0]
+        );
+        assert_eq!(
+            send_unscoped(),
+            vec![u8::from(Command::SetFloodScopeKey), 1]
+        );
+    }
+
+    #[test]
+    fn the_path_hash_mode_is_bounded_by_the_firmware() {
+        assert_eq!(
+            set_path_hash_mode(2).unwrap(),
+            vec![u8::from(Command::SetPathHashMode), 0, 2]
+        );
+        assert!(set_path_hash_mode(3).is_err());
+    }
+
+    #[test]
+    fn the_signing_exchange_is_three_frames() {
+        assert_eq!(sign_start(), vec![u8::from(Command::SignStart)]);
+        assert_eq!(&sign_data(b"zu signieren").unwrap()[1..], b"zu signieren");
+        assert_eq!(sign_finish(), vec![u8::from(Command::SignFinish)]);
+        // The middle one needs at least one byte: len > 1.
+        assert!(sign_data(&[]).is_err());
+    }
+
+    #[test]
+    fn an_anonymous_request_needs_a_body() {
+        assert_eq!(send_anonymous_request(&KEY, b"x").unwrap().len(), 34);
+        assert!(send_anonymous_request(&KEY, &[]).is_err());
+    }
+
+    #[test]
+    fn an_imported_contact_must_be_long_enough_to_be_an_advert() {
+        assert!(import_contact(&[0; 98]).is_ok());
+        assert!(import_contact(&[0; 50]).is_err());
+    }
+
+    #[test]
+    fn a_raw_packet_carries_its_priority_first() {
+        let frame = send_raw_packet(3, &[0xDE, 0xAD]).unwrap();
+
+        assert_eq!(frame[0], u8::from(Command::SendRawPacket));
+        assert_eq!(frame[1], 3);
+        assert_eq!(&frame[2..], &[0xDE, 0xAD]);
     }
 }

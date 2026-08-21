@@ -397,13 +397,17 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
-**Der Stand der Abdeckung.** Von 58 Kommandozweigen in `handleCmdFrame()`
-lassen sich 43 bauen; die übrigen 15 sind **bewusst** ausgelassen und in
-`meshdash_proto::command` einzeln begründet — Schlüsselim- und -export, der
-dreistufige Signierablauf, die Rohdaten-Kommandos, das abgekündigte
-Telemetriekommando und einige ohne Verwender. Sämtliche Antworten und Pushes
-werden gelesen, mit zwei Ausnahmen aus demselben Grund: der private Schlüssel
-und der Flood-Scope-Schlüssel.
+**Der Stand der Abdeckung: vollständig.** Alle 58 Kommandozweige in
+`handleCmdFrame()` lassen sich bauen, alle Antworten und Pushes lesen. Vom
+Flood-Scope wird weiterhin nur der Name gelesen — den Schlüssel braucht
+niemand zurück.
+
+Einige dieser Kommandos sind gefährlich, und das steht bei ihnen: Der private
+Schlüssel lässt sich exportieren und ersetzen (die meisten Firmwarebauten
+antworten darauf mit `RESP_CODE_DISABLED`), Rohpakete lassen sich ungeprüft
+aussenden, der Node lässt sich neu starten und löschen. Gebaut sind sie, damit
+sie da sind; benutzt wird bisher keines. Was ein Modul mit einem Node tun darf,
+entscheidet sich dort, wo der Link liegt — nicht in der Protokollschicht.
 
 **Zwei Fallen beim Schreiben von Kontakten und Funkparametern:**
 

@@ -18,16 +18,12 @@ jedem Minor-Release ändern.
   wird **kein** Name gezeigt, sondern gesagt, dass es mehrdeutig ist — eine
   geratene Zuordnung wäre schlimmer als eine Hexzahl, gerade wo Nachrichten
   Anweisungen tragen können.
-
-### Added
-
-- **Das Protokoll ist erschlossen.** Kontakte anlegen und ändern, Kanäle
-  einrichten, Funkparameter und Sendeleistung setzen, Pfadsuche und Traceroute
-  auslösen, Kennwerte und Einstellungen ändern. Von 58 Kommandos der Firmware
-  lassen sich 43 bauen; die restlichen 15 sind bewusst ausgelassen und einzeln
-  begründet — darunter alles, was private Schlüssel bewegt.
-
-### Added
+- **Das Protokoll ist vollständig erschlossen.** Alle 58 Kommandos der Firmware
+  lassen sich bauen, alle Antworten und Meldungen lesen — von Kontakten und
+  Kanälen über Funkparameter, Pfadsuche und Traceroute bis zu Signieren,
+  Rohpaketen und dem Identitätsschlüssel. Genutzt wird davon bisher nichts; die
+  Kommandos, die etwas zerstören oder Geheimnisse bewegen, sind an Ort und
+  Stelle als solche gekennzeichnet.
 
 - **Alle Meldungen des Node werden verstanden.** Anmeldungen an Repeatern,
   Statusantworten, Pfadänderungen, Sendebestätigungen, Traceroute-Antworten,
@@ -35,32 +31,16 @@ jedem Minor-Release ändern.
   neuere Firmware schickt und diese Fassung nicht kennt, wird vollständig
   aufbewahrt statt verworfen.
 
-### Added
-
 - **Die Antworten des Node lassen sich lesen.** Eigene Identität samt Schlüssel
   und Funkeinstellungen, Uhrzeit, Kennwerte, Statistiken zu Funk und Paketen,
   bekannte Routen und die Variablen angeschlossener Sensoren. Der **private**
   Schlüssel des Node wird ausdrücklich nicht gelesen.
-
-### Added
 
 - **Die meisten Protokollkommandos lassen sich jetzt bauen.** Zwanzig weitere
   Kommandos — Node umbenennen, Position setzen, Uhr stellen, Advert aussenden,
   Pfad zurücksetzen, Kontakt teilen oder löschen, an- und abmelden, Statistiken
   und Kennwerte abfragen, neu starten. Angeschlossen sind sie noch nicht; das
   folgt modulweise.
-
-### Fixed
-
-- **Wege durchs Mesh wurden falsch gelesen.** Das Längenbyte einer Route ist
-  keine Byte-Zahl, sondern trägt zwei Felder: wie viele Zwischenstationen, und
-  wie breit jede ist. Dadurch zeigte MeshDash bei einem echten Node fast jeden
-  Kontakt als „64 Stationen entfernt" — tatsächlich war für 22 von 25 gar kein
-  Weg bekannt und einer war direkt erreichbar. Aufgefallen beim ersten Test mit
-  echter Hardware. Betroffen waren Kontaktliste, Netzansicht und die
-  Stationsangabe an Nachrichten.
-
-### Added
 
 - **Eine Karte.** Unter „Knoten" gibt es neben Liste und Netz jetzt eine
   Kartenansicht: wer wo steht, mit Maßstabsleiste und Norden oben. Bewusst
@@ -106,16 +86,6 @@ jedem Minor-Release ändern.
   Node alle zwei Minuten neu verbindet.
 - **Verbindungsverlauf über die API** unter `/api/v1/system/connections`. Die
   Ereignisse wurden bereits aufgezeichnet, waren aber nicht abrufbar.
-
-### Changed
-
-- **Nachrichtenlisten liefern höchstens 500 Einträge** statt alles, was je
-  angekommen ist. Beide Tabellen wachsen mit jeder empfangenen Nachricht und
-  werden von nichts aufgeräumt; eine Abfrage hätte irgendwann den gesamten
-  Verlauf in eine einzige Antwort gepackt. Mit `?limit=` lässt sich der Wert
-  ändern, bis maximal 5000 — wie bei den Telemetriereihen.
-
-### Added
 
 - **Nachrichten senden.** MeshDash schreibt zum ersten Mal etwas an den Node,
   statt ihn nur zu befragen: `POST /api/v1/messages/send` an einen Kontakt,
@@ -244,7 +214,23 @@ jedem Minor-Release ändern.
   verifizierter Frame-Struktur, bekannter Opcodes und offener Fragen.
 - Arbeitsanweisung für KI-Agenten (`CLAUDE.md`).
 
+### Changed
+
+- **Nachrichtenlisten liefern höchstens 500 Einträge** statt alles, was je
+  angekommen ist. Beide Tabellen wachsen mit jeder empfangenen Nachricht und
+  werden von nichts aufgeräumt; eine Abfrage hätte irgendwann den gesamten
+  Verlauf in eine einzige Antwort gepackt. Mit `?limit=` lässt sich der Wert
+  ändern, bis maximal 5000 — wie bei den Telemetriereihen.
+
 ### Fixed
+
+- **Wege durchs Mesh wurden falsch gelesen.** Das Längenbyte einer Route ist
+  keine Byte-Zahl, sondern trägt zwei Felder: wie viele Zwischenstationen, und
+  wie breit jede ist. Dadurch zeigte MeshDash bei einem echten Node fast jeden
+  Kontakt als „64 Stationen entfernt" — tatsächlich war für 22 von 25 gar kein
+  Weg bekannt und einer war direkt erreichbar. Aufgefallen beim ersten Test mit
+  echter Hardware. Betroffen waren Kontaktliste, Netzansicht und die
+  Stationsangabe an Nachrichten.
 
 - **Endlose Abrufschleife für Nachrichten.** Antwortete der Node auf die Frage
   nach der nächsten Nachricht dauerhaft mit etwas Unerwartetem, fragte MeshDash

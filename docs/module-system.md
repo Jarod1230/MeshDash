@@ -103,6 +103,13 @@ Braucht ein Modul Daten eines anderen, gibt es zwei zulässige Wege: das
 besitzende Modul veröffentlicht sie als Ereignis, oder es bietet eine
 ausdrückliche Schnittstelle an. Ein `JOIN` über Modulgrenzen ist keiner davon.
 
+**Was über den Bus geht, wird mit beiden Modulen getestet.** Die Testdatei
+`crates/meshdash-modules/tests/module_coupling.rs` registriert die beteiligten
+Module gemeinsam. Der Grund steht in
+[`lessons-learned.md`](lessons-learned.md): Eine Kopplung, von der nur die
+empfangende Hälfte getestet ist, kann vollständig fehlen, während beide
+Testsuiten grün sind.
+
 Für den ersten Weg gibt es `AppEvent::Module`:
 
 ```rust

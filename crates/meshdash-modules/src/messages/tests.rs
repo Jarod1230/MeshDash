@@ -488,3 +488,126 @@ fn caps_what_a_request_may_ask_for() {
     assert_eq!(ListQuery { limit: Some(0) }.effective_limit(), 1);
     assert_eq!(ListQuery { limit: Some(-5) }.effective_limit(), 1);
 }
+
+/// The announcement the nodes module publishes for each contact.
+fn contact_announcement(key: u8, name: &str) -> AppEvent {
+    AppEvent::Module {
+        module: "nodes".into(),
+        kind: "contact".into(),
+        data: serde_json::json!({
+            "public_key": format!("{key:02x}").repeat(32),
+            "name": name,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn learns_sender_names_from_the_nodes_module() {
+    // It cannot read that module's tables, so the bus is the only way.
+    let context = context_with(vec![]).await;
+
+    context
+        .events
+        .publish(contact_announcement(0xAA, "Repeater Nord"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let identity = identify_sender(&context, "aaaaaaaaaaaa").await.unwrap();
+
+    assert_eq!(identity.name.as_deref(), Some("Repeater Nord"));
+    assert_eq!(identity.candidates, 1);
+}
+
+#[tokio::test]
+async fn puts_the_name_on_a_received_message() {
+    let context = context_with(queue(vec!["Hallo"])).await;
+    context
+        .events
+        .publish(contact_announcement(0xAA, "Repeater Nord"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    drain_messages(&context).await.unwrap();
+
+    let messages = read_messages(&context, 10).await.unwrap();
+
+    assert_eq!(messages[0].sender_name.as_deref(), Some("Repeater Nord"));
+    assert_eq!(messages[0].sender_candidates, 1);
+}
+
+#[tokio::test]
+async fn shows_no_name_when_two_contacts_share_a_prefix() {
+    // Six bytes can collide. Picking one would be a coin toss presented as
+    // fact — and on a mesh where messages carry instructions, attributing one
+    // to the wrong person is worse than showing a hex prefix.
+    let context = context_with(vec![]).await;
+
+    let same_prefix = |suffix: &str, name: &str| AppEvent::Module {
+        module: "nodes".into(),
+        kind: "contact".into(),
+        data: serde_json::json!({
+            "public_key": format!("aaaaaaaaaaaa{suffix}"),
+            "name": name,
+        }),
+    };
+    context
+        .events
+        .publish(same_prefix(&"11".repeat(26), "Erster"));
+    context
+        .events
+        .publish(same_prefix(&"22".repeat(26), "Zweiter"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let identity = identify_sender(&context, "aaaaaaaaaaaa").await.unwrap();
+
+    assert_eq!(identity.name, None, "no coin toss");
+    assert_eq!(identity.candidates, 2, "but the interface can say why");
+}
+
+#[tokio::test]
+async fn an_unknown_prefix_is_simply_unknown() {
+    let context = context_with(vec![]).await;
+
+    let identity = identify_sender(&context, "ffffffffffff").await.unwrap();
+
+    assert_eq!(identity.name, None);
+    assert_eq!(identity.candidates, 0);
+}
+
+#[tokio::test]
+async fn a_renamed_contact_keeps_one_entry() {
+    // Nodes rename themselves; the key is what identifies them, not the name.
+    let context = context_with(vec![]).await;
+
+    context
+        .events
+        .publish(contact_announcement(0xBB, "Alter Name"));
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    context
+        .events
+        .publish(contact_announcement(0xBB, "Neuer Name"));
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    let identity = identify_sender(&context, "bbbbbbbbbbbb").await.unwrap();
+
+    assert_eq!(identity.name.as_deref(), Some("Neuer Name"));
+    assert_eq!(identity.candidates, 1, "not two rows for one contact");
+}
+
+#[tokio::test]
+async fn ignores_an_announcement_it_cannot_use() {
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::Module {
+        module: "nodes".into(),
+        kind: "contact".into(),
+        data: serde_json::json!({ "name": "ohne Schlüssel" }),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // Nothing stored, nothing broken.
+    assert_eq!(
+        identify_sender(&context, "aaaaaaaaaaaa")
+            .await
+            .unwrap()
+            .candidates,
+        0
+    );
+}

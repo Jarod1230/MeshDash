@@ -27,16 +27,16 @@
 //!   2   1  how many hops away a contact may be to be added
 //! ```
 //!
-//! # Two answers are deliberately not read here
+//! # One answer carries a secret
 //!
-//! `RESP_CODE_PRIVATE_KEY` carries the node's **private** key — the thing that
-//! *is* its identity. MeshDash has no reason to ever hold it, so there is no
-//! parser for it: what cannot be read cannot be logged, stored or backed up by
-//! accident.
+//! [`private_key`] reads the node's **private** key — the thing that *is* its
+//! identity. It exists because [`crate::command::export_private_key`] does;
+//! whoever calls either takes on the duty not to log, store or back up the
+//! result. Most firmware answers `RESP_CODE_DISABLED` to that command anyway.
 //!
 //! `RESP_CODE_DEFAULT_FLOOD_SCOPE` carries a scope name followed by a 16-byte
-//! key. Only the name is read, for the same reason the channel key is skipped
-//! in [`crate::channel`].
+//! key. Only the name is read: nothing in MeshDash needs the key back, and the
+//! channel key in [`crate::channel`] is skipped for the same reason.
 
 use crate::{opcode::Response, path};
 
@@ -201,6 +201,77 @@ pub fn custom_vars(payload: &[u8]) -> Result<Vec<(String, String)>, ResponseErro
         .collect())
 }
 
+/// Reads `RESP_CODE_PRIVATE_KEY` — the node's identity, 64 bytes.
+///
+/// # This is the node's private key
+///
+/// Anything holding it can act as that node. It is returned as a fixed array
+/// rather than a named type so that nothing tempts anyone to put it in a
+/// struct that later grows a `Debug` or `Serialize`.
+///
+/// A firmware compiled without the export answers `RESP_CODE_DISABLED`
+/// instead, which arrives here as a wrong opcode.
+pub fn private_key(payload: &[u8]) -> Result<[u8; 64], ResponseError> {
+    check(payload, Response::PrivateKey, 65)?;
+
+    let mut key = [0u8; 64];
+    key.copy_from_slice(&payload[1..65]);
+    Ok(key)
+}
+
+/// Reads `RESP_CODE_SIGN_START`: how many bytes the node will sign.
+pub fn sign_capacity(payload: &[u8]) -> Result<u32, ResponseError> {
+    check(payload, Response::SignStart, 6)?;
+    Ok(read_u32(payload, 2))
+}
+
+/// Reads `RESP_CODE_SIGNATURE`: 64 bytes of signature.
+pub fn signature(payload: &[u8]) -> Result<[u8; 64], ResponseError> {
+    check(payload, Response::Signature, 65)?;
+
+    let mut signature = [0u8; 64];
+    signature.copy_from_slice(&payload[1..65]);
+    Ok(signature)
+}
+
+/// Reads `RESP_CODE_EXPORT_CONTACT`: an advert packet, ready to be imported
+/// elsewhere.
+///
+/// The bytes are passed through untouched — their shape belongs to the packet
+/// layer, and [`crate::command::import_contact`] takes them as they are.
+pub fn exported_contact(payload: &[u8]) -> Result<Vec<u8>, ResponseError> {
+    check(payload, Response::ExportContact, 2)?;
+    Ok(payload[1..].to_vec())
+}
+
+/// Reads `RESP_ALLOWED_REPEAT_FREQ`: the bands this node may repeat on.
+///
+/// Pairs of lower and upper bound. A trailing partial pair is dropped rather
+/// than guessed at — the firmware stops writing when the frame is full.
+pub fn allowed_repeat_frequencies(payload: &[u8]) -> Result<Vec<(u32, u32)>, ResponseError> {
+    check(payload, Response::AllowedRepeatFreq, 1)?;
+
+    Ok(payload[1..]
+        .chunks_exact(8)
+        .map(|pair| {
+            (
+                u32::from_le_bytes([pair[0], pair[1], pair[2], pair[3]]),
+                u32::from_le_bytes([pair[4], pair[5], pair[6], pair[7]]),
+            )
+        })
+        .collect())
+}
+
+/// Whether an answer says the command is compiled out of this firmware.
+///
+/// `RESP_CODE_DISABLED` is what a node sends instead of refusing outright —
+/// notably for the private key commands.
+pub fn is_disabled(payload: &[u8]) -> bool {
+    payload
+        .first()
+        .is_some_and(|&byte| Response::from(byte) == Response::Disabled)
+}
+
 /// Reads the name of the default flood scope, if one is set.
 ///
 /// The key that follows it is deliberately not read; see the note at the top
@@ -363,5 +434,46 @@ mod tests {
             TuningParams::parse(&[u8::from(Response::TuningParams), 0, 0]),
             Err(ResponseError::TooShort { len: 3, needed: 9 })
         );
+    }
+
+    #[test]
+    fn reads_the_signing_capacity_and_the_signature() {
+        let mut start = vec![u8::from(Response::SignStart), 0];
+        start.extend_from_slice(&8192_u32.to_le_bytes());
+        assert_eq!(sign_capacity(&start).unwrap(), 8192);
+
+        let mut sig = vec![u8::from(Response::Signature)];
+        sig.extend_from_slice(&[0x42; 64]);
+        assert_eq!(signature(&sig).unwrap(), [0x42; 64]);
+    }
+
+    #[test]
+    fn recognises_a_command_the_firmware_was_built_without() {
+        // The private key commands are compiled out of most builds; the node
+        // says so rather than failing.
+        assert!(is_disabled(&[u8::from(Response::Disabled)]));
+        assert!(!is_disabled(&[u8::from(Response::Ok)]));
+    }
+
+    #[test]
+    fn reads_the_bands_a_node_may_repeat_on() {
+        let mut payload = vec![u8::from(Response::AllowedRepeatFreq)];
+        payload.extend_from_slice(&869_400_u32.to_le_bytes());
+        payload.extend_from_slice(&869_650_u32.to_le_bytes());
+
+        assert_eq!(
+            allowed_repeat_frequencies(&payload).unwrap(),
+            vec![(869_400, 869_650)]
+        );
+    }
+
+    #[test]
+    fn drops_a_band_the_firmware_cut_in_half() {
+        // It stops writing when the frame is full, wherever that lands.
+        let mut payload = vec![u8::from(Response::AllowedRepeatFreq)];
+        payload.extend_from_slice(&[0; 8]);
+        payload.extend_from_slice(&[0; 5]);
+
+        assert_eq!(allowed_repeat_frequencies(&payload).unwrap().len(), 1);
     }
 }

@@ -12,11 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
-- **Das Protokoll ist erschlossen.** Kontakte anlegen und ändern, Kanäle
-  einrichten, Funkparameter und Sendeleistung setzen, Pfadsuche und Traceroute
-  auslösen, Kennwerte und Einstellungen ändern. Von 58 Kommandos der Firmware
-  lassen sich 43 bauen; die restlichen 15 sind bewusst ausgelassen und einzeln
-  begründet — darunter alles, was private Schlüssel bewegt.
+- **Das Protokoll ist vollständig erschlossen.** Alle 58 Kommandos der Firmware
+  lassen sich bauen, alle Antworten und Meldungen lesen — von Kontakten und
+  Kanälen über Funkparameter, Pfadsuche und Traceroute bis zu Signieren,
+  Rohpaketen und dem Identitätsschlüssel. Genutzt wird davon bisher nichts; die
+  Kommandos, die etwas zerstören oder Geheimnisse bewegen, sind an Ort und
+  Stelle als solche gekennzeichnet.
 
 ### Added
 

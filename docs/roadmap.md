@@ -158,12 +158,17 @@ Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 - **Aufbewahrung und Verdichtung von Telemetrie**
 - Docker-Image, Release-Automatisierung, ARM-Builds für den Raspberry Pi
 
-## Protokollabdeckung ✅ erledigt
+## Protokollabdeckung ✅ vollständig
 
-Von 58 Kommandozweigen der Firmware sind 43 baubar, sämtliche Antworten und
-Pushes lesbar. Die 15 Auslassungen sind in `meshdash_proto::command` einzeln
-begründet. Damit ist die Protokollschicht keine Bremse mehr: Was ein Modul
-künftig braucht, ist da — **verifiziert**, nicht geraten.
+Alle 58 Kommandozweige der Firmware sind baubar, sämtliche Antworten und Pushes
+lesbar. Jede Nutzlast ist am Quelltext belegt, keine geraten.
+
+**Das will gepflegt werden.** Eine neue Firmwareversion kann Felder anhängen,
+Bedeutungen ändern oder Kommandos abkündigen — wie es mit
+`CMD_SEND_TELEMETRY_REQ` bereits geschehen ist. Wer die Version wechselt,
+vergleicht `handleCmdFrame()` und die `on…Recv()`-Methoden gegen
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md)
+und zieht den Commit-Hash dort nach.
 
 Was daraus noch nicht genutzt wird, ist der eigentliche Rückstand. Er ist im
 Ausbauplan als Stufe 3 beschrieben: Aktionen an einem Knoten, den eigenen Node

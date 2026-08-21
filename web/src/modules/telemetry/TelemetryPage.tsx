@@ -4,6 +4,8 @@ import { Empty, Failed, Loading } from '../../ui/States';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
 import { useResource } from '../../lib/useResource';
+import { useTimeRange } from '../../lib/timeRange';
+import { RangePicker } from '../../ui/RangePicker';
 import { exactTime, relativeTime } from '../../lib/time';
 import { typeName, typeUnit } from './lppTypes';
 
@@ -44,9 +46,12 @@ interface SignalSample {
  */
 export function TelemetryPage() {
   const now = useNow();
-  const battery = useResource<BatterySample[]>('/telemetry/battery?limit=500');
-  const neighbours = useResource<NeighbourSample[]>('/telemetry/neighbours?limit=200');
-  const signal = useResource<SignalSample[]>('/telemetry/signal?limit=500');
+  const range = useTimeRange();
+  const battery = useResource<BatterySample[]>(`/telemetry/battery?limit=500${range.query}`);
+  const neighbours = useResource<NeighbourSample[]>(
+    `/telemetry/neighbours?limit=200${range.query}`,
+  );
+  const signal = useResource<SignalSample[]>(`/telemetry/signal?limit=500${range.query}`);
 
   // Every stored message announces its reception quality on the bus.
   useLiveReload(
@@ -78,6 +83,13 @@ export function TelemetryPage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <p className="text-xs text-mesh-faint">
+          Alle Kurven auf dieser Seite zeigen denselben Zeitraum.
+        </p>
+        <RangePicker range={range} label="Zeitraum der Kurven" />
+      </div>
+
       <dl className="grid gap-3 sm:grid-cols-3">
         <Figure
           label="Batterie"
@@ -100,7 +112,7 @@ export function TelemetryPage() {
           label="Empfangsqualität"
           value={signalPoints.length === 0 ? '—' : String(signalPoints.length)}
           unit="Werte"
-          hint="einer je Nachricht"
+          hint="einer je Nachricht, im gewählten Zeitraum"
         />
       </dl>
 

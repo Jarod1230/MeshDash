@@ -82,6 +82,10 @@ inhaltlichen Änderungen vermischt.
   wiederholte, was Seite eins schon zeigte.
 - Die Antwort bleibt ein Array. Kein Umschlag mit `next`-Feld: der Cursor ist
   das `id` des letzten Eintrags, den der Aufrufer ohnehin in der Hand hat.
+- Zeiträume als `?since=<rfc3339>&until=<rfc3339>`, beide Enden einschließlich
+  und einzeln weglassbar. Ein Wert, der kein Zeitstempel ist, beantwortet die
+  Anfrage mit 400 und `invalid_parameter` — auch der leere: `since=` ist etwas
+  anderes als kein `since`. Wer keinen Zeitraum will, lässt den Parameter weg.
 
 ## Datenbank
 

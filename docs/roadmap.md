@@ -189,8 +189,15 @@ Aus dem Ausbauplan vom 2026-08-20:
       eindeutig einem Kontakt gehört: Ein Verweis auf eine Vermutung öffnete
       die Seite des falschen Knotens.
 
-Damit ist Stufe 1 erledigt. Als Nächstes steht Stufe 2 an — Blättern, Suche,
-Erreichbarkeit über die Zeit, Pfadwechsel, `alerts`.
+Damit ist Stufe 1 erledigt. Von Stufe 2 stehen zwei Stücke:
+
+- [x] **Blättern** — `?before=<id>` an allen wachsenden Listen, in der
+      Oberfläche ein Knopf, der die nächstältere Seite anhängt.
+- [x] **Zeitraum** — `?since=` und `?until=` an allen Listen; die
+      Telemetrieseite wählt zwischen 1 Stunde und 30 Tagen.
+
+Offen in Stufe 2: Suche, Erreichbarkeit je Knoten über die Zeit, Pfadwechsel
+sichtbar machen, `alerts`.
 
 ## Gesammelte Einfälle
 
@@ -205,11 +212,11 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   Verzeichnislisting. Festgehalten, damit die Frage später nicht auf
   „`libudev` einbinden oder keine Portliste" verengt wird — es gibt einen
   dritten Weg.
-- **Echtes Blättern in Listen.** Alle wachsenden Listen sind heute nur
-  *gedeckelt* (`?limit=`, Voreinstellung 500) — wer ältere Einträge sehen will,
-  kann es nicht. Das genügt, solange die Oberfläche nur den aktuellen Stand
-  zeigt; sobald jemand im Verlauf zurückblättern soll, braucht es einen Cursor.
-  Betrifft `messages`, `telemetry` und `nodes` gleichermaßen.
+- **Achsenbeschriftung bei winzigem Wertebereich.** Zeigt eine Kurve nur
+  wenige Millivolt Unterschied, rundet die Y-Achse alle Marken auf denselben
+  Text — beim Ausprobieren stand dreimal `4.10` untereinander. Die Zahl der
+  Nachkommastellen müsste sich nach der Spanne richten, nicht nach der Größe.
+  Beim Zeitraumwechsel aufgefallen, weil eine kurze Spanne genau das erzeugt.
 - **Tabellennamen vereinheitlichen.** `conventions.md` verlangt
   `<modul>_<gegenstand>` im Plural. Vier Tabellen weichen ab:
   `messages_received`, `messages_channel_received`, `messages_sent` (Partizip

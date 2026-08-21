@@ -66,6 +66,8 @@ use meshdash_proto::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::query::{BadTimeRange, TimeRange, Window};
+
 /// Schema of this module. Versions count from 1, per module.
 const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -256,12 +258,24 @@ pub struct ListQuery {
     limit: Option<i64>,
     /// Only readings older than this one — the id of the last one seen.
     before: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
 }
 
 impl ListQuery {
     /// The number of rows to read, within the bounds this module allows.
     fn effective_limit(&self) -> i64 {
         self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+    }
+
+    /// What the request asks for, or what is wrong with its time range.
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.effective_limit(),
+            self.before,
+            self.range.bounds()?,
+        ))
     }
 }
 
@@ -395,6 +409,20 @@ pub struct NeighbourQuery {
     limit: Option<i64>,
     /// Only readings older than this one.
     before: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
+}
+
+impl NeighbourQuery {
+    /// What the request asks for, or what is wrong with its time range.
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
+            self.before,
+            self.range.bounds()?,
+        ))
+    }
 }
 
 /// Answers with what other nodes reported, newest first.
@@ -402,12 +430,10 @@ async fn list_neighbour_samples(
     State(context): State<AppContext>,
     Query(query): Query<NeighbourQuery>,
 ) -> Result<Json<Vec<NeighbourSample>>, ListError> {
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-
-    read_neighbour_samples(&context, query.node.as_deref(), query.before, limit)
+    read_neighbour_samples(&context, query.node.as_deref(), &query.window()?)
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
 /// One row of `telemetry_neighbour_samples`.
@@ -430,8 +456,7 @@ type NeighbourRow = (
 pub async fn read_neighbour_samples(
     context: &AppContext,
     node: Option<&str>,
-    before: Option<i64>,
-    limit: i64,
+    window: &Window,
 ) -> Result<Vec<NeighbourSample>, sqlx::Error> {
     let rows: Vec<NeighbourRow> = sqlx::query_as(
         "SELECT id, public_key, at, channel, type_code, value,
@@ -439,11 +464,15 @@ pub async fn read_neighbour_samples(
          FROM telemetry_neighbour_samples
          WHERE (?1 IS NULL OR public_key = ?1)
            AND (?2 IS NULL OR id < ?2)
-         ORDER BY id DESC LIMIT ?3",
+           AND (?3 IS NULL OR at >= ?3)
+           AND (?4 IS NULL OR at <= ?4)
+         ORDER BY id DESC LIMIT ?5",
     )
     .bind(node)
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -740,25 +769,28 @@ async fn list_signal_samples(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<SignalSample>>, ListError> {
-    read_signal_samples(&context, query.effective_limit(), query.before)
+    read_signal_samples(&context, &query.window()?)
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
 /// Reads stored reception qualities, newest first.
 pub async fn read_signal_samples(
     context: &AppContext,
-    limit: i64,
-    before: Option<i64>,
+    window: &Window,
 ) -> Result<Vec<SignalSample>, sqlx::Error> {
     let rows: Vec<(i64, String, String, f64, Option<i64>)> = sqlx::query_as(
         "SELECT id, at, source, snr, path_len FROM telemetry_signal_samples
          WHERE (?1 IS NULL OR id < ?1)
-         ORDER BY id DESC LIMIT ?2",
+           AND (?2 IS NULL OR at >= ?2)
+           AND (?3 IS NULL OR at <= ?3)
+         ORDER BY id DESC LIMIT ?4",
     )
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -816,17 +848,20 @@ pub async fn store_sample(
 /// Reads stored readings, newest first.
 pub async fn read_samples(
     context: &AppContext,
-    limit: i64,
-    before: Option<i64>,
+    window: &Window,
 ) -> Result<Vec<BatterySample>, sqlx::Error> {
     let rows: Vec<(i64, String, i64, i64, i64)> = sqlx::query_as(
         "SELECT id, at, millivolts, storage_used_kib, storage_total_kib
          FROM telemetry_battery_samples
          WHERE (?1 IS NULL OR id < ?1)
-         ORDER BY id DESC LIMIT ?2",
+           AND (?2 IS NULL OR at >= ?2)
+           AND (?3 IS NULL OR at <= ?3)
+         ORDER BY id DESC LIMIT ?4",
     )
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -857,27 +892,49 @@ async fn list_samples(
 ) -> Result<Json<Vec<BatterySample>>, ListError> {
     // Clamped rather than rejected: a caller asking for too much gets the most
     // it may have, not an error it has to handle.
-    read_samples(&context, query.effective_limit(), query.before)
+    read_samples(&context, &query.window()?)
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
-/// Turns a storage failure into an API error.
+/// What can go wrong answering a listing.
 #[derive(Debug)]
-pub struct ListError(sqlx::Error);
+pub enum ListError {
+    /// The database could not be read.
+    Storage(sqlx::Error),
+    /// The request asked for a time range that is not a time.
+    BadRange(BadTimeRange),
+}
+
+impl From<sqlx::Error> for ListError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl From<BadTimeRange> for ListError {
+    fn from(error: BadTimeRange) -> Self {
+        Self::BadRange(error)
+    }
+}
 
 impl axum::response::IntoResponse for ListError {
     fn into_response(self) -> axum::response::Response {
-        tracing::error!(error = %self.0, "could not read the battery readings");
+        match self {
+            Self::Storage(error) => {
+                tracing::error!(%error, "could not read the readings");
 
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": { "code": "storage_failed", "message": "could not read the readings" }
-            })),
-        )
-            .into_response()
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": { "code": "storage_failed", "message": "could not read the readings" }
+                    })),
+                )
+                    .into_response()
+            }
+            Self::BadRange(bad) => bad.into_response(),
+        }
     }
 }
 

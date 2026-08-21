@@ -12,6 +12,11 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Zeitraum wählen.** Die Telemetrieseite zeigt nicht mehr die letzten *n*
+  Messwerte, sondern eine wählbare Spanne — 1 Stunde bis 30 Tage, oder alles.
+  Alle Kurven der Seite folgen derselben Wahl, sonst wären sie nicht
+  vergleichbar. Die API kennt dafür `?since=` und `?until=` an allen Listen.
+
 - **Ältere Einträge nachladen.** Nachrichten, Kanalnachrichten, die Sichtungen
   eines Knotens und der Verbindungsverlauf enden nicht mehr an einer festen
   Obergrenze — ein Knopf holt die nächstältere Seite und hängt sie unten an.

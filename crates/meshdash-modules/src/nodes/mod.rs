@@ -53,6 +53,8 @@ use meshdash_proto::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::query::{BadTimeRange, TimeRange, Window};
+
 /// Schema of this module. Versions count from 1, per module.
 const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -237,7 +239,10 @@ impl Module for NodesModule {
 async fn list_contacts(
     State(context): State<AppContext>,
 ) -> Result<Json<Vec<KnownContact>>, ListError> {
-    read_contacts(&context).await.map(Json).map_err(ListError)
+    read_contacts(&context)
+        .await
+        .map(Json)
+        .map_err(ListError::from)
 }
 
 /// Fetches the contact list from the node and records it.
@@ -361,6 +366,22 @@ pub struct SightingQuery {
     before: Option<i64>,
     /// How many to return.
     limit: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
+}
+
+impl SightingQuery {
+    /// What the request asks for, or what is wrong with its time range.
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.limit
+                .unwrap_or(ADVERT_LIMIT)
+                .clamp(1, MAX_ADVERT_LIMIT),
+            self.before,
+            self.range.bounds()?,
+        ))
+    }
 }
 
 /// Answers with the most recent sightings.
@@ -368,18 +389,10 @@ async fn list_adverts(
     State(context): State<AppContext>,
     Query(query): Query<SightingQuery>,
 ) -> Result<Json<Vec<Sighting>>, ListError> {
-    read_adverts(
-        &context,
-        query.node.as_deref(),
-        query.before,
-        query
-            .limit
-            .unwrap_or(ADVERT_LIMIT)
-            .clamp(1, MAX_ADVERT_LIMIT),
-    )
-    .await
-    .map(Json)
-    .map_err(ListError)
+    read_adverts(&context, query.node.as_deref(), &query.window()?)
+        .await
+        .map(Json)
+        .map_err(ListError::from)
 }
 
 /// Records one advert: the sighting always, the contact when it came with one.
@@ -419,8 +432,7 @@ pub async fn record_advert(context: &AppContext, advert: &Advert) -> Result<(), 
 pub async fn read_adverts(
     context: &AppContext,
     node: Option<&str>,
-    before: Option<i64>,
-    limit: i64,
+    window: &Window,
 ) -> Result<Vec<Sighting>, sqlx::Error> {
     // Paged by id rather than by timestamp: two adverts can share a
     // timestamp, and a cursor that is not unique either repeats a row or
@@ -429,11 +441,15 @@ pub async fn read_adverts(
         "SELECT id, public_key, heard_at, was_new FROM nodes_adverts
          WHERE (?1 IS NULL OR public_key = ?1)
            AND (?2 IS NULL OR id < ?2)
-         ORDER BY id DESC LIMIT ?3",
+           AND (?3 IS NULL OR heard_at >= ?3)
+           AND (?4 IS NULL OR heard_at <= ?4)
+         ORDER BY id DESC LIMIT ?5",
     )
     .bind(node)
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -520,19 +536,41 @@ fn to_hex(bytes: &[u8]) -> String {
 
 /// Turns a storage failure into an API error.
 #[derive(Debug)]
-pub struct ListError(sqlx::Error);
+pub enum ListError {
+    /// The database could not be read.
+    Storage(sqlx::Error),
+    /// The request asked for a time range that is not a time.
+    BadRange(BadTimeRange),
+}
+
+impl From<sqlx::Error> for ListError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl From<BadTimeRange> for ListError {
+    fn from(error: BadTimeRange) -> Self {
+        Self::BadRange(error)
+    }
+}
 
 impl axum::response::IntoResponse for ListError {
     fn into_response(self) -> axum::response::Response {
-        tracing::error!(error = %self.0, "could not read the contacts");
+        match self {
+            Self::Storage(error) => {
+                tracing::error!(%error, "could not read the contacts");
 
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": { "code": "storage_failed", "message": "could not read the contacts" }
-            })),
-        )
-            .into_response()
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": { "code": "storage_failed", "message": "could not read the contacts" }
+                    })),
+                )
+                    .into_response()
+            }
+            Self::BadRange(bad) => bad.into_response(),
+        }
     }
 }
 

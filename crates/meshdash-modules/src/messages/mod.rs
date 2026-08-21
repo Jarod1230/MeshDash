@@ -159,6 +159,11 @@ const MAX_LIMIT: i64 = 5_000;
 pub struct ListQuery {
     /// Upper bound, capped at [`MAX_LIMIT`].
     limit: Option<i64>,
+    /// Only entries older than this one — the id of the last one seen.
+    ///
+    /// This is how older entries are reached at all: a bare limit shows the
+    /// newest and hides the rest for good.
+    before: Option<i64>,
 }
 
 impl ListQuery {
@@ -350,7 +355,7 @@ async fn list_messages(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredMessage>>, ListError> {
-    read_messages(&context, query.effective_limit())
+    read_messages(&context, query.effective_limit(), query.before)
         .await
         .map(Json)
         .map_err(ListError)
@@ -1140,7 +1145,7 @@ async fn list_channel_messages(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredChannelMessage>>, ListError> {
-    read_channel_messages(&context, query.effective_limit())
+    read_channel_messages(&context, query.effective_limit(), query.before)
         .await
         .map(Json)
         .map_err(ListError)
@@ -1160,11 +1165,15 @@ type ChannelMessageRow = (i64, i64, String, i64, Option<f64>, Option<i64>, i64, 
 pub async fn read_channel_messages(
     context: &AppContext,
     limit: i64,
+    before: Option<i64>,
 ) -> Result<Vec<StoredChannelMessage>, sqlx::Error> {
     let rows: Vec<ChannelMessageRow> = sqlx::query_as(
         "SELECT id, channel_index, text, text_type, snr, path_len, sent_at, received_at
-         FROM messages_channel_received ORDER BY id DESC LIMIT ?",
+         FROM messages_channel_received
+         WHERE (?1 IS NULL OR id < ?1)
+         ORDER BY id DESC LIMIT ?2",
     )
+    .bind(before)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
@@ -1222,11 +1231,15 @@ type MessageRow = (
 pub async fn read_messages(
     context: &AppContext,
     limit: i64,
+    before: Option<i64>,
 ) -> Result<Vec<StoredMessage>, sqlx::Error> {
     let rows: Vec<MessageRow> = sqlx::query_as(
         "SELECT id, sender_prefix, text, text_type, snr, path_len, sent_at, received_at
-         FROM messages_received ORDER BY id DESC LIMIT ?",
+         FROM messages_received
+         WHERE (?1 IS NULL OR id < ?1)
+         ORDER BY id DESC LIMIT ?2",
     )
+    .bind(before)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;

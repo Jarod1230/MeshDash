@@ -222,6 +222,8 @@ impl PendingRequests {
 /// One stored reception-quality reading.
 #[derive(Debug, Serialize, PartialEq)]
 pub struct SignalSample {
+    /// Running number; doubles as the cursor for paging.
+    pub id: i64,
     /// When the packet arrived.
     pub at: DateTime<Utc>,
     /// Where it came from: a direct message or a channel.
@@ -235,6 +237,8 @@ pub struct SignalSample {
 /// One stored reading.
 #[derive(Debug, Serialize, PartialEq)]
 pub struct BatterySample {
+    /// Running number; doubles as the cursor for paging.
+    pub id: i64,
     /// When it was taken.
     pub at: DateTime<Utc>,
     /// Battery voltage in millivolts, as the node measured it.
@@ -250,6 +254,8 @@ pub struct BatterySample {
 pub struct ListQuery {
     /// Upper bound, capped at [`MAX_LIMIT`].
     limit: Option<i64>,
+    /// Only readings older than this one — the id of the last one seen.
+    before: Option<i64>,
 }
 
 impl ListQuery {
@@ -361,6 +367,8 @@ impl Module for TelemetryModule {
 /// One reading another node reported, as the API returns it.
 #[derive(Debug, Serialize, PartialEq)]
 pub struct NeighbourSample {
+    /// Running number; doubles as the cursor for paging.
+    pub id: i64,
     /// Whose reading, lowercase hex.
     pub public_key: String,
     /// When MeshDash received it.
@@ -385,6 +393,8 @@ pub struct NeighbourQuery {
     node: Option<String>,
     /// Upper bound, capped at [`MAX_LIMIT`].
     limit: Option<i64>,
+    /// Only readings older than this one.
+    before: Option<i64>,
 }
 
 /// Answers with what other nodes reported, newest first.
@@ -394,7 +404,7 @@ async fn list_neighbour_samples(
 ) -> Result<Json<Vec<NeighbourSample>>, ListError> {
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
-    read_neighbour_samples(&context, query.node.as_deref(), limit)
+    read_neighbour_samples(&context, query.node.as_deref(), query.before, limit)
         .await
         .map(Json)
         .map_err(ListError)
@@ -402,6 +412,7 @@ async fn list_neighbour_samples(
 
 /// One row of `telemetry_neighbour_samples`.
 type NeighbourRow = (
+    i64,
     String,
     String,
     i64,
@@ -419,16 +430,19 @@ type NeighbourRow = (
 pub async fn read_neighbour_samples(
     context: &AppContext,
     node: Option<&str>,
+    before: Option<i64>,
     limit: i64,
 ) -> Result<Vec<NeighbourSample>, sqlx::Error> {
     let rows: Vec<NeighbourRow> = sqlx::query_as(
-        "SELECT public_key, at, channel, type_code, value,
+        "SELECT id, public_key, at, channel, type_code, value,
                 axis_x, axis_y, axis_z, latitude, longitude, altitude
          FROM telemetry_neighbour_samples
          WHERE (?1 IS NULL OR public_key = ?1)
-         ORDER BY id DESC LIMIT ?2",
+           AND (?2 IS NULL OR id < ?2)
+         ORDER BY id DESC LIMIT ?3",
     )
     .bind(node)
+    .bind(before)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
@@ -437,22 +451,23 @@ pub async fn read_neighbour_samples(
         .into_iter()
         .filter_map(|row| {
             Some(NeighbourSample {
-                public_key: row.0,
-                at: match DateTime::parse_from_rfc3339(&row.1) {
+                id: row.0,
+                public_key: row.1,
+                at: match DateTime::parse_from_rfc3339(&row.2) {
                     Ok(time) => time.with_timezone(&Utc),
                     Err(error) => {
                         tracing::error!(%error, "stored timestamp is not RFC 3339");
                         return None;
                     }
                 },
-                channel: row.2 as u8,
-                type_code: row.3 as u8,
-                value: row.4,
-                axes: match (row.5, row.6, row.7) {
+                channel: row.3 as u8,
+                type_code: row.4 as u8,
+                value: row.5,
+                axes: match (row.6, row.7, row.8) {
                     (Some(x), Some(y), Some(z)) => Some([x, y, z]),
                     _ => None,
                 },
-                position: match (row.8, row.9, row.10) {
+                position: match (row.9, row.10, row.11) {
                     (Some(lat), Some(lon), Some(alt)) => Some([lat, lon, alt]),
                     _ => None,
                 },
@@ -725,7 +740,7 @@ async fn list_signal_samples(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<SignalSample>>, ListError> {
-    read_signal_samples(&context, query.effective_limit())
+    read_signal_samples(&context, query.effective_limit(), query.before)
         .await
         .map(Json)
         .map_err(ListError)
@@ -735,11 +750,14 @@ async fn list_signal_samples(
 pub async fn read_signal_samples(
     context: &AppContext,
     limit: i64,
+    before: Option<i64>,
 ) -> Result<Vec<SignalSample>, sqlx::Error> {
-    let rows: Vec<(String, String, f64, Option<i64>)> = sqlx::query_as(
-        "SELECT at, source, snr, path_len FROM telemetry_signal_samples
-         ORDER BY id DESC LIMIT ?",
+    let rows: Vec<(i64, String, String, f64, Option<i64>)> = sqlx::query_as(
+        "SELECT id, at, source, snr, path_len FROM telemetry_signal_samples
+         WHERE (?1 IS NULL OR id < ?1)
+         ORDER BY id DESC LIMIT ?2",
     )
+    .bind(before)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
@@ -748,16 +766,17 @@ pub async fn read_signal_samples(
         .into_iter()
         .filter_map(|row| {
             Some(SignalSample {
-                at: match DateTime::parse_from_rfc3339(&row.0) {
+                id: row.0,
+                at: match DateTime::parse_from_rfc3339(&row.1) {
                     Ok(time) => time.with_timezone(&Utc),
                     Err(error) => {
                         tracing::error!(%error, "stored timestamp is not RFC 3339");
                         return None;
                     }
                 },
-                source: row.1,
-                snr: row.2 as f32,
-                path_len: row.3.map(|value| value as u8),
+                source: row.2,
+                snr: row.3 as f32,
+                path_len: row.4.map(|value| value as u8),
             })
         })
         .collect())
@@ -798,11 +817,15 @@ pub async fn store_sample(
 pub async fn read_samples(
     context: &AppContext,
     limit: i64,
+    before: Option<i64>,
 ) -> Result<Vec<BatterySample>, sqlx::Error> {
-    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
-        "SELECT at, millivolts, storage_used_kib, storage_total_kib
-         FROM telemetry_battery_samples ORDER BY id DESC LIMIT ?",
+    let rows: Vec<(i64, String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT id, at, millivolts, storage_used_kib, storage_total_kib
+         FROM telemetry_battery_samples
+         WHERE (?1 IS NULL OR id < ?1)
+         ORDER BY id DESC LIMIT ?2",
     )
+    .bind(before)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
@@ -811,16 +834,17 @@ pub async fn read_samples(
         .into_iter()
         .filter_map(|row| {
             Some(BatterySample {
-                at: match DateTime::parse_from_rfc3339(&row.0) {
+                id: row.0,
+                at: match DateTime::parse_from_rfc3339(&row.1) {
                     Ok(time) => time.with_timezone(&Utc),
                     Err(error) => {
                         tracing::error!(%error, "stored timestamp is not RFC 3339");
                         return None;
                     }
                 },
-                millivolts: row.1 as u16,
-                storage_used_kib: row.2 as u32,
-                storage_total_kib: row.3 as u32,
+                millivolts: row.2 as u16,
+                storage_used_kib: row.3 as u32,
+                storage_total_kib: row.4 as u32,
             })
         })
         .collect())
@@ -833,7 +857,7 @@ async fn list_samples(
 ) -> Result<Json<Vec<BatterySample>>, ListError> {
     // Clamped rather than rejected: a caller asking for too much gets the most
     // it may have, not an error it has to handle.
-    read_samples(&context, query.effective_limit())
+    read_samples(&context, query.effective_limit(), query.before)
         .await
         .map(Json)
         .map_err(ListError)

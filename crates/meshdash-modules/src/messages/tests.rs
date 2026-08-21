@@ -71,7 +71,7 @@ fn queue(messages: Vec<&str>) -> Vec<Step> {
 async fn starts_with_nothing_stored() {
     let context = context_with(vec![]).await;
 
-    assert!(read_messages(&context, 500).await.unwrap().is_empty());
+    assert!(read_messages(&context, 500, None).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -81,7 +81,7 @@ async fn fetches_until_the_node_has_no_more() {
     let fetched = drain_messages(&context).await.unwrap();
 
     assert_eq!(fetched, 3);
-    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 3);
+    assert_eq!(read_messages(&context, 500, None).await.unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -96,7 +96,7 @@ async fn keeps_what_the_node_reported() {
     let context = context_with(queue(vec!["Hallo Mesh"])).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, 500).await.unwrap();
+    let messages = read_messages(&context, 500, None).await.unwrap();
 
     assert_eq!(messages[0].text, "Hallo Mesh");
     assert_eq!(messages[0].sender_prefix, "aaaaaaaaaaaa");
@@ -110,7 +110,7 @@ async fn reports_the_newest_first() {
     let context = context_with(queue(vec!["Alt", "Neu"])).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, 500).await.unwrap();
+    let messages = read_messages(&context, 500, None).await.unwrap();
 
     assert_eq!(messages[0].text, "Neu", "newest first");
     assert_eq!(messages[1].text, "Alt");
@@ -123,7 +123,7 @@ async fn keeps_history_the_node_has_already_forgotten() {
     let context = context_with(queue(vec!["Einmalig"])).await;
     drain_messages(&context).await.unwrap();
 
-    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 1);
+    assert_eq!(read_messages(&context, 500, None).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -135,7 +135,7 @@ async fn fetches_when_the_node_rings_the_bell() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 1);
+    assert_eq!(read_messages(&context, 500, None).await.unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -148,7 +148,7 @@ async fn ignores_pushes_that_are_not_about_messages() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_messages(&context, 500).await.unwrap().is_empty(),
+        read_messages(&context, 500, None).await.unwrap().is_empty(),
         "an advert is none of this module's business"
     );
 }
@@ -261,7 +261,7 @@ async fn drains_channel_messages_from_the_same_queue() {
 
     assert_eq!(drain_messages(&context).await.unwrap(), 1);
 
-    let messages = read_channel_messages(&context, 500).await.unwrap();
+    let messages = read_channel_messages(&context, 500, None).await.unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].channel_index, 2);
     assert_eq!(messages[0].text, "Hallo Kanal");
@@ -281,8 +281,14 @@ async fn keeps_channel_and_direct_messages_apart() {
     let context = context_with(script).await;
     drain_messages(&context).await.unwrap();
 
-    assert_eq!(read_messages(&context, 500).await.unwrap().len(), 1);
-    assert_eq!(read_channel_messages(&context, 500).await.unwrap().len(), 1);
+    assert_eq!(read_messages(&context, 500, None).await.unwrap().len(), 1);
+    assert_eq!(
+        read_channel_messages(&context, 500, None)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -438,7 +444,7 @@ async fn a_listing_never_returns_more_than_asked_for() {
     let context = context_with(script).await;
     drain_messages(&context).await.unwrap();
 
-    assert_eq!(read_messages(&context, 3).await.unwrap().len(), 3);
+    assert_eq!(read_messages(&context, 3, None).await.unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -453,7 +459,13 @@ async fn a_channel_listing_is_bounded_too() {
     let context = context_with(script).await;
     drain_messages(&context).await.unwrap();
 
-    assert_eq!(read_channel_messages(&context, 4).await.unwrap().len(), 4);
+    assert_eq!(
+        read_channel_messages(&context, 4, None)
+            .await
+            .unwrap()
+            .len(),
+        4
+    );
 }
 
 #[tokio::test]
@@ -469,7 +481,7 @@ async fn a_bounded_listing_still_starts_at_the_newest() {
     let context = context_with(script).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, 1).await.unwrap();
+    let messages = read_messages(&context, 1, None).await.unwrap();
     assert_eq!(messages[0].text, "Neu", "the limit must cut the old end");
 }
 
@@ -478,15 +490,30 @@ fn caps_what_a_request_may_ask_for() {
     assert_eq!(ListQuery::default().effective_limit(), DEFAULT_LIMIT);
     assert_eq!(
         ListQuery {
-            limit: Some(999_999)
+            limit: Some(999_999),
+            before: None
         }
         .effective_limit(),
         MAX_LIMIT
     );
     // Zero or negative would return nothing at all, which reads as "no
     // messages" rather than as a bad request.
-    assert_eq!(ListQuery { limit: Some(0) }.effective_limit(), 1);
-    assert_eq!(ListQuery { limit: Some(-5) }.effective_limit(), 1);
+    assert_eq!(
+        ListQuery {
+            limit: Some(0),
+            before: None
+        }
+        .effective_limit(),
+        1
+    );
+    assert_eq!(
+        ListQuery {
+            limit: Some(-5),
+            before: None
+        }
+        .effective_limit(),
+        1
+    );
 }
 
 /// The announcement the nodes module publishes for each contact.
@@ -526,7 +553,7 @@ async fn puts_the_name_on_a_received_message() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, 10).await.unwrap();
+    let messages = read_messages(&context, 10, None).await.unwrap();
 
     assert_eq!(messages[0].sender_name.as_deref(), Some("Repeater Nord"));
     assert_eq!(messages[0].sender_candidates, 1);
@@ -809,4 +836,26 @@ async fn an_ambiguous_prefix_gets_no_key_either() {
 
     assert_eq!(gespraeche[0].public_key, None);
     assert_eq!(gespraeche[0].candidates, 2);
+}
+
+#[tokio::test]
+async fn a_cursor_continues_where_the_page_ended() {
+    let context = context_with(queue(vec!["Erste", "Zweite", "Dritte"])).await;
+    drain_messages(&context).await.unwrap();
+
+    let erste_seite = read_messages(&context, 2, None).await.unwrap();
+    let zweite_seite = read_messages(&context, 2, Some(erste_seite[1].id))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        erste_seite.iter().map(|m| &m.text).collect::<Vec<_>>(),
+        vec!["Dritte", "Zweite"],
+        "newest first"
+    );
+    assert_eq!(
+        zweite_seite.iter().map(|m| &m.text).collect::<Vec<_>>(),
+        vec!["Erste"],
+        "the cursor must exclude what the first page already showed"
+    );
 }

@@ -163,6 +163,8 @@ async fn handle(context: &AppContext, event: AppEvent) {
 /// One recorded change of the connection.
 #[derive(Debug, Serialize, PartialEq)]
 pub struct ConnectionEvent {
+    /// Running number, ascending with arrival. Cursor for the next page.
+    pub id: i64,
     /// When it happened.
     pub at: DateTime<Utc>,
     /// Whether this was a connection or a loss.
@@ -182,6 +184,8 @@ const MAX_LIMIT: i64 = 1_000;
 pub struct ListQuery {
     /// Upper bound, capped at [`MAX_LIMIT`].
     limit: Option<i64>,
+    /// Only changes older than this one.
+    before: Option<i64>,
 }
 
 impl ListQuery {
@@ -195,7 +199,7 @@ async fn connections(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<ConnectionEvent>>, StatusError> {
-    read_connections(&context, query.effective_limit())
+    read_connections(&context, query.effective_limit(), query.before)
         .await
         .map(Json)
         .map_err(StatusError)
@@ -208,11 +212,14 @@ async fn connections(
 pub async fn read_connections(
     context: &AppContext,
     limit: i64,
+    before: Option<i64>,
 ) -> Result<Vec<ConnectionEvent>, sqlx::Error> {
-    let rows: Vec<(String, i64, Option<String>)> = sqlx::query_as(
-        "SELECT at, connected, reason FROM system_connection_events
-         ORDER BY id DESC LIMIT ?",
+    let rows: Vec<(i64, String, i64, Option<String>)> = sqlx::query_as(
+        "SELECT id, at, connected, reason FROM system_connection_events
+         WHERE (?1 IS NULL OR id < ?1)
+         ORDER BY id DESC LIMIT ?2",
     )
+    .bind(before)
     .bind(limit)
     .fetch_all(context.db.pool())
     .await?;
@@ -221,9 +228,10 @@ pub async fn read_connections(
         .into_iter()
         .filter_map(|row| {
             Some(ConnectionEvent {
-                at: parse_time(&row.0)?,
-                connected: row.1 != 0,
-                reason: row.2,
+                id: row.0,
+                at: parse_time(&row.1)?,
+                connected: row.2 != 0,
+                reason: row.3,
             })
         })
         .collect())

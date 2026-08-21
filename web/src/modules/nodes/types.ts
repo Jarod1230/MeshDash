@@ -28,6 +28,8 @@ export interface KnownContact {
 
 /** What `/api/v1/nodes/adverts` answers. */
 export interface Sighting {
+  /** Running number, ascending with arrival. Cursor for the next page. */
+  readonly id: number;
   readonly public_key: string;
   readonly heard_at: string;
   readonly was_new: boolean;

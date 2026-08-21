@@ -5,13 +5,18 @@
 //! and keeps what arrives, so a history exists even though the node's own queue
 //! is emptied by reading it.
 //!
-//! # The sender is a prefix, not a contact
+//! # The sender is a prefix, and a prefix can belong to more than one node
 //!
-//! A message names its sender with six bytes of their public key. Six bytes can
-//! collide, so this module stores the prefix and does **not** decide which
-//! contact it belongs to. Doing so would also mean reading another module's
-//! tables, which the module rules forbid — `nodes` owns the contacts. Whoever
-//! wants a name matches the prefix and treats the result as probable.
+//! A message names its sender with six bytes of their public key. This module
+//! keeps its own small list of which prefix goes with which name, fed by the
+//! `nodes` module over the bus — it cannot read that module's tables, and it
+//! does not need to.
+//!
+//! Six bytes can collide. When two known contacts share a prefix, **neither
+//! name is shown**: the answer would be a coin toss dressed up as fact, and on
+//! a mesh where messages carry instructions, attributing one to the wrong
+//! person is worse than showing a hex prefix. The API says how many candidates
+//! there were, so an interface can explain itself.
 //!
 //! # Channels arrive through the same queue
 //!
@@ -119,6 +124,24 @@ const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 3,
+        description: "which sender prefix belongs to which contact",
+        sql: "
+        -- Fed by the nodes module over the event bus; this module never reads
+        -- that module's tables. The prefix is the first six bytes of a public
+        -- key and is *not* unique — several contacts can share one, which is
+        -- why the primary key here is the full key.
+        CREATE TABLE messages_senders (
+            public_key  TEXT PRIMARY KEY,
+            prefix      TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+
+        CREATE INDEX messages_senders_prefix ON messages_senders (prefix);
+    ",
+    },
 ];
 
 /// How many messages a listing returns unless it asks for fewer.
@@ -165,6 +188,13 @@ pub struct StoredMessage {
     ///
     /// A prefix, not an identity: two contacts can share one.
     pub sender_prefix: String,
+    /// The sender's name, when exactly one known contact has this prefix.
+    ///
+    /// `None` means either nobody known, or several — `sender_candidates`
+    /// tells which.
+    pub sender_name: Option<String>,
+    /// How many known contacts share this prefix.
+    pub sender_candidates: usize,
     /// The message text.
     pub text: String,
     /// Firmware's text type, passed through as a number.
@@ -281,6 +311,15 @@ impl Module for MessagesModule {
                         }
                     }
                     // Messages may have piled up while we were away.
+                    // The nodes module announces its contacts; that is the
+                    // only way this module learns a name for a prefix.
+                    Ok(AppEvent::Module { module, kind, data })
+                        if module == "nodes" && kind == "contact" =>
+                    {
+                        if let Err(error) = remember_sender(&context, &data).await {
+                            tracing::error!(%error, "could not remember a contact name");
+                        }
+                    }
                     Ok(AppEvent::NodeConnected) => {
                         if let Err(error) = drain_messages(&context).await {
                             tracing::warn!(error, "could not fetch messages after connecting");
@@ -417,6 +456,97 @@ pub async fn store_message(context: &AppContext, message: &Message) -> Result<()
     .await?;
 
     Ok(())
+}
+
+/// Notes which name belongs to a public key, for resolving sender prefixes.
+///
+/// A payload that does not carry both fields is skipped: its shape belongs to
+/// the publishing module and may change.
+pub async fn remember_sender(
+    context: &AppContext,
+    data: &serde_json::Value,
+) -> Result<(), sqlx::Error> {
+    let (Some(public_key), Some(name)) = (
+        data.get("public_key").and_then(serde_json::Value::as_str),
+        data.get("name").and_then(serde_json::Value::as_str),
+    ) else {
+        return Ok(());
+    };
+
+    // Twelve hex digits are the six bytes a message carries as its sender.
+    let Some(prefix) = public_key.get(..12) else {
+        return Ok(());
+    };
+
+    sqlx::query(
+        "INSERT INTO messages_senders (public_key, prefix, name, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (public_key) DO UPDATE SET
+            name = excluded.name,
+            updated_at = excluded.updated_at",
+    )
+    .bind(public_key)
+    .bind(prefix)
+    .bind(name)
+    .bind(Utc::now().to_rfc3339())
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
+
+/// Every known prefix and the names behind it.
+///
+/// Read in one go and matched in memory: a listing of five hundred messages
+/// would otherwise mean five hundred queries.
+async fn sender_names(
+    context: &AppContext,
+) -> Result<std::collections::HashMap<String, Vec<String>>, sqlx::Error> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT prefix, name FROM messages_senders ORDER BY name")
+            .fetch_all(context.db.pool())
+            .await?;
+
+    let mut by_prefix: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for (prefix, name) in rows {
+        by_prefix.entry(prefix).or_default().push(name);
+    }
+
+    Ok(by_prefix)
+}
+
+/// Who a sender prefix might be.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct SenderIdentity {
+    /// The name, when exactly one contact matches.
+    pub name: Option<String>,
+    /// How many known contacts share this prefix.
+    ///
+    /// Zero means nobody known; more than one means the prefix is ambiguous
+    /// and `name` stays empty on purpose.
+    pub candidates: usize,
+}
+
+/// Looks up who a prefix belongs to.
+///
+/// With several candidates no name is returned. Picking one would be a coin
+/// toss presented as fact, and on a mesh where messages carry instructions,
+/// attributing one to the wrong person is worse than showing a hex prefix.
+pub async fn identify_sender(
+    context: &AppContext,
+    prefix: &str,
+) -> Result<SenderIdentity, sqlx::Error> {
+    let names: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM messages_senders WHERE prefix = ? ORDER BY name")
+            .bind(prefix)
+            .fetch_all(context.db.pool())
+            .await?;
+
+    Ok(SenderIdentity {
+        name: (names.len() == 1).then(|| names[0].0.clone()),
+        candidates: names.len(),
+    })
 }
 
 /// Announces the reception quality of one message on the bus.
@@ -789,10 +919,19 @@ pub async fn read_messages(
     .fetch_all(context.db.pool())
     .await?;
 
+    // One lookup for the whole listing rather than one per row: a busy mesh
+    // makes this the difference between one query and five hundred.
+    let senders = sender_names(context).await?;
+
     Ok(rows
         .into_iter()
         .filter_map(|row| {
+            let matches = senders.get(&row.1);
             Some(StoredMessage {
+                sender_name: matches
+                    .filter(|names| names.len() == 1)
+                    .map(|names| names[0].clone()),
+                sender_candidates: matches.map_or(0, Vec::len),
                 id: row.0,
                 sender_prefix: row.1,
                 text: row.2,

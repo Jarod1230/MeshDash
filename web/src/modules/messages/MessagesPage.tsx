@@ -97,10 +97,10 @@ export function MessagesPage() {
                       {relativeTime(message.received_at, new Date(now))}
                     </span>
                   </div>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-mesh-faint">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mesh-faint">
                     <SignalBars snr={message.snr} />
                     <SignalValue snr={message.snr} />
-                    <span className="tabular">von {message.sender_prefix}</span>
+                    <Sender message={message} />
                     <span>
                       {message.path_len === null
                         ? 'direkt empfangen'
@@ -148,6 +148,38 @@ export function MessagesPage() {
       </section>
     </div>
   );
+}
+
+/**
+ * Who sent a message, as far as that can be said.
+ *
+ * Six bytes of a key are not an identity: two contacts can share them. Where
+ * that happens no name is shown and the interface says why — a guess presented
+ * as fact is worse than a hex prefix, especially where messages carry
+ * instructions.
+ */
+function Sender({ message }: { readonly message: DirectMessage }) {
+  if (message.sender_name !== null) {
+    return (
+      <span>
+        von <span className="text-mesh-muted">{message.sender_name}</span>
+        <span className="tabular ml-1.5 text-mesh-faint">{message.sender_prefix}</span>
+      </span>
+    );
+  }
+
+  if (message.sender_candidates > 1) {
+    return (
+      <span
+        className="tabular"
+        title={`${message.sender_candidates} bekannte Knoten teilen sich dieses Schlüsselpräfix`}
+      >
+        von {message.sender_prefix} — mehrdeutig
+      </span>
+    );
+  }
+
+  return <span className="tabular">von {message.sender_prefix}</span>;
 }
 
 function channelName(channels: readonly Channel[] | null, index: number): string {

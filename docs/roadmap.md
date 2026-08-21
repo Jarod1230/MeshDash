@@ -158,6 +158,17 @@ Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 - **Aufbewahrung und Verdichtung von Telemetrie**
 - Docker-Image, Release-Automatisierung, ARM-Builds für den Raspberry Pi
 
+## Protokollabdeckung ✅ erledigt
+
+Von 58 Kommandozweigen der Firmware sind 43 baubar, sämtliche Antworten und
+Pushes lesbar. Die 15 Auslassungen sind in `meshdash_proto::command` einzeln
+begründet. Damit ist die Protokollschicht keine Bremse mehr: Was ein Modul
+künftig braucht, ist da — **verifiziert**, nicht geraten.
+
+Was daraus noch nicht genutzt wird, ist der eigentliche Rückstand. Er ist im
+Ausbauplan als Stufe 3 beschrieben: Aktionen an einem Knoten, den eigenen Node
+einstellen, Fernadministration.
+
 ## Gesammelte Einfälle
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.

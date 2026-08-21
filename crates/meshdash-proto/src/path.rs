@@ -78,9 +78,54 @@ pub fn decode(path_len: u8) -> Option<PathShape> {
     (shape.byte_len() <= MAX_PATH_BYTES).then_some(shape)
 }
 
+/// Turns a route shape back into its length byte.
+///
+/// `None` when the shape cannot be expressed: more than 63 stations, or hashes
+/// wider than three bytes, or a route that would not fit the field.
+pub fn encode(shape: PathShape) -> Option<u8> {
+    if shape.stations > 63 || shape.bytes_per_station == 0 || shape.bytes_per_station > 3 {
+        return None;
+    }
+
+    if shape.byte_len() > MAX_PATH_BYTES {
+        return None;
+    }
+
+    Some(((shape.bytes_per_station - 1) << 6) | shape.stations)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoding_and_decoding_are_inverse() {
+        // Every byte that decodes must encode back to itself, or writing a
+        // contact back to the node would change its route.
+        for byte in 0..=u8::MAX {
+            if let Some(shape) = decode(byte) {
+                assert_eq!(encode(shape), Some(byte), "round trip failed for {byte}");
+            }
+        }
+    }
+
+    #[test]
+    fn refuses_to_encode_a_shape_that_has_no_byte() {
+        assert_eq!(
+            encode(PathShape {
+                stations: 64,
+                bytes_per_station: 1
+            }),
+            None
+        );
+        assert_eq!(
+            encode(PathShape {
+                stations: 1,
+                bytes_per_station: 4
+            }),
+            None
+        );
+    }
 
     #[test]
     fn a_plain_count_is_that_many_one_byte_stations() {

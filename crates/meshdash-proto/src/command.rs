@@ -23,6 +23,28 @@
 //! what it must ask the operator first — is decided where the link lives, not
 //! here.
 //!
+//! # What is deliberately absent
+//!
+//! Not every branch of `handleCmdFrame()` has a builder here, and the ones
+//! missing are missing on purpose:
+//!
+//! - **`CMD_EXPORT_PRIVATE_KEY` and `CMD_IMPORT_PRIVATE_KEY`** hand around the
+//!   node's identity. A dashboard has no business holding it, and a builder
+//!   that exists is a builder someone calls — the same reason
+//!   [`crate::response`] has no parser for the private key.
+//! - **`CMD_SIGN_START`, `CMD_SIGN_DATA`, `CMD_SIGN_FINISH`** are a three-step
+//!   signing exchange with state on the node. Nothing in MeshDash signs
+//!   anything.
+//! - **`CMD_SEND_RAW_DATA`, `CMD_SEND_RAW_PACKET`, `CMD_SEND_CHANNEL_DATA`,
+//!   `CMD_SEND_CONTROL_DATA`, `CMD_SEND_ANON_REQ`** put arbitrary bytes on the
+//!   air. Their payloads are whatever the sender decides, so a builder would
+//!   only be a thin wrapper around "trust the caller".
+//! - **`CMD_SEND_TELEMETRY_REQ`** is marked for removal in the firmware; see
+//!   `docs/decisions/0009-cayennelpp.md`.
+//! - **`CMD_SET_FLOOD_SCOPE_KEY`, `CMD_SET_PATH_HASH_MODE`,
+//!   `CMD_IMPORT_CONTACT`** have no caller yet. They can be added when
+//!   something needs them, which is also when their payloads get verified.
+//!
 //! # Two of these destroy things
 //!
 //! [`reboot`] interrupts the node, and [`factory_reset`] erases its
@@ -283,6 +305,321 @@ pub fn get_tuning_params() -> Vec<u8> {
     vec![u8::from(Command::GetTuningParams)]
 }
 
+/// Adds a contact to the node, or updates one it already has.
+///
+/// `CMD_ADD_UPDATE_CONTACT`, `len >= 36`. The frame mirrors
+/// `RESP_CODE_CONTACT` byte for byte — the firmware reads it with
+/// `updateContactFromFrame()`, the counterpart of the function that writes a
+/// contact out.
+///
+/// The full 148 bytes are always sent, position and modification time
+/// included. The firmware treats everything past the timestamp as optional and
+/// reads whatever is there; sending less means the node keeps its old values
+/// for those fields, which is rarely what a caller means.
+pub fn add_or_update_contact(
+    contact: &crate::contact::Contact,
+    last_modified: u32,
+) -> Result<Vec<u8>, CommandError> {
+    let mut frame = vec![0u8; 148];
+    frame[0] = u8::from(Command::AddUpdateContact);
+    frame[1..33].copy_from_slice(&contact.public_key);
+    frame[33] = contact.contact_type;
+    frame[34] = contact.flags;
+
+    // A contact without a known route carries the firmware's own marker for
+    // it; anything else would claim a route that does not exist.
+    frame[35] = match &contact.path {
+        None => 0xFF,
+        Some(route) => {
+            let shape = crate::path::PathShape {
+                stations: route.stations,
+                bytes_per_station: if route.stations == 0 {
+                    1
+                } else {
+                    (route.hops.len() / usize::from(route.stations)).max(1) as u8
+                },
+            };
+            crate::path::encode(shape).ok_or(CommandError::TooLong {
+                what: "the route",
+                len: route.hops.len(),
+                allowed: crate::path::MAX_PATH_BYTES,
+            })?
+        }
+    };
+
+    if let Some(route) = &contact.path {
+        let end = 36 + route.hops.len().min(crate::path::MAX_PATH_BYTES);
+        frame[36..end].copy_from_slice(&route.hops[..end - 36]);
+    }
+
+    let name = contact.name.as_bytes();
+    let name_end = 100 + name.len().min(32);
+    frame[100..name_end].copy_from_slice(&name[..name_end - 100]);
+
+    frame[132..136].copy_from_slice(&contact.last_advert.to_le_bytes());
+    frame[136..140].copy_from_slice(&contact.latitude.unwrap_or(0).to_le_bytes());
+    frame[140..144].copy_from_slice(&contact.longitude.unwrap_or(0).to_le_bytes());
+    frame[144..148].copy_from_slice(&last_modified.to_le_bytes());
+
+    Ok(frame)
+}
+
+/// Sets up one channel. `CMD_SET_CHANNEL`, `len >= 50`.
+///
+/// # This carries a shared secret
+///
+/// The key is what lets anyone read and write the channel. It travels in this
+/// frame because there is no other way to configure a channel — but nothing
+/// that calls this may log it, store it or show it. MeshDash never reads a key
+/// back out of a node ([`crate::channel`] skips it on purpose), so the only
+/// place one can exist is the moment a person types it in.
+///
+/// Only 128-bit keys work: the firmware answers a 32-byte key with
+/// `ERR_CODE_UNSUPPORTED_CMD`.
+pub fn set_channel(index: u8, name: &str, secret: &[u8; 16]) -> Result<Vec<u8>, CommandError> {
+    if name.len() > 32 {
+        return Err(CommandError::TooLong {
+            what: "the channel name",
+            len: name.len(),
+            allowed: 32,
+        });
+    }
+
+    let mut frame = vec![0u8; 50];
+    frame[0] = u8::from(Command::SetChannel);
+    frame[1] = index;
+    frame[2..2 + name.len()].copy_from_slice(name.as_bytes());
+    frame[34..50].copy_from_slice(secret);
+
+    Ok(frame)
+}
+
+/// Sets the radio's frequency, bandwidth and coding.
+///
+/// The units are the ones the node uses everywhere: **kilohertz** for the
+/// frequency, **hertz** for the bandwidth. The firmware checks
+/// 150000…2500000 kHz, 7000…500000 Hz, spreading factor 5…12 and coding rate
+/// 5…8; the same bounds are checked here so the caller learns which value was
+/// wrong instead of receiving a bare error code.
+///
+/// `repeat` asks the node to also act as a repeater (firmware v9 and up).
+pub fn set_radio_params(
+    frequency_khz: u32,
+    bandwidth_hz: u32,
+    spreading_factor: u8,
+    coding_rate: u8,
+    repeat: bool,
+) -> Result<Vec<u8>, CommandError> {
+    check_bounds(
+        frequency_khz,
+        "the frequency in kilohertz",
+        150_000,
+        2_500_000,
+    )?;
+    check_bounds(bandwidth_hz, "the bandwidth in hertz", 7_000, 500_000)?;
+    check_bounds(u32::from(spreading_factor), "the spreading factor", 5, 12)?;
+    check_bounds(u32::from(coding_rate), "the coding rate", 5, 8)?;
+
+    let mut frame = Vec::with_capacity(12);
+    frame.push(u8::from(Command::SetRadioParams));
+    frame.extend_from_slice(&frequency_khz.to_le_bytes());
+    frame.extend_from_slice(&bandwidth_hz.to_le_bytes());
+    frame.push(spreading_factor);
+    frame.push(coding_rate);
+    frame.push(u8::from(repeat));
+
+    Ok(frame)
+}
+
+/// Sets the transmit power in dBm.
+///
+/// The firmware accepts −9 up to the board's maximum, which
+/// [`crate::device::SelfInfo`] reports. Only the lower bound can be checked
+/// here; the upper one belongs to the board.
+pub fn set_transmit_power(dbm: i8) -> Result<Vec<u8>, CommandError> {
+    if dbm < -9 {
+        return Err(CommandError::OutOfRange {
+            what: "the transmit power in dBm",
+            value: i32::from(dbm),
+            limit: 9,
+        });
+    }
+
+    Ok(vec![u8::from(Command::SetRadioTxPower), dbm as u8])
+}
+
+/// Sets how long the node waits before receiving and before flooding onward.
+pub fn set_tuning_params(receive_delay_ms: u32, airtime_factor_ms: u32) -> Vec<u8> {
+    let mut frame = Vec::with_capacity(9);
+    frame.push(u8::from(Command::SetTuningParams));
+    frame.extend_from_slice(&receive_delay_ms.to_le_bytes());
+    frame.extend_from_slice(&airtime_factor_ms.to_le_bytes());
+    frame
+}
+
+/// Sets one of the node's custom variables.
+///
+/// They travel as `name:value` in one string, which means a name containing a
+/// colon cannot be expressed — the firmware splits at the first one.
+pub fn set_custom_var(name: &str, value: &str) -> Result<Vec<u8>, CommandError> {
+    if name.is_empty() {
+        return Err(CommandError::Empty {
+            what: "the variable name",
+        });
+    }
+
+    if name.contains(':') {
+        return Err(CommandError::TooLong {
+            what: "the variable name (it must not contain a colon)",
+            len: name.len(),
+            allowed: 0,
+        });
+    }
+
+    let pair = format!("{name}:{value}");
+    let allowed = crate::frame::MAX_FRAME_SIZE - 1;
+    if pair.len() > allowed {
+        return Err(CommandError::TooLong {
+            what: "the variable",
+            len: pair.len(),
+            allowed,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(1 + pair.len());
+    frame.push(u8::from(Command::SetCustomVar));
+    frame.extend_from_slice(pair.as_bytes());
+
+    Ok(frame)
+}
+
+/// Sets the node's Bluetooth pairing code.
+///
+/// Zero switches it off; anything else must be exactly six digits, which is
+/// what the firmware checks.
+pub fn set_device_pin(pin: u32) -> Result<Vec<u8>, CommandError> {
+    if pin != 0 && !(100_000..=999_999).contains(&pin) {
+        return Err(CommandError::OutOfRange {
+            what: "the pairing code (zero, or six digits)",
+            value: pin.min(i32::MAX as u32) as i32,
+            limit: 999_999,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(5);
+    frame.push(u8::from(Command::SetDevicePin));
+    frame.extend_from_slice(&pin.to_le_bytes());
+
+    Ok(frame)
+}
+
+/// Sets which contacts the node adds on its own.
+pub fn set_autoadd_config(flags: u8, max_stations: u8) -> Vec<u8> {
+    vec![u8::from(Command::SetAutoAddConfig), flags, max_stations]
+}
+
+/// Sends a trace along a chosen route — the mesh's traceroute.
+///
+/// `CMD_SEND_TRACE_PATH`, `len > 10`. The answer comes back later as a trace
+/// push.
+///
+/// The low two bits of `flags` say how many bytes each station takes, and the
+/// firmware refuses a route whose length is not a multiple of that — the same
+/// check is made here, because the alternative is `ERR_CODE_ILLEGAL_ARG` with
+/// no hint which of the two was wrong.
+pub fn send_trace(
+    tag: u32,
+    authentication_code: u32,
+    flags: u8,
+    hop_hashes: &[u8],
+) -> Result<Vec<u8>, CommandError> {
+    if hop_hashes.is_empty() {
+        return Err(CommandError::Empty {
+            what: "the route to trace",
+        });
+    }
+
+    let group = 1usize << (flags & 0b0000_0011);
+    if hop_hashes.len() % group != 0 {
+        return Err(CommandError::TooLong {
+            what: "the route (its length must be a multiple of the station width)",
+            len: hop_hashes.len(),
+            allowed: group,
+        });
+    }
+
+    let mut frame = Vec::with_capacity(10 + hop_hashes.len());
+    frame.push(u8::from(Command::SendTracePath));
+    frame.extend_from_slice(&tag.to_le_bytes());
+    frame.extend_from_slice(&authentication_code.to_le_bytes());
+    frame.push(flags);
+    frame.extend_from_slice(hop_hashes);
+
+    Ok(frame)
+}
+
+/// Asks the node to find the route to a contact, in both directions.
+///
+/// `CMD_SEND_PATH_DISCOVERY_REQ`, `len >= 34`; the byte after the opcode must
+/// be zero. The firmware builds this as "flood plus telemetry request" and
+/// answers later with a path discovery push.
+pub fn send_path_discovery(public_key: &[u8; 32]) -> Vec<u8> {
+    let mut frame = Vec::with_capacity(34);
+    frame.push(u8::from(Command::SendPathDiscoveryReq));
+    frame.push(0); // must be zero
+    frame.extend_from_slice(public_key);
+    frame
+}
+
+/// Asks which frequencies this node may repeat on.
+pub fn get_allowed_repeat_frequencies() -> Vec<u8> {
+    vec![u8::from(Command::GetAllowedRepeatFreq)]
+}
+
+/// Asks which contacts the node adds on its own.
+pub fn get_autoadd_config() -> Vec<u8> {
+    vec![u8::from(Command::GetAutoAddConfig)]
+}
+
+/// Asks for the default flood scope.
+pub fn get_default_flood_scope() -> Vec<u8> {
+    vec![u8::from(Command::GetDefaultFloodScope)]
+}
+
+/// Exports a contact so it can be shared, or the node itself.
+///
+/// Without a key the node exports **itself**; the firmware decides by frame
+/// length (`len < 33`). Answered by `RESP_CODE_EXPORT_CONTACT`.
+pub fn export_contact(public_key: Option<&[u8; 32]>) -> Vec<u8> {
+    match public_key {
+        None => vec![u8::from(Command::ExportContact)],
+        Some(key) => with_key(Command::ExportContact, key),
+    }
+}
+
+/// Sets the node's remaining preferences.
+///
+/// Everything past the first byte is optional; the firmware reads as far as
+/// the frame goes. All of it is sent here, because leaving a field off means
+/// the node keeps its old value, which is rarely what a caller means.
+///
+/// `telemetry_permissions` packs three two-bit fields: base, location and
+/// environment, from the low bits upward.
+pub fn set_other_params(
+    manual_add_contacts: bool,
+    telemetry_permissions: u8,
+    advert_location_policy: u8,
+    multi_acknowledgements: u8,
+) -> Vec<u8> {
+    vec![
+        u8::from(Command::SetOtherParams),
+        u8::from(manual_add_contacts),
+        telemetry_permissions,
+        advert_location_policy,
+        multi_acknowledgements,
+    ]
+}
+
 /// Restarts the node. Pending contact changes are written first.
 ///
 /// The frame carries the word `reboot`; the firmware checks it before acting.
@@ -323,6 +660,19 @@ fn check_text(text: &str, what: &'static str, allowed: usize) -> Result<(), Comm
             what,
             len: text.len(),
             allowed,
+        });
+    }
+
+    Ok(())
+}
+
+/// Refuses a value outside the range the firmware accepts.
+fn check_bounds(value: u32, what: &'static str, low: u32, high: u32) -> Result<(), CommandError> {
+    if !(low..=high).contains(&value) {
+        return Err(CommandError::OutOfRange {
+            what,
+            value: value.min(i32::MAX as u32) as i32,
+            limit: high.min(i32::MAX as u32) as i32,
         });
     }
 
@@ -523,5 +873,165 @@ mod tests {
         assert_eq!(&factory_reset()[1..], b"reset");
         assert_eq!(reboot()[0], u8::from(Command::Reboot));
         assert_eq!(factory_reset()[0], u8::from(Command::FactoryReset));
+    }
+
+    #[test]
+    fn a_contact_frame_mirrors_the_one_the_node_sends() {
+        // The firmware reads this with updateContactFromFrame(), the exact
+        // counterpart of the function that writes a contact out — so the
+        // layout has to match RESP_CODE_CONTACT byte for byte.
+        let contact = crate::contact::Contact {
+            public_key: [0xAB; 32],
+            contact_type: 2,
+            flags: 1,
+            path: Some(crate::contact::Route {
+                stations: 2,
+                hops: vec![0x11, 0x22],
+            }),
+            name: "Repeater Nord".into(),
+            last_advert: 1_700_000_000,
+            latitude: Some(52_520_008),
+            longitude: Some(13_404_954),
+            last_modified: 0,
+        };
+
+        let frame = add_or_update_contact(&contact, 1_700_000_100).unwrap();
+
+        assert_eq!(frame.len(), 148);
+        assert_eq!(frame[0], u8::from(Command::AddUpdateContact));
+        assert_eq!(&frame[1..33], &[0xAB; 32]);
+        assert_eq!(frame[33], 2);
+        assert_eq!(frame[35], 2, "two stations, one byte each");
+        assert_eq!(&frame[36..38], &[0x11, 0x22]);
+        assert_eq!(&frame[100..113], b"Repeater Nord");
+        assert_eq!(&frame[136..140], &52_520_008_i32.to_le_bytes());
+        assert_eq!(&frame[144..148], &1_700_000_100_u32.to_le_bytes());
+    }
+
+    #[test]
+    fn a_contact_without_a_route_keeps_the_unknown_marker() {
+        // Writing zero would claim a direct route the node does not have.
+        let contact = crate::contact::Contact {
+            public_key: [0; 32],
+            contact_type: 2,
+            flags: 0,
+            path: None,
+            name: String::new(),
+            last_advert: 0,
+            latitude: None,
+            longitude: None,
+            last_modified: 0,
+        };
+
+        assert_eq!(add_or_update_contact(&contact, 0).unwrap()[35], 0xFF);
+    }
+
+    #[test]
+    fn a_channel_carries_its_name_then_its_key() {
+        let frame = set_channel(2, "Notfunk", &[0x99; 16]).unwrap();
+
+        assert_eq!(frame.len(), 50);
+        assert_eq!(frame[1], 2);
+        assert_eq!(&frame[2..9], b"Notfunk");
+        assert_eq!(&frame[34..50], &[0x99; 16]);
+    }
+
+    #[test]
+    fn radio_parameters_are_checked_against_the_bounds_the_firmware_checks() {
+        // 869.618 MHz at 62.5 kHz — the European mesh settings, in the units
+        // the node uses: kilohertz for one, hertz for the other.
+        let frame = set_radio_params(869_618, 62_500, 11, 5, false).unwrap();
+
+        assert_eq!(&frame[1..5], &869_618_u32.to_le_bytes());
+        assert_eq!(&frame[5..9], &62_500_u32.to_le_bytes());
+        assert_eq!(frame[9], 11);
+        assert_eq!(frame[10], 5);
+        assert_eq!(frame[11], 0, "not repeating");
+
+        assert!(set_radio_params(100_000, 62_500, 11, 5, false).is_err());
+        assert!(set_radio_params(869_618, 62_500, 13, 5, false).is_err());
+        assert!(set_radio_params(869_618, 62_500, 11, 9, false).is_err());
+    }
+
+    #[test]
+    fn transmit_power_may_be_negative_but_not_below_minus_nine() {
+        assert_eq!(set_transmit_power(-9).unwrap()[1] as i8, -9);
+        assert!(set_transmit_power(-10).is_err());
+        // The upper bound belongs to the board and is not checked here.
+        assert!(set_transmit_power(30).is_ok());
+    }
+
+    #[test]
+    fn a_custom_variable_travels_as_one_pair() {
+        let frame = set_custom_var("gps", "1").unwrap();
+
+        assert_eq!(&frame[1..], b"gps:1");
+    }
+
+    #[test]
+    fn refuses_a_variable_name_with_a_colon_in_it() {
+        // The firmware splits at the first colon, so such a name cannot be
+        // expressed at all — better to say so than to send something that
+        // silently means something else.
+        assert!(set_custom_var("a:b", "1").is_err());
+    }
+
+    #[test]
+    fn a_pairing_code_is_off_or_exactly_six_digits() {
+        assert!(set_device_pin(0).is_ok());
+        assert!(set_device_pin(123_456).is_ok());
+        assert!(set_device_pin(12_345).is_err());
+        assert!(set_device_pin(1_234_567).is_err());
+    }
+
+    #[test]
+    fn a_trace_carries_its_tag_code_flags_and_route() {
+        let frame = send_trace(42, 0xABCD, 0, &[0x11, 0x22, 0x33]).unwrap();
+
+        assert_eq!(frame[0], u8::from(Command::SendTracePath));
+        assert_eq!(&frame[1..5], &42_u32.to_le_bytes());
+        assert_eq!(&frame[5..9], &0xABCD_u32.to_le_bytes());
+        assert_eq!(frame[9], 0);
+        assert_eq!(&frame[10..], &[0x11, 0x22, 0x33]);
+    }
+
+    #[test]
+    fn refuses_a_trace_route_that_does_not_divide_by_the_station_width() {
+        // With flags 1 each station takes two bytes, so an odd number of
+        // bytes describes no route the firmware would accept.
+        assert!(send_trace(1, 0, 0b01, &[0x11, 0x22, 0x33]).is_err());
+        assert!(send_trace(1, 0, 0b01, &[0x11, 0x22]).is_ok());
+    }
+
+    #[test]
+    fn refuses_an_empty_trace() {
+        assert!(send_trace(1, 0, 0, &[]).is_err());
+    }
+
+    #[test]
+    fn a_path_discovery_reserves_the_byte_after_the_opcode() {
+        // The firmware checks it is zero before doing anything.
+        let frame = send_path_discovery(&KEY);
+
+        assert_eq!(frame[0], u8::from(Command::SendPathDiscoveryReq));
+        assert_eq!(frame[1], 0);
+        assert_eq!(&frame[2..], &KEY);
+    }
+
+    #[test]
+    fn exporting_without_a_key_exports_the_node_itself() {
+        // The firmware decides by frame length: shorter than 33 means self.
+        assert_eq!(export_contact(None).len(), 1);
+        assert_eq!(export_contact(Some(&KEY)).len(), 33);
+    }
+
+    #[test]
+    fn the_remaining_preferences_travel_in_full() {
+        let frame = set_other_params(true, 0b01_01_01, 2, 1);
+
+        assert_eq!(frame[0], u8::from(Command::SetOtherParams));
+        assert_eq!(frame[1], 1);
+        assert_eq!(frame[2], 0b01_01_01, "three two-bit permission fields");
+        assert_eq!(frame.len(), 5, "nothing left off");
     }
 }

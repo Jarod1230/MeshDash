@@ -9,6 +9,20 @@
 //! *our* records, and when we last saw it, is something only MeshDash can know
 //! — a node that forgets a contact would otherwise erase its own history.
 //!
+//! # What this module publishes
+//!
+//! Every contact it stores is announced on the bus as `AppEvent::Module` with
+//! module `nodes` and kind `contact`:
+//!
+//! ```json
+//! { "public_key": "a1a1…", "name": "Repeater Nord" }
+//! ```
+//!
+//! That is how `messages` learns whose six-byte prefix belongs to which name.
+//! It cannot read this module's tables, and this module has no business
+//! knowing that messages exist — see
+//! `docs/decisions/0007-modul-ereignisse.md`.
+//!
 //! # Adverts are the live half
 //!
 //! The contact listing is a snapshot; adverts tell us who is being heard right
@@ -293,7 +307,26 @@ pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<()
     .execute(context.db.pool())
     .await?;
 
+    announce_contact(context, contact);
+
     Ok(())
+}
+
+/// Tells whoever is listening that this contact exists, under this name.
+///
+/// Fire and forget: nobody may be listening, and this module must not care.
+/// `messages` uses it to put a name on a six-byte sender prefix — it cannot
+/// read this module's tables, and this module has no business knowing that
+/// messages exist. See `docs/decisions/0007-modul-ereignisse.md`.
+fn announce_contact(context: &AppContext, contact: &Contact) {
+    context.events.publish(AppEvent::Module {
+        module: "nodes".into(),
+        kind: "contact".into(),
+        data: serde_json::json!({
+            "public_key": to_hex(&contact.public_key),
+            "name": contact.name,
+        }),
+    });
 }
 
 /// One sighting, as the API reports it.

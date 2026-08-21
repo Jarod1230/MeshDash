@@ -703,3 +703,38 @@ widersprochen.
 
 **Belege:** `NodePrefs.h` (`float freq`, `float bw`), `MyMesh.cpp` Zeilen 943
 und 1072, MeshCore Commit `d929643`; am Gerät gelesen als `869618` / `62500`.
+
+---
+
+## 2026-08-21 — Zwei grüne Testsuiten, ein Feature, das nichts tat
+
+**Kontext:** Absender auflösen. `nodes` sollte jeden Kontakt als Ereignis
+veröffentlichen, `messages` sollte zuhören und daraus Namen für die
+Sechs-Byte-Präfixe der Nachrichten bilden.
+
+**Problem:** Die Empfängerseite war gebaut und getestet — sechs Testfälle, alle
+grün, darunter der Kollisionsfall und das Umbenennen. Die **Senderseite fehlte
+vollständig**: Ein Ersetzen im Quelltext hatte seinen Anker nicht gefunden und
+war wirkungslos durchgelaufen.
+
+Beide Modul-Testsuiten blieben grün, weil jede nur ihr eigenes Modul
+registriert. Die Tests von `messages` schickten das Ereignis selbst — sie
+prüften, dass das Modul richtig zuhört, und konnten gar nicht bemerken, dass
+niemand spricht. Aufgefallen ist es erst am echten Node: 25 Kontakte in der
+Datenbank, null aufgelöste Absender.
+
+**Konsequenz:**
+
+1. **Was über den Bus von Modul zu Modul geht, braucht einen Test mit beiden
+   Modulen.** Dafür gibt es jetzt `tests/module_coupling.rs`. Ein Test, der nur
+   eine Seite einer Kopplung prüft, prüft die Kopplung nicht — er prüft eine
+   Hälfte und suggeriert das Ganze.
+2. **Ein Ersetzen ohne Zusicherung ist ein stiller Fehlschlag.** Jedes
+   skriptgesteuerte Ersetzen im Quelltext gehört mit einer Prüfung versehen,
+   dass der Anker existierte.
+3. Der Modulschnitt macht solche Lücken wahrscheinlicher, nicht seltener: Genau
+   weil die Module nichts voneinander wissen, merkt keines, wenn das andere
+   schweigt.
+
+**Belege:** `messages_senders` blieb leer, während `nodes_contacts` 25 Zeilen
+hatte; nach dem Nachtragen von `announce_contact()` waren es 25 zu 25.

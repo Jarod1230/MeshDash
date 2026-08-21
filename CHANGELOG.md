@@ -12,6 +12,15 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Nachrichten zeigen, von wem sie kommen.** Bisher stand dort ein
+  Schlüsselpräfix wie `a1a1a1a1a1a1`; jetzt steht der Name des Knotens da,
+  sofern er bekannt ist. Teilen sich mehrere bekannte Knoten dasselbe Präfix,
+  wird **kein** Name gezeigt, sondern gesagt, dass es mehrdeutig ist — eine
+  geratene Zuordnung wäre schlimmer als eine Hexzahl, gerade wo Nachrichten
+  Anweisungen tragen können.
+
+### Added
+
 - **Das Protokoll ist erschlossen.** Kontakte anlegen und ändern, Kanäle
   einrichten, Funkparameter und Sendeleistung setzen, Pfadsuche und Traceroute
   auslösen, Kennwerte und Einstellungen ändern. Von 58 Kommandos der Firmware

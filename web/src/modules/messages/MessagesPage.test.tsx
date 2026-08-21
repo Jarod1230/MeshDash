@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { DirectMessage } from './types';
 
@@ -50,7 +51,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function show() {
+/** Opens the page and switches to the direct-message list. */
+async function showDirect() {
   render(
     <MemoryRouter>
       <EventStream>
@@ -58,12 +60,15 @@ function show() {
       </EventStream>
     </MemoryRouter>,
   );
+
+  // Conversations are the first tab now; these tests are about the flat list.
+  await userEvent.click(await screen.findByRole('tab', { name: 'direkt' }));
 }
 
 describe('who sent a message', () => {
   it('names the sender when exactly one contact matches', async () => {
     vi.stubGlobal('fetch', answerWith([{ ...base, sender_name: 'Repeater Nord', sender_candidates: 1 }]));
-    show();
+    await showDirect();
 
     expect(await screen.findByText('Repeater Nord')).toBeInTheDocument();
   });
@@ -72,7 +77,7 @@ describe('who sent a message', () => {
     // Six bytes can collide. A guess presented as fact is worse than a hex
     // prefix, especially where messages carry instructions.
     vi.stubGlobal('fetch', answerWith([{ ...base, sender_candidates: 2 }]));
-    show();
+    await showDirect();
 
     expect(await screen.findByText(/mehrdeutig/)).toBeInTheDocument();
     expect(screen.queryByText('Repeater Nord')).not.toBeInTheDocument();
@@ -80,7 +85,7 @@ describe('who sent a message', () => {
 
   it('shows the bare prefix for an unknown sender', async () => {
     vi.stubGlobal('fetch', answerWith([base]));
-    show();
+    await showDirect();
 
     expect(await screen.findByText(/von a1a1a1a1a1a1/)).toBeInTheDocument();
   });

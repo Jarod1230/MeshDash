@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { SignalBars, SignalValue } from '../../ui/Signal';
 import { Empty, Failed, Loading } from '../../ui/States';
+import { Conversations } from './Conversations';
 import { SendForm } from './SendForm';
-import type { Channel, ChannelMessage, DirectMessage } from './types';
+import type { Channel, ChannelMessage, Conversation, DirectMessage } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
 import { useResource } from '../../lib/useResource';
@@ -22,7 +23,12 @@ export function MessagesPage() {
   const direct = useResource<DirectMessage[]>('/messages/received?limit=100');
   const channel = useResource<ChannelMessage[]>('/messages/channel-received?limit=100');
   const channels = useResource<Channel[]>('/messages/channels');
-  const [tab, setTab] = useState<'direkt' | 'kanäle'>('direkt');
+  const [tab, setTab] = useState<'gespräche' | 'direkt' | 'kanäle'>('gespräche');
+  const [openConversation, setOpenConversation] = useState<Conversation | null>(null);
+  // Remounts the conversation view when live events arrive; it reads its own
+  // resources, and remounting is simpler than threading a reload through two
+  // levels of component.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // The node rings the bell; the backend fetches, then we reload.
   useLiveReload(
@@ -30,6 +36,7 @@ export function MessagesPage() {
     () => {
       direct.reload();
       channel.reload();
+      setReloadKey((value) => value + 1);
     },
   );
 
@@ -56,7 +63,7 @@ export function MessagesPage() {
       </section>
 
       <div className="flex gap-1" role="tablist" aria-label="Art der Nachrichten">
-        {(['direkt', 'kanäle'] as const).map((option) => (
+        {(['gespräche', 'direkt', 'kanäle'] as const).map((option) => (
           <button
             key={option}
             type="button"
@@ -75,7 +82,14 @@ export function MessagesPage() {
       </div>
 
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">
-        {tab === 'direkt' ? (
+        {tab === 'gespräche' ? (
+          <Conversations
+            key={reloadKey}
+            now={now}
+            selected={openConversation}
+            onSelect={setOpenConversation}
+          />
+        ) : tab === 'direkt' ? (
           direct.data === null ? (
             <Loading what="Die Nachrichten" />
           ) : direct.data.length === 0 ? (

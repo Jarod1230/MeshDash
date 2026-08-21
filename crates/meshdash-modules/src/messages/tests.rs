@@ -611,3 +611,160 @@ async fn ignores_an_announcement_it_cannot_use() {
         0
     );
 }
+
+/// A receipt for a sent direct message.
+fn sent_receipt() -> Vec<u8> {
+    let mut payload = vec![u8::from(Response::Sent), 1];
+    payload.extend_from_slice(&0x1234_u32.to_le_bytes());
+    payload.extend_from_slice(&3_000_u32.to_le_bytes());
+    payload
+}
+
+#[tokio::test]
+async fn a_conversation_interleaves_what_came_and_what_went() {
+    // Two separate lists cannot show that an answer followed a question.
+    let mut script = queue(vec!["Frage von draußen"]);
+    script.push(Step::AwaitSent(3));
+    script.push(Step::Emit(sent_receipt()));
+    let context = context_with(script).await;
+
+    drain_messages(&context).await.unwrap();
+    send_message(&context, [0xAA; 6], "Antwort von hier")
+        .await
+        .unwrap();
+
+    let faden = read_conversation(&context, Partner::Contact, "aaaaaaaaaaaa", 50)
+        .await
+        .unwrap();
+
+    assert_eq!(faden.len(), 2);
+    assert_eq!(faden[0].direction, Direction::Received, "oldest first");
+    assert_eq!(faden[0].text, "Frage von draußen");
+    assert_eq!(faden[1].direction, Direction::Sent);
+    assert_eq!(faden[1].text, "Antwort von hier");
+}
+
+#[tokio::test]
+async fn a_received_message_keeps_its_reception_quality_in_the_thread() {
+    let context = context_with(queue(vec!["Mit Signal"])).await;
+    drain_messages(&context).await.unwrap();
+
+    let faden = read_conversation(&context, Partner::Contact, "aaaaaaaaaaaa", 50)
+        .await
+        .unwrap();
+
+    assert_eq!(faden[0].snr, Some(5.0));
+    assert_eq!(
+        faden[0].flooded, None,
+        "that field belongs to sent messages"
+    );
+}
+
+#[tokio::test]
+async fn a_sent_message_keeps_whether_it_was_flooded() {
+    let context = context_with(vec![Step::AwaitSent(1), Step::Emit(sent_receipt())]).await;
+    send_message(&context, [0xBB; 6], "Hinaus").await.unwrap();
+
+    let faden = read_conversation(&context, Partner::Contact, "bbbbbbbbbbbb", 50)
+        .await
+        .unwrap();
+
+    assert_eq!(faden[0].flooded, Some(true));
+    assert_eq!(faden[0].snr, None, "nothing was received here");
+}
+
+#[tokio::test]
+async fn channels_are_conversations_too() {
+    let mut script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(channel_frame(2, "Im Kanal")),
+        Step::AwaitSent(2),
+        Step::Emit(no_more()),
+        Step::AwaitSent(3),
+        Step::Emit(vec![u8::from(Response::Ok)]),
+    ];
+    script.push(Step::Drop("fertig".into()));
+    let context = context_with(script).await;
+
+    drain_messages(&context).await.unwrap();
+    send_channel_message(&context, 2, "Auch hinein")
+        .await
+        .unwrap();
+
+    let faden = read_conversation(&context, Partner::Channel, "2", 50)
+        .await
+        .unwrap();
+
+    assert_eq!(faden.len(), 2);
+    assert_eq!(faden[1].text, "Auch hinein");
+}
+
+#[tokio::test]
+async fn the_overview_lists_every_partner_once() {
+    let mut script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(message_frame("Von A")),
+        Step::AwaitSent(2),
+        Step::Emit(channel_frame(0, "Im Kanal")),
+        Step::AwaitSent(3),
+        Step::Emit(no_more()),
+    ];
+    script.push(Step::Drop("fertig".into()));
+    let context = context_with(script).await;
+    drain_messages(&context).await.unwrap();
+
+    let gespraeche = read_conversations(&context, 50).await.unwrap();
+
+    assert_eq!(gespraeche.len(), 2, "one contact, one channel");
+    assert!(gespraeche.iter().any(|g| g.partner == Partner::Channel));
+    assert!(gespraeche.iter().any(|g| g.partner == Partner::Contact));
+}
+
+#[tokio::test]
+async fn the_overview_shows_the_latest_message_of_each_partner() {
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(message_frame("Alt")),
+        Step::AwaitSent(2),
+        Step::Emit(message_frame("Neu")),
+        Step::AwaitSent(3),
+        Step::Emit(no_more()),
+    ];
+    let context = context_with(script).await;
+    drain_messages(&context).await.unwrap();
+
+    let gespraeche = read_conversations(&context, 50).await.unwrap();
+
+    assert_eq!(gespraeche.len(), 1, "same partner, one entry");
+    assert_eq!(gespraeche[0].last_text, "Neu");
+    assert_eq!(gespraeche[0].messages, 2);
+}
+
+#[tokio::test]
+async fn a_partner_written_to_but_never_heard_from_still_appears() {
+    // Someone you wrote to is a conversation, even before they answer.
+    let context = context_with(vec![Step::AwaitSent(1), Step::Emit(sent_receipt())]).await;
+    send_message(&context, [0xCC; 6], "Erstkontakt")
+        .await
+        .unwrap();
+
+    let gespraeche = read_conversations(&context, 50).await.unwrap();
+
+    assert_eq!(gespraeche.len(), 1);
+    assert_eq!(gespraeche[0].last_direction, Direction::Sent);
+}
+
+#[tokio::test]
+async fn a_conversation_carries_the_partners_name_when_it_is_known() {
+    let context = context_with(queue(vec!["Hallo"])).await;
+    context
+        .events
+        .publish(contact_announcement(0xAA, "Repeater Nord"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    drain_messages(&context).await.unwrap();
+
+    let gespraeche = read_conversations(&context, 50).await.unwrap();
+
+    assert_eq!(gespraeche[0].name.as_deref(), Some("Repeater Nord"));
+    assert_eq!(gespraeche[0].candidates, 1);
+}

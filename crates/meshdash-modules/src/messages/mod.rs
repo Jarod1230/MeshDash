@@ -290,7 +290,9 @@ impl Module for MessagesModule {
                 .route("/channel-received", get(list_channel_messages))
                 .route("/channels", get(list_channels))
                 .route("/send", post(send_direct))
-                .route("/channel-send", post(send_to_channel)),
+                .route("/channel-send", post(send_to_channel))
+                .route("/conversations", get(list_conversations))
+                .route("/conversation", get(show_conversation)),
         )
     }
 
@@ -458,6 +460,64 @@ pub async fn store_message(context: &AppContext, message: &Message) -> Result<()
     Ok(())
 }
 
+/// One side of a conversation: a contact, or a channel.
+#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum Partner {
+    /// A contact, addressed by their six-byte key prefix.
+    Contact,
+    /// A channel, addressed by its index.
+    Channel,
+}
+
+/// Which way a message went.
+#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    /// It arrived over the air.
+    Received,
+    /// It was handed to the node to send.
+    Sent,
+}
+
+/// A conversation, as the overview lists it.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Conversation {
+    /// Contact or channel.
+    pub partner: Partner,
+    /// The key prefix, or the channel index as a string.
+    pub id: String,
+    /// The name, where one is known.
+    pub name: Option<String>,
+    /// For a contact: how many known contacts share this prefix.
+    pub candidates: usize,
+    /// The most recent message, whichever direction it went.
+    pub last_text: String,
+    /// When that was.
+    pub last_at: DateTime<Utc>,
+    /// Which way the most recent message went.
+    pub last_direction: Direction,
+    /// How many messages this conversation holds.
+    pub messages: i64,
+}
+
+/// One message inside a conversation.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct ConversationMessage {
+    /// Whether it came in or went out.
+    pub direction: Direction,
+    /// The text.
+    pub text: String,
+    /// When MeshDash recorded it.
+    pub at: DateTime<Utc>,
+    /// Reception quality, for messages that arrived.
+    pub snr: Option<f32>,
+    /// Stations the packet passed, for messages that arrived.
+    pub stations: Option<u8>,
+    /// Whether the node flooded it, for messages that went out.
+    pub flooded: Option<bool>,
+}
+
 /// Notes which name belongs to a public key, for resolving sender prefixes.
 ///
 /// A payload that does not carry both fields is skipped: its shape belongs to
@@ -493,6 +553,188 @@ pub async fn remember_sender(
     .await?;
 
     Ok(())
+}
+
+/// One row of a conversation thread: text, time, quality, hops, flood flag,
+/// direction.
+type ThreadRow = (
+    String,
+    String,
+    Option<f64>,
+    Option<i64>,
+    Option<i64>,
+    String,
+);
+
+/// One row of the conversation overview: partner kind, id, text, time, count,
+/// direction.
+type OverviewRow = (String, String, String, String, i64, String);
+
+/// Lists every conversation, most recently active first.
+///
+/// A conversation exists as soon as one message went either way, so a contact
+/// that was only written to appears alongside one that only wrote.
+pub async fn read_conversations(
+    context: &AppContext,
+    limit: i64,
+) -> Result<Vec<Conversation>, sqlx::Error> {
+    // One row per partner, built from three tables at once: received direct,
+    // received channel, and sent. Doing it in SQL keeps the "most recent
+    // first" ordering honest across all three.
+    let rows: Vec<OverviewRow> = sqlx::query_as(
+        "WITH alle AS (
+            SELECT 'contact' AS partner, sender_prefix AS id, text,
+                   received_at AS at, 'received' AS direction
+              FROM messages_received
+            UNION ALL
+            SELECT 'channel', CAST(channel_index AS TEXT), text,
+                   received_at, 'received'
+              FROM messages_channel_received
+            UNION ALL
+            SELECT CASE WHEN target LIKE 'channel:%' THEN 'channel' ELSE 'contact' END,
+                   CASE WHEN target LIKE 'channel:%'
+                        THEN substr(target, 9) ELSE target END,
+                   text, sent_at, 'sent'
+              FROM messages_sent
+         ),
+         letzte AS (
+            SELECT partner, id, text, at, direction,
+                   ROW_NUMBER() OVER (PARTITION BY partner, id ORDER BY at DESC) AS rang,
+                   COUNT(*) OVER (PARTITION BY partner, id) AS anzahl
+              FROM alle
+         )
+         SELECT partner, id, text, at, anzahl, direction
+           FROM letzte WHERE rang = 1
+          ORDER BY at DESC
+          LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    let senders = sender_names(context).await?;
+    let channels = channel_names(context).await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|(partner, id, text, at, anzahl, direction)| {
+            let partner = if partner == "channel" {
+                Partner::Channel
+            } else {
+                Partner::Contact
+            };
+
+            let (name, candidates) = match partner {
+                Partner::Channel => (channels.get(&id).cloned(), 0),
+                Partner::Contact => {
+                    let matches = senders.get(&id);
+                    (
+                        matches
+                            .filter(|names| names.len() == 1)
+                            .map(|names| names[0].clone()),
+                        matches.map_or(0, Vec::len),
+                    )
+                }
+            };
+
+            Some(Conversation {
+                partner,
+                id,
+                name,
+                candidates,
+                last_text: text,
+                last_at: parse_time(&at)?,
+                last_direction: if direction == "sent" {
+                    Direction::Sent
+                } else {
+                    Direction::Received
+                },
+                messages: anzahl,
+            })
+        })
+        .collect())
+}
+
+/// Reads one conversation, oldest message first.
+///
+/// Sent and received are interleaved by time, which is the whole point: two
+/// separate lists cannot show that an answer followed a question.
+pub async fn read_conversation(
+    context: &AppContext,
+    partner: Partner,
+    id: &str,
+    limit: i64,
+) -> Result<Vec<ConversationMessage>, sqlx::Error> {
+    let sent_target = match partner {
+        Partner::Channel => format!("channel:{id}"),
+        Partner::Contact => id.to_owned(),
+    };
+
+    // The received half differs per partner; the sent half does not.
+    let received = match partner {
+        Partner::Contact => {
+            "SELECT text, received_at AS at, snr, path_len, NULL AS flooded, 'received' AS direction
+               FROM messages_received WHERE sender_prefix = ?1"
+        }
+        Partner::Channel => {
+            "SELECT text, received_at AS at, snr, path_len, NULL AS flooded, 'received' AS direction
+               FROM messages_channel_received WHERE channel_index = CAST(?1 AS INTEGER)"
+        }
+    };
+
+    let query = format!(
+        "SELECT * FROM (
+            {received}
+            UNION ALL
+            SELECT text, sent_at AS at, NULL, NULL, flooded, 'sent'
+              FROM messages_sent WHERE target = ?2
+         ) ORDER BY at DESC LIMIT ?3"
+    );
+
+    let rows: Vec<ThreadRow> = sqlx::query_as(&query)
+        .bind(id)
+        .bind(&sent_target)
+        .bind(limit)
+        .fetch_all(context.db.pool())
+        .await?;
+
+    // Read newest-first so the limit keeps the *recent* end, then turn it
+    // around: a conversation reads forwards.
+    let mut messages: Vec<ConversationMessage> = rows
+        .into_iter()
+        .filter_map(|(text, at, snr, stations, flooded, direction)| {
+            Some(ConversationMessage {
+                direction: if direction == "sent" {
+                    Direction::Sent
+                } else {
+                    Direction::Received
+                },
+                text,
+                at: parse_time(&at)?,
+                snr: snr.map(|value| value as f32),
+                stations: stations.map(|value| value as u8),
+                flooded: flooded.map(|value| value != 0),
+            })
+        })
+        .collect();
+    messages.reverse();
+
+    Ok(messages)
+}
+
+/// Every known channel index and its name.
+async fn channel_names(
+    context: &AppContext,
+) -> Result<std::collections::HashMap<String, String>, sqlx::Error> {
+    let rows: Vec<(i64, String)> =
+        sqlx::query_as("SELECT channel_index, name FROM messages_channels WHERE name <> ''")
+            .fetch_all(context.db.pool())
+            .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(index, name)| (index.to_string(), name))
+        .collect())
 }
 
 /// Every known prefix and the names behind it.
@@ -821,6 +1063,49 @@ fn parse_prefix(text: &str) -> Option<[u8; 6]> {
     }
 
     Some(prefix)
+}
+
+/// Which conversation to show.
+#[derive(Debug, Deserialize)]
+pub struct ConversationQuery {
+    /// A contact's six-byte key prefix, lowercase hex.
+    with: Option<String>,
+    /// A channel index.
+    channel: Option<u8>,
+    /// Upper bound, capped like every other listing.
+    limit: Option<i64>,
+}
+
+/// Answers with every conversation, most recently active first.
+async fn list_conversations(
+    State(context): State<AppContext>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Vec<Conversation>>, ListError> {
+    read_conversations(&context, query.effective_limit())
+        .await
+        .map(Json)
+        .map_err(ListError)
+}
+
+/// Answers with one conversation, oldest message first.
+async fn show_conversation(
+    State(context): State<AppContext>,
+    Query(query): Query<ConversationQuery>,
+) -> Result<Json<Vec<ConversationMessage>>, ListError> {
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+
+    let (partner, id) = match (&query.with, query.channel) {
+        (Some(prefix), _) => (Partner::Contact, prefix.clone()),
+        (None, Some(index)) => (Partner::Channel, index.to_string()),
+        // Neither given: an empty conversation is a truthful answer to
+        // "show me nothing in particular".
+        (None, None) => return Ok(Json(Vec::new())),
+    };
+
+    read_conversation(&context, partner, &id, limit)
+        .await
+        .map(Json)
+        .map_err(ListError)
 }
 
 /// Answers with the stored channel messages, newest first.

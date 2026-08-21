@@ -174,6 +174,19 @@ Was daraus noch nicht genutzt wird, ist der eigentliche Rückstand. Er ist im
 Ausbauplan als Stufe 3 beschrieben: Aktionen an einem Knoten, den eigenen Node
 einstellen, Fernadministration.
 
+## Nutzbarkeit — Stufe 1
+
+Aus dem Ausbauplan vom 2026-08-20:
+
+- [x] **Absender auflösen** — `nodes` veröffentlicht seine Kontakte,
+      `messages` macht daraus Namen für Sechs-Byte-Präfixe
+- [x] **Gespräche statt Listen** — Verlauf je Kontakt und Kanal, Gesendetes
+      und Empfangenes im selben Faden
+- [ ] **Knotenseite** — alles zu einem Knoten an einem Ort: Sichtungen, Weg,
+      Position, Empfangsqualität, Nachrichten, gemeldete Messwerte
+- [ ] **Alles anklickbar** — jeder Name, jedes Präfix, jeder Kartenpunkt führt
+      zur Knotenseite
+
 ## Gesammelte Einfälle
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.

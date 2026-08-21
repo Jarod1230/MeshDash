@@ -322,7 +322,7 @@ async fn an_answer_without_a_remembered_question_is_dropped() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_neighbour_samples(&context, 10)
+        read_neighbour_samples(&context, None, 10)
             .await
             .unwrap()
             .is_empty()
@@ -356,7 +356,7 @@ async fn stores_what_a_neighbour_reported() {
     .await
     .unwrap();
 
-    let samples = read_neighbour_samples(&context, 10).await.unwrap();
+    let samples = read_neighbour_samples(&context, None, 10).await.unwrap();
 
     assert_eq!(samples.len(), 2);
     // Newest first: the position was stored last.
@@ -439,4 +439,29 @@ fn two_requests_in_a_row_carry_different_nonces() {
     let second = nonce_from_clock();
 
     assert_ne!(first, second);
+}
+
+#[tokio::test]
+async fn neighbour_readings_can_be_asked_for_one_node_only() {
+    let context = context_with(vec![]).await;
+    let reading = |value: f64| meshdash_proto::lpp::Reading {
+        channel: 1,
+        type_code: 116,
+        value: meshdash_proto::lpp::Value::Number(value),
+    };
+    store_neighbour_readings(&context, &"aa".repeat(32), &[reading(4.0)])
+        .await
+        .unwrap();
+    store_neighbour_readings(&context, &"bb".repeat(32), &[reading(3.9)])
+        .await
+        .unwrap();
+
+    let alle = read_neighbour_samples(&context, None, 50).await.unwrap();
+    let nur_einer = read_neighbour_samples(&context, Some(&"aa".repeat(32)), 50)
+        .await
+        .unwrap();
+
+    assert_eq!(alle.len(), 2);
+    assert_eq!(nur_einer.len(), 1);
+    assert_eq!(nur_einer[0].value, Some(4.0));
 }

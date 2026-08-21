@@ -164,6 +164,12 @@ Faustregel: Eine neue **Sicht** auf vorhandene Daten gehört in das Modul, dem
 die Daten gehören. Ein neues Modul entsteht, wenn eine Frage hinzukommt, die
 eigene Daten braucht.
 
+Dasselbe gilt für eine Seite, die Daten **mehrerer** Module zusammenträgt: Die
+Knotenseite liest Kontakte, Nachrichten und Messwerte über drei öffentliche
+APIs. Die Modulregeln verbieten einem Modul, die Tabellen eines anderen zu
+lesen — über einen Browser, der mehrere APIs abfragt, sagen sie nichts. Das ist
+schlicht ein Client.
+
 ## Ein Modul anlegen
 
 Der genaue Ablauf steht fest, sobald der Kern existiert. Der Rahmen:
@@ -177,7 +183,9 @@ Der genaue Ablauf steht fest, sobald der Kern existiert. Der Rahmen:
 3. **Frontend** — Verzeichnis unter `web/src/modules/<modul>/`, ein
    `UiModule` exportieren (`id`, `title`, `summary`, `path`, `component`) und
    in `web/src/modules/index.ts` eintragen. Die Navigation entsteht aus dieser
-   Liste; `App.tsx` wird dafür **nicht** angefasst. Bausteine für Signal,
+   Liste; `App.tsx` wird dafür **nicht** angefasst. Ein Modul kann eigene
+   Unterseiten haben — die Shell hängt es mit `<pfad>/*` ein und weiß von ihnen
+   nichts; das Modul verschachtelt seine `Routes` selbst. Bausteine für Signal,
    Zeitangaben, Karten, Diagramme und Zustände liegen unter `web/src/ui/`.
    Für Live-Aktualisierung sagt die Seite mit `useLiveReload`, auf welche
    Ereignisse sie reagieren will — sie baut ihren Zustand **nicht** aus dem

@@ -21,7 +21,14 @@ export function App() {
             <PageTitle />
             <Routes>
               {modules.map((module) => (
-                <Route key={module.id} path={module.path} element={<module.component />} />
+                <Route
+                  key={module.id}
+                  // A trailing wildcard so a module can have pages below its
+                  // own path — a detail view, say — without the shell knowing
+                  // any of them.
+                  path={module.path === '/' ? '/' : `${module.path}/*`}
+                  element={<module.component />}
+                />
               ))}
               <Route path="*" element={<NotFound />} />
             </Routes>
@@ -108,7 +115,12 @@ function LiveIndicator() {
 /** The current module's summary, so every page says what it answers. */
 function PageTitle() {
   const { pathname } = useLocation();
-  const current = modules.find((module) => module.path === pathname);
+  // Match on the prefix, so a module's detail pages keep its heading.
+  const current = modules.find(
+    (module) =>
+      module.path === pathname ||
+      (module.path !== '/' && pathname.startsWith(`${module.path}/`)),
+  );
   if (current === undefined) return null;
 
   return (

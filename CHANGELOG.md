@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Eine Seite je Knoten.** Wer ist das, wie weit weg, wann zuletzt gehört, was
+  wurde ausgetauscht, was meldet er über sich selbst — alles an einem Ort.
+  Erreichbar aus der Knotenliste, von der Karte und aus einem Gespräch heraus.
+  Aus einer Nachricht wird nur verlinkt, wenn das Sechs-Byte-Präfix eindeutig
+  einem Kontakt gehört; sonst führte der Verweis womöglich zum falschen Knoten.
+
 - **Gespräche statt Listen.** Nachrichten stehen jetzt als Faden je Kontakt und
   je Kanal — Empfangenes und Gesendetes nach Zeit verschränkt, mit
   Empfangsqualität an dem, was hereinkam, und der Sendeart an dem, was hinaus

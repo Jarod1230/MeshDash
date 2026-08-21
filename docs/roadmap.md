@@ -182,10 +182,15 @@ Aus dem Ausbauplan vom 2026-08-20:
       `messages` macht daraus Namen für Sechs-Byte-Präfixe
 - [x] **Gespräche statt Listen** — Verlauf je Kontakt und Kanal, Gesendetes
       und Empfangenes im selben Faden
-- [ ] **Knotenseite** — alles zu einem Knoten an einem Ort: Sichtungen, Weg,
-      Position, Empfangsqualität, Nachrichten, gemeldete Messwerte
-- [ ] **Alles anklickbar** — jeder Name, jedes Präfix, jeder Kartenpunkt führt
-      zur Knotenseite
+- [x] **Knotenseite** — alles zu einem Knoten an einem Ort: Sichtungen, Weg,
+      Position, Nachrichtenverlauf, gemeldete Messwerte
+- [x] **Verlinkt** — aus Knotenliste, Karte und Gesprächen führt der Name zur
+      Knotenseite. Aus einer Nachricht heraus nur, wenn ihr Sechs-Byte-Präfix
+      eindeutig einem Kontakt gehört: Ein Verweis auf eine Vermutung öffnete
+      die Seite des falschen Knotens.
+
+Damit ist Stufe 1 erledigt. Als Nächstes steht Stufe 2 an — Blättern, Suche,
+Erreichbarkeit über die Zeit, Pfadwechsel, `alerts`.
 
 ## Gesammelte Einfälle
 

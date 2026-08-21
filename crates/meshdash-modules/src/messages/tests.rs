@@ -768,3 +768,45 @@ async fn a_conversation_carries_the_partners_name_when_it_is_known() {
     assert_eq!(gespraeche[0].name.as_deref(), Some("Repeater Nord"));
     assert_eq!(gespraeche[0].candidates, 1);
 }
+
+#[tokio::test]
+async fn a_conversation_carries_the_key_needed_to_link_to_the_node() {
+    // A six-byte prefix does not address a node; a page about one needs the
+    // full key.
+    let context = context_with(queue(vec!["Hallo"])).await;
+    context
+        .events
+        .publish(contact_announcement(0xAA, "Repeater Nord"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    drain_messages(&context).await.unwrap();
+
+    let gespraeche = read_conversations(&context, 50).await.unwrap();
+
+    assert_eq!(
+        gespraeche[0].public_key.as_deref(),
+        Some("aa".repeat(32)).as_deref()
+    );
+}
+
+#[tokio::test]
+async fn an_ambiguous_prefix_gets_no_key_either() {
+    // Linking to a guess would open a page about the wrong node.
+    let context = context_with(queue(vec!["Hallo"])).await;
+    for suffix in ["11", "22"] {
+        context.events.publish(AppEvent::Module {
+            module: "nodes".into(),
+            kind: "contact".into(),
+            data: serde_json::json!({
+                "public_key": format!("aaaaaaaaaaaa{}", suffix.repeat(26)),
+                "name": format!("Knoten {suffix}"),
+            }),
+        });
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    drain_messages(&context).await.unwrap();
+
+    let gespraeche = read_conversations(&context, 50).await.unwrap();
+
+    assert_eq!(gespraeche[0].public_key, None);
+    assert_eq!(gespraeche[0].candidates, 2);
+}

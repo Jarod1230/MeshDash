@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { KnownContact } from './types';
 
 /**
@@ -205,16 +206,22 @@ export function Map({
             </>
           )}
         </p>
-        <ul className="flex flex-wrap gap-x-3 gap-y-1">
+        <ul className="flex flex-col gap-1">
           {placed.map((node) => (
-            <li key={node.contact.public_key}>
+            <li key={node.contact.public_key} className="flex flex-wrap items-baseline gap-x-2">
+              <Link
+                to={node.contact.public_key}
+                className="text-mesh-muted hover:text-mesh-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+              >
+                {node.contact.name}
+              </Link>
               <a
                 href={`https://www.openstreetmap.org/?mlat=${node.contact.latitude}&mlon=${node.contact.longitude}#map=13/${node.contact.latitude}/${node.contact.longitude}`}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="text-mesh-accent underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
               >
-                {node.contact.name} in OpenStreetMap
+                in OpenStreetMap
               </a>
             </li>
           ))}

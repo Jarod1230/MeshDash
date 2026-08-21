@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { SignalBars } from '../../ui/Signal';
 import { Empty, Failed, Loading } from '../../ui/States';
 import { exactTime, relativeTime } from '../../lib/time';
@@ -105,7 +106,19 @@ function Thread({
         >
           ← Alle Gespräche
         </button>
-        <span className="truncate text-sm text-mesh-text">{conversationTitle(conversation)}</span>
+        {conversation.public_key === null ? (
+          <span className="truncate text-sm text-mesh-text">
+            {conversationTitle(conversation)}
+          </span>
+        ) : (
+          <Link
+            to={`/knoten/${conversation.public_key}`}
+            className="truncate text-sm text-mesh-text hover:text-mesh-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+            title="Alles über diesen Knoten"
+          >
+            {conversationTitle(conversation)}
+          </Link>
+        )}
         <span className="tabular ml-auto shrink-0 text-xs text-mesh-faint">
           {conversation.messages} {conversation.messages === 1 ? 'Nachricht' : 'Nachrichten'}
         </span>

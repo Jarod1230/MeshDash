@@ -397,6 +397,25 @@ Pubkey (32 B), Typ (1 B), Flags (1 B), `out_path_len` (1 B), Pfad (64 B),
 Name (32 B, nullterminiert), letzter Advert (u32), Breite (i32), Länge (i32),
 letzte Änderung (u32). Umgesetzt in `meshdash_proto::contact`.
 
+**Der Stand der Abdeckung.** Von 58 Kommandozweigen in `handleCmdFrame()`
+lassen sich 43 bauen; die übrigen 15 sind **bewusst** ausgelassen und in
+`meshdash_proto::command` einzeln begründet — Schlüsselim- und -export, der
+dreistufige Signierablauf, die Rohdaten-Kommandos, das abgekündigte
+Telemetriekommando und einige ohne Verwender. Sämtliche Antworten und Pushes
+werden gelesen, mit zwei Ausnahmen aus demselben Grund: der private Schlüssel
+und der Flood-Scope-Schlüssel.
+
+**Zwei Fallen beim Schreiben von Kontakten und Funkparametern:**
+
+- `CMD_ADD_UPDATE_CONTACT` spiegelt `RESP_CODE_CONTACT` Byte für Byte
+  (`updateContactFromFrame()` ist das Gegenstück von `writeContactRespFrame()`).
+  Ab Byte 136 sind die Felder optional: Wer kürzer sendet, lässt dem Node seine
+  alten Werte für Position und Änderungszeit.
+- `CMD_SET_RADIO_PARAMS` nimmt **dieselben Einheiten** wie `RESP_CODE_SELF_INFO`
+  sie liefert: Frequenz in Kilohertz, Bandbreite in Hertz. Die Firmware prüft
+  150000…2500000 und 7000…500000 — Zahlen, die nur in diesen Einheiten Sinn
+  ergeben.
+
 **Alle Push-Nutzlasten** — Stufe `SOURCE`, aus den `on…Recv()`-Methoden und
 `processAck()`, Commit `d929643`. Umgesetzt in `meshdash_proto::push`:
 

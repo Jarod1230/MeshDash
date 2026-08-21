@@ -12,6 +12,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Das Protokoll ist erschlossen.** Kontakte anlegen und ändern, Kanäle
+  einrichten, Funkparameter und Sendeleistung setzen, Pfadsuche und Traceroute
+  auslösen, Kennwerte und Einstellungen ändern. Von 58 Kommandos der Firmware
+  lassen sich 43 bauen; die restlichen 15 sind bewusst ausgelassen und einzeln
+  begründet — darunter alles, was private Schlüssel bewegt.
+
+### Added
+
 - **Alle Meldungen des Node werden verstanden.** Anmeldungen an Repeatern,
   Statusantworten, Pfadänderungen, Sendebestätigungen, Traceroute-Antworten,
   Roh- und Steuerdaten, verdrängte Kontakte, voller Kontaktspeicher. Was eine

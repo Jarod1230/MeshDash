@@ -40,3 +40,42 @@ export interface SendResult {
   readonly expected_ack: string | null;
   readonly estimated_timeout_ms: number;
 }
+
+/** One side of a conversation. */
+export type Partner = 'contact' | 'channel';
+
+/** Which way a message went. */
+export type Direction = 'received' | 'sent';
+
+/** What `/api/v1/messages/conversations` answers. */
+export interface Conversation {
+  readonly partner: Partner;
+  /** Key prefix, or channel index as a string. */
+  readonly id: string;
+  readonly name: string | null;
+  /** For a contact: how many known contacts share this prefix. */
+  readonly candidates: number;
+  readonly last_text: string;
+  readonly last_at: string;
+  readonly last_direction: Direction;
+  readonly messages: number;
+}
+
+/** What `/api/v1/messages/conversation` answers, oldest first. */
+export interface ConversationMessage {
+  readonly direction: Direction;
+  readonly text: string;
+  readonly at: string;
+  readonly snr: number | null;
+  readonly stations: number | null;
+  readonly flooded: boolean | null;
+}
+
+/** How a conversation is labelled, given what is known about it. */
+export function conversationTitle(conversation: Conversation): string {
+  if (conversation.name !== null) return conversation.name;
+  if (conversation.partner === 'channel') return `Kanal ${conversation.id}`;
+  // Several contacts share this prefix, so no name can be claimed.
+  if (conversation.candidates > 1) return `${conversation.id} — mehrdeutig`;
+  return conversation.id;
+}

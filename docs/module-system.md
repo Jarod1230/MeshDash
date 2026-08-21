@@ -142,7 +142,7 @@ pflegen, sobald sich etwas ändert.
 | --- | --- | --- |
 | `system` | Verbindungsstatus, Node-Identität, Version, Health | **umgesetzt** — `/api/v1/system/{status,connections}`, mit Oberfläche |
 | `nodes` | Kontakte und Nachbarn, Erstsichtung, Letztsichtung, Pfade, Position | **umgesetzt** — `/api/v1/nodes/{contacts,adverts}`, mit Liste, Netz- und Kartenansicht |
-| `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — `/api/v1/messages/{received,channel-received,channels,send,channel-send}`, mit Oberfläche |
+| `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — Gespräche unter `/api/v1/messages/{conversations,conversation}`, dazu die flachen Listen und das Senden |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/{battery,signal,neighbours}`; Nachbarabfrage abschaltbar |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |
 | `alerts` | Benachrichtigung, wenn ein Node ausfällt | angedacht |

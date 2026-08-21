@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Gespräche statt Listen.** Nachrichten stehen jetzt als Faden je Kontakt und
+  je Kanal — Empfangenes und Gesendetes nach Zeit verschränkt, mit
+  Empfangsqualität an dem, was hereinkam, und der Sendeart an dem, was hinaus
+  ging. Getrennte Listen konnten nicht zeigen, dass eine Antwort auf eine Frage
+  folgte. Wer angeschrieben wurde, taucht auf, bevor er antwortet.
+
 - **Nachrichten zeigen, von wem sie kommen.** Bisher stand dort ein
   Schlüsselpräfix wie `a1a1a1a1a1a1`; jetzt steht der Name des Knotens da,
   sofern er bekannt ist. Teilen sich mehrere bekannte Knoten dasselbe Präfix,

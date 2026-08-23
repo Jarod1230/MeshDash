@@ -133,6 +133,26 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX nodes_contacts_last_seen ON nodes_contacts (last_seen);
     ",
     },
+    Migration {
+        version: 4,
+        description: "history of route changes",
+        sql: "
+        -- The contact row carries only the route that holds right now. A mesh
+        -- reroutes on its own, and the interesting part — that a node moved
+        -- from one station to three, and when — was overwritten each time.
+        CREATE TABLE nodes_route_changes (
+            id                INTEGER PRIMARY KEY,
+            public_key        TEXT    NOT NULL,
+            changed_at        TEXT    NOT NULL,
+            path              TEXT,
+            stations          INTEGER,
+            previous_path     TEXT,
+            previous_stations INTEGER
+        );
+
+        CREATE INDEX nodes_route_changes_key ON nodes_route_changes (public_key, id);
+    ",
+    },
 ];
 
 /// Largest number of sightings a single request may ask for.
@@ -197,7 +217,8 @@ impl Module for NodesModule {
         Some(
             Router::new()
                 .route("/contacts", get(list_contacts))
-                .route("/adverts", get(list_adverts)),
+                .route("/adverts", get(list_adverts))
+                .route("/route-changes", get(list_route_changes)),
         )
     }
 
@@ -286,6 +307,12 @@ pub async fn sync_contacts(context: &AppContext) -> Result<usize, String> {
 /// Stores one contact, keeping its first sighting.
 pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<(), sqlx::Error> {
     let now = Utc::now().to_rfc3339();
+    let public_key = to_hex(&contact.public_key);
+    let path = contact.path.as_ref().map(|route| to_hex(&route.hops));
+    let stations = contact.path.as_ref().map(|route| i64::from(route.stations));
+
+    // Read before write: afterwards the previous route is gone.
+    record_route_change(context, &public_key, path.as_deref(), stations, &now).await?;
 
     // ON CONFLICT rather than REPLACE: replacing would reset first_seen, and
     // with it the answer to "since when do we know this node".
@@ -305,12 +332,12 @@ pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<()
             last_advert = excluded.last_advert,
             last_seen = excluded.last_seen",
     )
-    .bind(to_hex(&contact.public_key))
+    .bind(&public_key)
     .bind(&contact.name)
     .bind(i64::from(contact.contact_type))
     .bind(i64::from(contact.flags))
-    .bind(contact.path.as_ref().map(|route| to_hex(&route.hops)))
-    .bind(contact.path.as_ref().map(|route| i64::from(route.stations)))
+    .bind(&path)
+    .bind(stations)
     .bind(contact.latitude.map(i64::from))
     .bind(contact.longitude.map(i64::from))
     .bind(i64::from(contact.last_advert))
@@ -322,6 +349,161 @@ pub async fn store_contact(context: &AppContext, contact: &Contact) -> Result<()
     announce_contact(context, contact);
 
     Ok(())
+}
+
+/// Writes down that the route to a contact changed, if it did.
+///
+/// Only for a contact that was already known: the first route to a node is
+/// where its history starts, not a change within it. A node whose route is
+/// unknown in both states has not moved either — `None` twice is not a step.
+async fn record_route_change(
+    context: &AppContext,
+    public_key: &str,
+    path: Option<&str>,
+    stations: Option<i64>,
+    at: &str,
+) -> Result<(), sqlx::Error> {
+    let known: Option<(Option<String>, Option<i64>)> =
+        sqlx::query_as("SELECT path, stations FROM nodes_contacts WHERE public_key = ?")
+            .bind(public_key)
+            .fetch_optional(context.db.pool())
+            .await?;
+
+    let Some((previous_path, previous_stations)) = known else {
+        return Ok(());
+    };
+
+    if previous_path.as_deref() == path && previous_stations == stations {
+        return Ok(());
+    }
+
+    sqlx::query(
+        "INSERT INTO nodes_route_changes
+            (public_key, changed_at, path, stations, previous_path, previous_stations)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(public_key)
+    .bind(at)
+    .bind(path)
+    .bind(stations)
+    .bind(&previous_path)
+    .bind(previous_stations)
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
+
+/// One recorded change of the route to a node.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct RouteChange {
+    /// Running number, ascending with arrival. Cursor for the next page.
+    pub id: i64,
+    /// Whose route changed, lowercase hex.
+    pub public_key: String,
+    /// When MeshDash noticed.
+    pub changed_at: DateTime<Utc>,
+    /// The route from then on, hex hop bytes, or `None` for no route.
+    pub path: Option<String>,
+    /// How many stations it passes through.
+    pub stations: Option<u8>,
+    /// The route until then.
+    pub previous_path: Option<String>,
+    /// How many stations that one passed through.
+    pub previous_stations: Option<u8>,
+}
+
+/// Which route changes to answer with.
+#[derive(Debug, Deserialize, Default)]
+pub struct RouteChangeQuery {
+    /// Only changes for this public key, lowercase hex.
+    node: Option<String>,
+    /// Only changes older than this one.
+    before: Option<i64>,
+    /// How many to return.
+    limit: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
+}
+
+impl RouteChangeQuery {
+    /// What the request asks for, or what is wrong with its time range.
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.limit
+                .unwrap_or(ADVERT_LIMIT)
+                .clamp(1, MAX_ADVERT_LIMIT),
+            self.before,
+            self.range.bounds()?,
+        ))
+    }
+}
+
+/// Answers with the recorded route changes, newest first.
+async fn list_route_changes(
+    State(context): State<AppContext>,
+    Query(query): Query<RouteChangeQuery>,
+) -> Result<Json<Vec<RouteChange>>, ListError> {
+    read_route_changes(&context, query.node.as_deref(), &query.window()?)
+        .await
+        .map(Json)
+        .map_err(ListError::from)
+}
+
+/// Reads the recorded route changes, newest first.
+pub async fn read_route_changes(
+    context: &AppContext,
+    node: Option<&str>,
+    window: &Window,
+) -> Result<Vec<RouteChange>, sqlx::Error> {
+    type Row = (
+        i64,
+        String,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+        Option<i64>,
+    );
+
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT id, public_key, changed_at, path, stations, previous_path, previous_stations
+         FROM nodes_route_changes
+         WHERE (?1 IS NULL OR public_key = ?1)
+           AND (?2 IS NULL OR id < ?2)
+           AND (?3 IS NULL OR changed_at >= ?3)
+           AND (?4 IS NULL OR changed_at <= ?4)
+         ORDER BY id DESC LIMIT ?5",
+    )
+    .bind(node)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(RouteChange {
+                id: row.0,
+                public_key: row.1,
+                changed_at: match DateTime::parse_from_rfc3339(&row.2) {
+                    Ok(time) => time.with_timezone(&Utc),
+                    Err(error) => {
+                        tracing::error!(%error, "stored timestamp is not RFC 3339");
+                        return None;
+                    }
+                },
+                path: row.3,
+                stations: row.4.map(|value| value as u8),
+                previous_path: row.5,
+                previous_stations: row.6.map(|value| value as u8),
+            })
+        })
+        .collect())
 }
 
 /// Tells whoever is listening that this contact exists, under this name.

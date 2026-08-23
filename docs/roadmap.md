@@ -196,8 +196,10 @@ Damit ist Stufe 1 erledigt. Von Stufe 2 stehen zwei Stücke:
 - [x] **Zeitraum** — `?since=` und `?until=` an allen Listen; die
       Telemetrieseite wählt zwischen 1 Stunde und 30 Tagen.
 
-Offen in Stufe 2: Suche, Erreichbarkeit je Knoten über die Zeit, Pfadwechsel
-sichtbar machen, `alerts`.
+- [x] **Pfadwechsel** — jede Änderung der Route zu einem Knoten wird mit alter
+      und neuer Route festgehalten und steht auf der Knotenseite.
+
+Offen in Stufe 2: Suche, Erreichbarkeit je Knoten über die Zeit, `alerts`.
 
 ## Gesammelte Einfälle
 

@@ -1,5 +1,6 @@
 //! Tests for the telemetry module, against a real database and a mock node.
 
+use crate::query::Window;
 use meshdash_core::{
     config::ModuleSettings,
     db::Database,
@@ -55,7 +56,12 @@ fn answers(millivolts: u16) -> Vec<Step> {
 async fn starts_with_no_readings() {
     let context = context_with(vec![]).await;
 
-    assert!(read_samples(&context, 10, None).await.unwrap().is_empty());
+    assert!(
+        read_samples(&context, &Window::paged(10, None))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -65,7 +71,9 @@ async fn asks_the_node_and_stores_the_reading() {
     let reading = read_battery(&context).await.unwrap();
     store_sample(&context, &reading).await.unwrap();
 
-    let samples = read_samples(&context, 10, None).await.unwrap();
+    let samples = read_samples(&context, &Window::paged(10, None))
+        .await
+        .unwrap();
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].millivolts, 4_100);
     assert_eq!(samples[0].storage_used_kib, 512);
@@ -81,7 +89,13 @@ async fn keeps_every_reading_to_form_a_curve() {
         store_sample(&context, &reading).await.unwrap();
     }
 
-    assert_eq!(read_samples(&context, 100, None).await.unwrap().len(), 5);
+    assert_eq!(
+        read_samples(&context, &Window::paged(100, None))
+            .await
+            .unwrap()
+            .len(),
+        5
+    );
 }
 
 #[tokio::test]
@@ -100,7 +114,9 @@ async fn reports_the_newest_first() {
     .await
     .unwrap();
 
-    let samples = read_samples(&context, 10, None).await.unwrap();
+    let samples = read_samples(&context, &Window::paged(10, None))
+        .await
+        .unwrap();
 
     assert_eq!(samples[0].millivolts, 3_900, "newest first");
 }
@@ -115,7 +131,13 @@ async fn honours_the_limit() {
         store_sample(&context, &reading).await.unwrap();
     }
 
-    assert_eq!(read_samples(&context, 3, None).await.unwrap().len(), 3);
+    assert_eq!(
+        read_samples(&context, &Window::paged(3, None))
+            .await
+            .unwrap()
+            .len(),
+        3
+    );
 }
 
 #[tokio::test]
@@ -127,7 +149,9 @@ async fn samples_as_soon_as_the_node_is_reachable() {
     context.events.publish(AppEvent::NodeConnected);
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    let samples = read_samples(&context, 10, None).await.unwrap();
+    let samples = read_samples(&context, &Window::paged(10, None))
+        .await
+        .unwrap();
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].millivolts, 4_050);
 }
@@ -137,7 +161,12 @@ async fn a_silent_node_costs_one_reading_not_the_task() {
     let context = context_with(vec![Step::Drop("silent".into())]).await;
 
     assert!(read_battery(&context).await.is_err());
-    assert!(read_samples(&context, 10, None).await.unwrap().is_empty());
+    assert!(
+        read_samples(&context, &Window::paged(10, None))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A signal announcement as the messages module publishes it.
@@ -162,7 +191,9 @@ async fn records_reception_quality_announced_by_another_module() {
         .publish(signal_event("direct", Some(-2.5), Some(2)));
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let samples = read_signal_samples(&context, 10, None).await.unwrap();
+    let samples = read_signal_samples(&context, &Window::paged(10, None))
+        .await
+        .unwrap();
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].snr, -2.5);
     assert_eq!(samples[0].source, "direct");
@@ -180,7 +211,9 @@ async fn keeps_a_curve_of_readings() {
     }
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let samples = read_signal_samples(&context, 10, None).await.unwrap();
+    let samples = read_signal_samples(&context, &Window::paged(10, None))
+        .await
+        .unwrap();
     assert_eq!(samples.len(), 3);
     assert_eq!(samples[0].snr, 3.0, "newest first");
 }
@@ -195,7 +228,7 @@ async fn skips_an_announcement_without_a_reading() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_signal_samples(&context, 10, None)
+        read_signal_samples(&context, &Window::paged(10, None))
             .await
             .unwrap()
             .is_empty()
@@ -219,7 +252,7 @@ async fn ignores_announcements_from_other_modules() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_signal_samples(&context, 10, None)
+        read_signal_samples(&context, &Window::paged(10, None))
             .await
             .unwrap()
             .is_empty()
@@ -239,7 +272,7 @@ async fn survives_a_payload_it_does_not_understand() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_signal_samples(&context, 10, None)
+        read_signal_samples(&context, &Window::paged(10, None))
             .await
             .unwrap()
             .is_empty()
@@ -337,7 +370,7 @@ async fn an_answer_without_a_remembered_question_is_dropped() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_neighbour_samples(&context, None, None, 10)
+        read_neighbour_samples(&context, None, &Window::paged(10, None))
             .await
             .unwrap()
             .is_empty()
@@ -371,7 +404,7 @@ async fn stores_what_a_neighbour_reported() {
     .await
     .unwrap();
 
-    let samples = read_neighbour_samples(&context, None, None, 10)
+    let samples = read_neighbour_samples(&context, None, &Window::paged(10, None))
         .await
         .unwrap();
 
@@ -473,12 +506,13 @@ async fn neighbour_readings_can_be_asked_for_one_node_only() {
         .await
         .unwrap();
 
-    let alle = read_neighbour_samples(&context, None, None, 50)
+    let alle = read_neighbour_samples(&context, None, &Window::paged(50, None))
         .await
         .unwrap();
-    let nur_einer = read_neighbour_samples(&context, Some(&"aa".repeat(32)), None, 50)
-        .await
-        .unwrap();
+    let nur_einer =
+        read_neighbour_samples(&context, Some(&"aa".repeat(32)), &Window::paged(50, None))
+            .await
+            .unwrap();
 
     assert_eq!(alle.len(), 2);
     assert_eq!(nur_einer.len(), 1);
@@ -495,8 +529,10 @@ async fn a_cursor_continues_the_signal_list() {
     }
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let erste_seite = read_signal_samples(&context, 2, None).await.unwrap();
-    let zweite_seite = read_signal_samples(&context, 2, Some(erste_seite[1].id))
+    let erste_seite = read_signal_samples(&context, &Window::paged(2, None))
+        .await
+        .unwrap();
+    let zweite_seite = read_signal_samples(&context, &Window::paged(2, Some(erste_seite[1].id)))
         .await
         .unwrap();
 
@@ -506,4 +542,104 @@ async fn a_cursor_continues_the_signal_list() {
         zweite_seite[0].id < erste_seite[1].id,
         "the cursor must exclude what the first page already showed"
     );
+}
+
+/// Stores one reception quality with a timestamp of our choosing.
+///
+/// Written straight into the table: the recording path stamps `Utc::now()`,
+/// and a test about time ranges needs rows that lie apart by more than the
+/// microseconds a test run takes.
+async fn signal_at(context: &AppContext, at: &str, snr: f64) {
+    sqlx::query(
+        "INSERT INTO telemetry_signal_samples (at, source, snr, path_len) VALUES (?, ?, ?, NULL)",
+    )
+    .bind(at)
+    .bind("direct")
+    .bind(snr)
+    .execute(context.db.pool())
+    .await
+    .unwrap();
+}
+
+/// The same moment the database would have written.
+fn stored(text: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(text)
+        .unwrap()
+        .with_timezone(&chrono::Utc)
+        .to_rfc3339()
+}
+
+#[tokio::test]
+async fn a_time_range_cuts_both_ends() {
+    let context = context_with(vec![]).await;
+    signal_at(&context, &stored("2026-08-20T10:00:00Z"), 1.0).await;
+    // Fractional seconds, as the recording path writes them.
+    signal_at(&context, "2026-08-21T10:00:00.123456+00:00", 2.0).await;
+    signal_at(&context, &stored("2026-08-22T10:00:00Z"), 3.0).await;
+
+    let mittendrin = read_signal_samples(
+        &context,
+        &Window {
+            limit: 50,
+            before: None,
+            since: Some(stored("2026-08-21T00:00:00Z")),
+            until: Some(stored("2026-08-22T00:00:00Z")),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mittendrin.len(), 1, "only the middle reading lies in range");
+    assert_eq!(mittendrin[0].snr, 2.0);
+}
+
+#[tokio::test]
+async fn an_open_end_reaches_to_the_edge() {
+    let context = context_with(vec![]).await;
+    signal_at(&context, &stored("2026-08-20T10:00:00Z"), 1.0).await;
+    signal_at(&context, &stored("2026-08-22T10:00:00Z"), 3.0).await;
+
+    let ab = read_signal_samples(
+        &context,
+        &Window {
+            limit: 50,
+            before: None,
+            since: Some(stored("2026-08-21T00:00:00Z")),
+            until: None,
+        },
+    )
+    .await
+    .unwrap();
+    let bis = read_signal_samples(
+        &context,
+        &Window {
+            limit: 50,
+            before: None,
+            since: None,
+            until: Some(stored("2026-08-21T00:00:00Z")),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(ab.len(), 1);
+    assert_eq!(ab[0].snr, 3.0);
+    assert_eq!(bis.len(), 1);
+    assert_eq!(bis[0].snr, 1.0);
+}
+
+#[test]
+fn a_request_query_carries_both_paging_and_range() {
+    // Through the very parser axum uses. `#[serde(flatten)]` and
+    // `serde_urlencoded` do not always get along, and the failure would only
+    // show as a 400 on a live request — no test here compiles it away.
+    let query: crate::telemetry::ListQuery =
+        serde_urlencoded::from_str("limit=5&before=42&since=2026-08-21T00:00:00Z")
+            .expect("axum parses this query");
+
+    let window = query.window().unwrap();
+
+    assert_eq!(window.limit, 5);
+    assert_eq!(window.before, Some(42));
+    assert_eq!(window.since.as_deref(), Some("2026-08-21T00:00:00+00:00"));
 }

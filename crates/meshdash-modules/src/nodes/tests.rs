@@ -1,5 +1,6 @@
 //! Tests for the nodes module, against a real database and a mock node.
 
+use crate::query::Window;
 use meshdash_core::{
     config::ModuleSettings,
     db::Database,
@@ -209,7 +210,9 @@ async fn every_advert_becomes_a_sighting() {
     push(&context, new_advert_frame(0xCD, "Nachbar")).await;
     push(&context, known_advert_frame(0xCD)).await;
 
-    let sightings = read_adverts(&context, None, None, 200).await.unwrap();
+    let sightings = read_adverts(&context, None, &Window::paged(200, None))
+        .await
+        .unwrap();
     assert_eq!(sightings.len(), 2);
     assert!(sightings.iter().all(|s| s.public_key == "cd".repeat(32)));
     // Newest first: the short one arrived last.
@@ -241,7 +244,10 @@ async fn a_short_advert_for_an_unknown_key_is_still_recorded() {
 
     // The sighting is true even without a name for the key.
     assert_eq!(
-        read_adverts(&context, None, None, 200).await.unwrap().len(),
+        read_adverts(&context, None, &Window::paged(200, None))
+            .await
+            .unwrap()
+            .len(),
         1
     );
     assert!(read_contacts(&context).await.unwrap().is_empty());
@@ -254,7 +260,7 @@ async fn ignores_pushes_that_are_not_adverts() {
     push(&context, vec![0x83, 0x00]).await;
 
     assert!(
-        read_adverts(&context, None, None, 200)
+        read_adverts(&context, None, &Window::paged(200, None))
             .await
             .unwrap()
             .is_empty()
@@ -314,8 +320,10 @@ async fn sightings_can_be_asked_for_one_node_only() {
     push(&context, known_advert_frame(0xAA)).await;
     push(&context, known_advert_frame(0xBB)).await;
 
-    let alle = read_adverts(&context, None, None, 200).await.unwrap();
-    let nur_einer = read_adverts(&context, Some(&"aa".repeat(32)), None, 200)
+    let alle = read_adverts(&context, None, &Window::paged(200, None))
+        .await
+        .unwrap();
+    let nur_einer = read_adverts(&context, Some(&"aa".repeat(32)), &Window::paged(200, None))
         .await
         .unwrap();
 
@@ -331,8 +339,10 @@ async fn a_cursor_continues_the_sighting_list() {
     push(&context, known_advert_frame(0xCD)).await;
     push(&context, known_advert_frame(0xCD)).await;
 
-    let erste_seite = read_adverts(&context, None, None, 2).await.unwrap();
-    let zweite_seite = read_adverts(&context, None, Some(erste_seite[1].id), 2)
+    let erste_seite = read_adverts(&context, None, &Window::paged(2, None))
+        .await
+        .unwrap();
+    let zweite_seite = read_adverts(&context, None, &Window::paged(2, Some(erste_seite[1].id)))
         .await
         .unwrap();
 

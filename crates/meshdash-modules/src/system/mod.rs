@@ -28,6 +28,8 @@ use meshdash_core::{
 use meshdash_proto::device::{self, DeviceInfo};
 use serde::{Deserialize, Serialize};
 
+use crate::query::{BadTimeRange, TimeRange, Window};
+
 /// Schema of this module. Versions count from 1, per module.
 const MIGRATIONS: &[Migration] = &[Migration {
     version: 1,
@@ -186,11 +188,23 @@ pub struct ListQuery {
     limit: Option<i64>,
     /// Only changes older than this one.
     before: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
 }
 
 impl ListQuery {
     fn effective_limit(&self) -> i64 {
         self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+    }
+
+    /// What the request asks for, or what is wrong with its time range.
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.effective_limit(),
+            self.before,
+            self.range.bounds()?,
+        ))
     }
 }
 
@@ -199,10 +213,10 @@ async fn connections(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<ConnectionEvent>>, StatusError> {
-    read_connections(&context, query.effective_limit(), query.before)
+    read_connections(&context, &query.window()?)
         .await
         .map(Json)
-        .map_err(StatusError)
+        .map_err(StatusError::from)
 }
 
 /// Reads the connection history, newest first.
@@ -211,16 +225,19 @@ async fn connections(
 /// reconnects every two minutes reports itself as connected each time.
 pub async fn read_connections(
     context: &AppContext,
-    limit: i64,
-    before: Option<i64>,
+    window: &Window,
 ) -> Result<Vec<ConnectionEvent>, sqlx::Error> {
     let rows: Vec<(i64, String, i64, Option<String>)> = sqlx::query_as(
         "SELECT id, at, connected, reason FROM system_connection_events
          WHERE (?1 IS NULL OR id < ?1)
-         ORDER BY id DESC LIMIT ?2",
+           AND (?2 IS NULL OR at >= ?2)
+           AND (?3 IS NULL OR at <= ?3)
+         ORDER BY id DESC LIMIT ?4",
     )
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -239,7 +256,10 @@ pub async fn read_connections(
 
 /// Answers with the current state.
 async fn status(State(context): State<AppContext>) -> Result<Json<SystemStatus>, StatusError> {
-    read_status(&context).await.map(Json).map_err(StatusError)
+    read_status(&context)
+        .await
+        .map(Json)
+        .map_err(StatusError::from)
 }
 
 /// Reads the stored state.
@@ -377,23 +397,45 @@ fn parse_time(text: &str) -> Option<DateTime<Utc>> {
 
 /// Turns a storage failure into an API error.
 #[derive(Debug)]
-pub struct StatusError(sqlx::Error);
+pub enum StatusError {
+    /// The database could not be read.
+    Storage(sqlx::Error),
+    /// The request asked for a time range that is not a time.
+    BadRange(BadTimeRange),
+}
+
+impl From<sqlx::Error> for StatusError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl From<BadTimeRange> for StatusError {
+    fn from(error: BadTimeRange) -> Self {
+        Self::BadRange(error)
+    }
+}
 
 impl axum::response::IntoResponse for StatusError {
     fn into_response(self) -> axum::response::Response {
-        tracing::error!(error = %self.0, "could not read the system status");
+        match self {
+            Self::Storage(error) => {
+                tracing::error!(%error, "could not read the system status");
 
-        // The caller learns that it failed, not how the storage is built.
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": {
-                    "code": "storage_failed",
-                    "message": "could not read the system status"
-                }
-            })),
-        )
-            .into_response()
+                // The caller learns that it failed, not how the storage is built.
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": {
+                            "code": "storage_failed",
+                            "message": "could not read the system status"
+                        }
+                    })),
+                )
+                    .into_response()
+            }
+            Self::BadRange(bad) => bad.into_response(),
+        }
     }
 }
 

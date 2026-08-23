@@ -67,6 +67,8 @@ use meshdash_proto::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::query::{BadTimeRange, TimeRange, Window};
+
 /// Schema of this module. Versions count from 1, per module.
 const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -164,12 +166,24 @@ pub struct ListQuery {
     /// This is how older entries are reached at all: a bare limit shows the
     /// newest and hides the rest for good.
     before: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
 }
 
 impl ListQuery {
     /// The number of rows to read, within the bounds this module allows.
     fn effective_limit(&self) -> i64 {
         self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+    }
+
+    /// What the request asks for, or what is wrong with its time range.
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.effective_limit(),
+            self.before,
+            self.range.bounds()?,
+        ))
     }
 }
 
@@ -355,10 +369,10 @@ async fn list_messages(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredMessage>>, ListError> {
-    read_messages(&context, query.effective_limit(), query.before)
+    read_messages(&context, &query.window()?)
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
 /// How many messages one drain fetches at most.
@@ -1116,7 +1130,7 @@ async fn list_conversations(
     read_conversations(&context, query.effective_limit())
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
 /// Answers with one conversation, oldest message first.
@@ -1137,7 +1151,7 @@ async fn show_conversation(
     read_conversation(&context, partner, &id, limit)
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
 /// Answers with the stored channel messages, newest first.
@@ -1145,17 +1159,20 @@ async fn list_channel_messages(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredChannelMessage>>, ListError> {
-    read_channel_messages(&context, query.effective_limit(), query.before)
+    read_channel_messages(&context, &query.window()?)
         .await
         .map(Json)
-        .map_err(ListError)
+        .map_err(ListError::from)
 }
 
 /// Answers with the channels the node knows.
 async fn list_channels(
     State(context): State<AppContext>,
 ) -> Result<Json<Vec<KnownChannel>>, ListError> {
-    read_channels(&context).await.map(Json).map_err(ListError)
+    read_channels(&context)
+        .await
+        .map(Json)
+        .map_err(ListError::from)
 }
 
 /// One row of `messages_channel_received`.
@@ -1164,17 +1181,20 @@ type ChannelMessageRow = (i64, i64, String, i64, Option<f64>, Option<i64>, i64, 
 /// Reads stored channel messages, newest first.
 pub async fn read_channel_messages(
     context: &AppContext,
-    limit: i64,
-    before: Option<i64>,
+    window: &Window,
 ) -> Result<Vec<StoredChannelMessage>, sqlx::Error> {
     let rows: Vec<ChannelMessageRow> = sqlx::query_as(
         "SELECT id, channel_index, text, text_type, snr, path_len, sent_at, received_at
          FROM messages_channel_received
          WHERE (?1 IS NULL OR id < ?1)
-         ORDER BY id DESC LIMIT ?2",
+           AND (?2 IS NULL OR received_at >= ?2)
+           AND (?3 IS NULL OR received_at <= ?3)
+         ORDER BY id DESC LIMIT ?4",
     )
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -1230,17 +1250,20 @@ type MessageRow = (
 /// Reads stored messages, newest first.
 pub async fn read_messages(
     context: &AppContext,
-    limit: i64,
-    before: Option<i64>,
+    window: &Window,
 ) -> Result<Vec<StoredMessage>, sqlx::Error> {
     let rows: Vec<MessageRow> = sqlx::query_as(
         "SELECT id, sender_prefix, text, text_type, snr, path_len, sent_at, received_at
          FROM messages_received
          WHERE (?1 IS NULL OR id < ?1)
-         ORDER BY id DESC LIMIT ?2",
+           AND (?2 IS NULL OR received_at >= ?2)
+           AND (?3 IS NULL OR received_at <= ?3)
+         ORDER BY id DESC LIMIT ?4",
     )
-    .bind(before)
-    .bind(limit)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
 
@@ -1294,19 +1317,41 @@ fn to_hex(bytes: &[u8]) -> String {
 
 /// Turns a storage failure into an API error.
 #[derive(Debug)]
-pub struct ListError(sqlx::Error);
+pub enum ListError {
+    /// The database could not be read.
+    Storage(sqlx::Error),
+    /// The request asked for a time range that is not a time.
+    BadRange(BadTimeRange),
+}
+
+impl From<sqlx::Error> for ListError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl From<BadTimeRange> for ListError {
+    fn from(error: BadTimeRange) -> Self {
+        Self::BadRange(error)
+    }
+}
 
 impl axum::response::IntoResponse for ListError {
     fn into_response(self) -> axum::response::Response {
-        tracing::error!(error = %self.0, "could not read the messages");
+        match self {
+            Self::Storage(error) => {
+                tracing::error!(%error, "could not read the messages");
 
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": { "code": "storage_failed", "message": "could not read the messages" }
-            })),
-        )
-            .into_response()
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": { "code": "storage_failed", "message": "could not read the messages" }
+                    })),
+                )
+                    .into_response()
+            }
+            Self::BadRange(bad) => bad.into_response(),
+        }
     }
 }
 

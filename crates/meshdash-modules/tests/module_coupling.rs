@@ -20,7 +20,10 @@ use meshdash_core::{
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
 };
-use meshdash_modules::{messages, messages::MessagesModule, nodes, nodes::NodesModule};
+use meshdash_modules::{
+    messages, messages::MessagesModule, nodes, nodes::NodesModule, telemetry,
+    telemetry::TelemetryModule,
+};
 use meshdash_proto::{contact::Contact, opcode::Response};
 use meshdash_transport::mock::{MockTransport, Step};
 
@@ -46,6 +49,7 @@ async fn context_with(script: Vec<Step>) -> AppContext {
     let mut registry = ModuleRegistry::new();
     registry.register(Box::new(NodesModule)).unwrap();
     registry.register(Box::new(MessagesModule)).unwrap();
+    registry.register(Box::new(TelemetryModule)).unwrap();
     registry.start_all(&context).await.unwrap();
     context
 }
@@ -147,4 +151,92 @@ async fn messages_survives_without_the_nodes_module() {
         .unwrap();
 
     assert_eq!(identity.candidates, 0, "nobody known, and nothing broken");
+}
+
+#[tokio::test]
+async fn a_position_reported_to_telemetry_reaches_the_map() {
+    // The seam: a neighbour answers a telemetry request with its position,
+    // telemetry stores it and announces it, nodes puts it on the contact —
+    // which is the only way a position can cross that boundary, because
+    // neither module may read the other's tables.
+    let context = context_with(listing(vec![contact_frame(0xC3, "Wiese")])).await;
+    nodes::sync_contacts(&context).await.unwrap();
+
+    telemetry::store_neighbour_readings(
+        &context,
+        &"c3".repeat(32),
+        &[meshdash_proto::lpp::Reading {
+            channel: 1,
+            type_code: 136, // GPS
+            value: meshdash_proto::lpp::Value::Position {
+                latitude: 48.137154,
+                longitude: 11.576124,
+                altitude: 519.0,
+            },
+        }],
+    )
+    .await
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let contact = nodes::read_contacts(&context)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|contact| contact.public_key == "c3".repeat(32))
+        .unwrap();
+
+    assert_eq!(contact.latitude, Some(48.137154));
+    assert_eq!(
+        contact.position_source,
+        Some(nodes::PositionSource::Telemetry)
+    );
+}
+
+#[tokio::test]
+async fn a_position_from_an_advert_is_not_replaced_by_telemetry() {
+    // Both are the node's own account of itself. The advert is the one it
+    // tells everybody, so it stays; the telemetry position exists to fill
+    // gaps, not to compete.
+    let context = context_with(vec![]).await;
+
+    let contact = Contact {
+        public_key: [0xD4; 32],
+        contact_type: 2,
+        flags: 0,
+        path: None,
+        name: "Südhang".into(),
+        last_advert: 0,
+        latitude: Some(52_520_008),
+        longitude: Some(13_404_954),
+        last_modified: 0,
+    };
+    nodes::store_contact(&context, &contact).await.unwrap();
+
+    telemetry::store_neighbour_readings(
+        &context,
+        &"d4".repeat(32),
+        &[meshdash_proto::lpp::Reading {
+            channel: 1,
+            type_code: 136,
+            value: meshdash_proto::lpp::Value::Position {
+                latitude: 48.137154,
+                longitude: 11.576124,
+                altitude: 519.0,
+            },
+        }],
+    )
+    .await
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let stored = nodes::read_contacts(&context)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|stored| stored.public_key == "d4".repeat(32))
+        .unwrap();
+
+    assert_eq!(stored.latitude, Some(52.520008));
+    assert_eq!(stored.position_source, Some(nodes::PositionSource::Advert));
 }

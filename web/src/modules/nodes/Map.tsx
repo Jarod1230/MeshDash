@@ -136,7 +136,8 @@ export function Map({
     return (
       <p className="px-4 py-6 text-sm text-mesh-muted">
         Kein Knoten meldet eine Position. Ein Node sendet sie nur mit, wenn sie bei ihm eingestellt
-        ist — die meisten tun das nicht.
+        ist — die meisten tun das nicht. Wer Nachbarn nach ihrer Telemetrie fragt, bekommt manche
+        Position auch auf diesem Weg.
       </p>
     );
   }
@@ -215,6 +216,11 @@ export function Map({
               >
                 {node.contact.name}
               </Link>
+              {node.contact.position_source === 'telemetry' && (
+                <span className="text-mesh-faint" title="Aus einer Telemetrieantwort, nicht aus dem Advert">
+                  aus Telemetrie
+                </span>
+              )}
               <a
                 href={`https://www.openstreetmap.org/?mlat=${node.contact.latitude}&mlon=${node.contact.longitude}#map=13/${node.contact.latitude}/${node.contact.longitude}`}
                 target="_blank"

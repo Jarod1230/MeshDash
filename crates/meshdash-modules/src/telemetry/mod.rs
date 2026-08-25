@@ -17,6 +17,19 @@
 //! coupling the module rules prescribe — see
 //! `docs/decisions/0007-modul-ereignisse.md`.
 //!
+//! # What this module publishes
+//!
+//! A neighbour's answer can carry its position, and a position belongs on the
+//! map — which `nodes` owns. So every position that arrives is published as
+//! `AppEvent::Module { module: "telemetry", kind: "position" }`:
+//!
+//! ```json
+//! { "public_key": "aa…", "latitude": 48.137154, "longitude": 11.576124, "altitude": 519.0 }
+//! ```
+//!
+//! Whoever listens decides what to do with it. This module keeps the reading
+//! either way — the announcement is a second use of it, not a hand-off.
+//!
 //! # Asking other nodes costs airtime, so it is off by default
 //!
 //! Readings from another node have to be requested over the air — nothing
@@ -678,9 +691,37 @@ pub async fn store_neighbour_readings(
         .bind(position.map(|(.., alt)| alt))
         .execute(context.db.pool())
         .await?;
+
+        if let Some((latitude, longitude, altitude)) = position {
+            publish_position(context, public_key, latitude, longitude, altitude);
+        }
     }
 
     Ok(())
+}
+
+/// Announces where a neighbour says it is.
+///
+/// Fire and forget, like every announcement on this bus: nobody may be
+/// listening, and this module must not care. Without `nodes` the position
+/// stays a reading in a table and never reaches a map.
+fn publish_position(
+    context: &AppContext,
+    public_key: &str,
+    latitude: f64,
+    longitude: f64,
+    altitude: f64,
+) {
+    context.events.publish(AppEvent::Module {
+        module: "telemetry".into(),
+        kind: "position".into(),
+        data: serde_json::json!({
+            "public_key": public_key,
+            "latitude": latitude,
+            "longitude": longitude,
+            "altitude": altitude,
+        }),
+    });
 }
 
 /// Turns bytes into lowercase hex, as the API spells binary data.

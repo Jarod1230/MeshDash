@@ -284,10 +284,11 @@ Koordinaten, siehe [ADR-0012](decisions/0012-positionen-nur-aus-dem-mesh.md).
 Damit bleibt für diese Stufe nur, jede Quelle auszuschöpfen, die das Mesh
 selbst hat.
 
-- **Positionen aus der Nachbartelemetrie auf die Karte.** Sie gehören
-  `telemetry` und brauchen den Weg über ein Ereignis nach
+- [x] **Positionen aus der Nachbartelemetrie auf die Karte.** Sie gehören
+  `telemetry` und nehmen den Weg über ein Ereignis nach
   [ADR-0007](decisions/0007-modul-ereignisse.md) — der offene Punkt aus
-  ADR-0010, den ADR-0011 dringlicher macht.
+  ADR-0010 ist damit erledigt. Das Advert behält den Vorrang, die zweite
+  Quelle füllt Lücken.
 - **Ehrlich über die Lücke.** Die Karte sagt, wie viele Knoten sie *nicht*
   zeigt, statt sie stillschweigend wegzulassen.
 - **Traceroute nutzbar machen.** `CMD_SEND_TRACE_PATH` liefert die Stationen

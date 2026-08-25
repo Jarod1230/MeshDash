@@ -11,6 +11,7 @@ const contact: KnownContact = {
   name: 'Repeater Nord',
   contact_type: 2,
   flags: 0,
+  position_source: null,
   path: '0102',
   stations: 2,
   latitude: 52.520008,

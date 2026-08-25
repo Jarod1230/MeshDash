@@ -746,3 +746,29 @@ Datenbank, null aufgelöste Absender.
 
 **Belege:** `messages_senders` blieb leer, während `nodes_contacts` 25 Zeilen
 hatte; nach dem Nachtragen von `announce_contact()` waren es 25 zu 25.
+
+## 2026-08-25 — Eine Migrationsnummer aus einem verworfenen Branch bleibt liegen
+
+**Was passierte.** PR #66 brachte Migration 5 mit der Tabelle
+`nodes_manual_positions`. Der PR wurde verworfen, die Entscheidung revidiert
+([ADR-0012](decisions/0012-positionen-nur-aus-dem-mesh.md)). Der Nachfolger
+vergab dieselbe Nummer 5 für `nodes_telemetry_positions` — richtig, denn die
+alte Migration wurde nie gemergt.
+
+Die lokale Testdatenbank hatte sie aber ausgeführt und verbucht. Beim Start
+sah der Dienst „Version 5 ist erledigt", übersprang die neue Migration und
+lief mit einer Tabelle, die es nicht mehr gab. Die API antwortete mit 500, und
+der erste Verdacht galt dem neuen Code.
+
+**Was daraus folgt.** Eine Migrationsnummer identifiziert nichts — sie zählt
+nur. Wer einen Branch mit einer Migration verwirft und die Nummer neu vergibt,
+muss jede Datenbank wegwerfen, die den alten Branch je gesehen hat. Das
+betrifft Entwicklungsdatenbanken; für alle anderen ist der verworfene Branch
+nie passiert.
+
+**Was das kostet.** Zehn Minuten Fehlersuche am falschen Ende. Wäre die alte
+Migration schon gemergt gewesen, hätte dieselbe Verwechslung produktive
+Datenbanken getroffen — deshalb steht in
+[`conventions.md`](conventions.md), dass Migrationen nach dem Merge nicht mehr
+geändert werden. Vor dem Merge dürfen sie es, und genau dann entsteht diese
+Falle.

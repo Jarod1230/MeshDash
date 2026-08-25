@@ -809,6 +809,139 @@ Herstellername (40 B), Firmware-Version (20 B), Repeater-Flag (1 B, v9+),
 `path_hash_mode` (1 B, v10+). Zeichenketten sind mit Nullbytes aufgefüllt.
 Vollständig umgesetzt in `meshdash_proto::device`.
 
+## Die Paketebene — Stufe `SOURCE`
+
+Geklärt am 2026-08-25 am Firmware-Quelltext, Commit `d929643`. Bis dahin war das
+rohe Paket aus `PUSH_CODE_LOG_RX_DATA` (0x88) eine undurchsichtige Bytefolge.
+Es ist die Grundlage für die Verkehrsebene der Karte, siehe
+[ADR-0011](../decisions/0011-karte-als-leitansicht.md).
+
+### Aufbau eines Pakets
+
+Quelle: `src/Packet.cpp`, `Packet::readFrom()` und `Packet::writeTo()`; die
+Konstanten in `src/Packet.h`.
+
+```text
+0    1   header
+     4   Transportcodes — NUR bei Routentyp 0 oder 3, zwei u16 LE
+     1   path_len (Kodierung wie überall, siehe „Pfadlänge")
+     n   path — hash_count × hash_size Bytes
+     m   Nutzlast — der Rest des Rahmens
+```
+
+Das `header`-Byte trägt drei Felder (`src/Packet.h`):
+
+| Bits | Feld | Werte |
+| --- | --- | --- |
+| 0–1 | Routentyp | 0 `TRANSPORT_FLOOD`, 1 `FLOOD`, 2 `DIRECT`, 3 `TRANSPORT_DIRECT` |
+| 2–5 | Nutzlasttyp | siehe Tabelle unten |
+| 6–7 | Nutzlastversion | 0 = `VER_1`, 1–3 künftig |
+
+Nutzlasttypen, `src/Packet.h`:
+
+```text
+0x00 REQ          Anfrage            0x08 PATH        zurückgegebener Weg
+0x01 RESPONSE     Antwort            0x09 TRACE       Weg mit SNR je Abschnitt
+0x02 TXT_MSG      Textnachricht      0x0A MULTIPART   Teil einer Folge
+0x03 ACK          Quittung           0x0B CONTROL     Steuerung/Discovery
+0x04 ADVERT       Selbstvorstellung  0x0F RAW_CUSTOM  eigene Verschlüsselung
+0x05 GRP_TXT      Kanalnachricht
+0x06 GRP_DATA     Kanaldatagramm
+0x07 ANON_REQ     anonyme Anfrage
+```
+
+Der Wert `0xFF` als ganzes `header`-Byte ist kein Paket, sondern eine Markierung:
+`markDoNotRetransmit()`. Sie kommt nicht über die Luft.
+
+**Nutzlasten sind verschlüsselt.** Lesbar ist, was vor der Verschlüsselung
+steht — Typ, Route, Weg. Der Inhalt einer fremden Nachricht bleibt zu.
+
+### Ein Pfad-Hash ist das Präfix des Schlüssels
+
+Das ist die Antwort auf die Frage, ob sich ein Weg einem Knoten zuordnen lässt.
+`src/Identity.h`:
+
+```cpp
+int copyHashTo(uint8_t* dest) const {
+  memcpy(dest, pub_key, PATH_HASH_SIZE);    // hash is just prefix of pub_key
+  return PATH_HASH_SIZE;
+}
+```
+
+Kein kryptografischer Hash, sondern die **ersten `hash_size` Bytes des
+öffentlichen Schlüssels**; `PATH_HASH_SIZE` ist 1 (`src/MeshCore.h`), die
+Pfadkodierung erlaubt 1 bis 3. Eine weiterleitende Station hängt ihr Präfix an,
+`Mesh::routeRecvPacket()`:
+
+```cpp
+self_id.copyHashTo(&packet->path[n * packet->getPathHashSize()], packet->getPathHashSize());
+packet->setPathHashCount(n + 1);
+```
+
+**Ein Byte ist wenig.** Bei 256 möglichen Werten teilen sich in einem Mesh mit
+einigen Dutzend Knoten mit hoher Wahrscheinlichkeit zwei dasselbe Präfix — das
+Geburtstagsproblem, dasselbe wie beim Sechs-Byte-Absenderpräfix einer Nachricht.
+Wer aus einem Hash einen Knoten macht, muss den Fall „mehrere passen" behandeln
+und darf nicht raten.
+
+Weitere Konstanten aus `src/MeshCore.h`: `MAX_PATH_SIZE` 64, `PUB_KEY_SIZE` 32,
+`MAX_PACKET_PAYLOAD` 184, `MAX_HASH_SIZE` 8.
+
+### Das Empfangsprotokoll kommt ungefragt und vollständig
+
+`Dispatcher::checkRecv()` ruft `logRxRaw()` bei **jedem** empfangenen Funkpaket
+auf — vor dem Parsen, ohne Bedingung, ohne Filter:
+
+```cpp
+int len = _radio->recvRaw(raw, MAX_TRANS_UNIT);
+if (len > 0) {
+  logRxRaw(_radio->getLastSNR(), _radio->getLastRSSI(), raw, len);
+```
+
+Die Companion-Firmware macht daraus den Push, sobald eine App verbunden ist
+(`MyMesh::logRxRaw`):
+
+```text
+0x88 Empfangsprotokoll  1 SNR×4 (int8), 1 RSSI (int8), n das rohe Paket
+```
+
+Daraus folgen drei Dinge, die MeshDash betreffen:
+
+- **Es gibt keinen Schalter.** Weder zum Einschalten noch zum Abschalten. Wer
+  verbunden ist, bekommt alles. Eine Konfigurationsoption dafür wäre eine
+  Erfindung.
+- **Auch Pakete, die der Node verwirft**, erscheinen hier — Dubletten, Fremdes,
+  Unlesbares. Das Protokoll steht *vor* jeder Prüfung.
+- **Das kann viel sein.** Auf einem regen Mesh ein Rahmen je gehörtem Paket.
+  Was MeshDash davon behält, ist eine eigene Entscheidung; die Nutzlast fremder
+  Pakete gehört nicht dazu.
+
+### Pfad-Antworten
+
+Die letzte offene Payload-Frage. Quelle: `handleCmdFrame()` und
+`onContactPathRecv()` in `examples/companion_radio/MyMesh.cpp`.
+
+```text
+RESP_CODE_ADVERT_PATH (22)
+0    1   Opcode
+1    4   Empfangszeitpunkt (u32 LE)
+5    1   Pfadlänge
+6    n   Pfad
+
+PUSH_CODE_PATH_DISCOVERY_RESPONSE (0x8D)
+0    1   Opcode
+1    1   reserviert (0)
+2    6   Präfix des Pubkey
+8    1   Länge des Hinwegs
+9    n   Hinweg
+     1   Länge des Rückwegs
+     m   Rückweg
+```
+
+Die Firmware verwirft die Telemetriedaten, die in derselben Antwort stecken
+könnten — ihr eigener Kommentar sagt es: „telemetry data in 'extra' is
+discarded at present". Wer sie will, muss sie einzeln anfragen.
+
 ## Offene Fragen
 
 Alle verbleibenden Fragen betreffen **Payload-Aufteilungen**, nicht mehr die
@@ -818,13 +951,15 @@ Methoden von `MyMesh.cpp` klären — dieselbe Datei, nur weiter unten.
 1. Bedeutung der Werte in `type` eines Kontakts und der oberen Bits von
    `flags`. Bit 0 von `flags` ist belegt (Favorit, siehe oben), der Rest nicht.
 2. Bedeutung der Fehlerflags in `RESP_CODE_STATS`, Typ 0.
-4. Aufbau der Pfad-Antworten (`RESP_CODE_ADVERT_PATH`,
-   `PUSH_CODE_PATH_DISCOVERY_RESPONSE`). Die **Kodierung** des Längenbytes ist
-   geklärt, siehe oben; offen ist der Rahmen dieser beiden Antworten.
-4. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
+3. Ab wann MeshDash eine **höhere** Protokollversion als 3 ansagen sollte.
    Version 3 ist gesetzt (`meshdash_proto::device::PROTOCOL_VERSION`), weil sie
    die SNR-Varianten der Nachrichten bringt. Version 8 schaltet Statistiken
    frei — dafür müssen deren Formate aber erst verifiziert sein.
+
+**Erledigt am 2026-08-25:** die gesamte Paketebene — Aufbau des rohen Pakets,
+Bedeutung des `header`-Bytes, Bildung der Pfad-Hashes, Auslösung des
+Empfangsprotokolls und der Rahmen beider Pfad-Antworten. Siehe „Die
+Paketebene" oben.
 
 **Erledigt am 2026-08-16:**
 

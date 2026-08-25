@@ -24,11 +24,11 @@ liest das Zielbild zuerst — sonst entsteht eine weitere Seite neben der Karte
 statt einer Ebene auf ihr.
 
 **Zum Protokoll:** Framing, sämtliche Opcodes und die bisher benötigten
-Nutzlasten sind am Firmware-Quellcode verifiziert (Commit `d929643`). Nicht
-verifiziert sind der Aufbau des rohen Pakets aus `PUSH_CODE_RX_LOG_DATA`, die
-Bildung der Pfad-Hashes, der Rahmen der Pfad-Antworten sowie die Bedeutung der
-Bytes `type` und `flags` eines Kontakts. Die ersten drei stehen als Stufe A der
-Roadmap an, weil die Karte darauf aufbaut. Für alles Unverifizierte gilt Regel 1 unten
+Nutzlasten sind am Firmware-Quellcode verifiziert (Commit `d929643`) —
+seit dem 2026-08-25 auch die Paketebene: Aufbau des rohen Pakets, Bildung der
+Pfad-Hashes und beide Pfad-Antworten. Nicht verifiziert sind noch die Bedeutung
+der Bytes `type` und `flags` eines Kontakts sowie die Fehlerflags in
+`RESP_CODE_STATS`. Für alles Unverifizierte gilt Regel 1 unten
 unverändert — auch dann, wenn danebenliegende Werte längst belegt sind.
 
 ## Wo was steht

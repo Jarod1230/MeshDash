@@ -113,6 +113,15 @@ pub enum PushEvent {
     },
 
     /// A packet the radio heard, logged in full.
+    ///
+    /// Arrives for **every** packet the radio picks up — `Dispatcher::checkRecv()`
+    /// calls the hook before parsing, without a filter, and there is no switch
+    /// for it. Packets addressed to someone else and packets the node goes on
+    /// to discard are included.
+    ///
+    /// The bytes stay undecoded here because they may not decode at all. What
+    /// can be read of them — route, kind, stations — is
+    /// [`crate::packet::Packet::parse`].
     ReceivedPacketLog {
         /// Signal-to-noise ratio in dB.
         snr: f32,

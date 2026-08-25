@@ -235,28 +235,44 @@ mit Stufe D um, weil eine Warnung dort hingehört, wo man sie sieht.
 Vier Stufen, in dieser Reihenfolge. Jede ist für sich brauchbar; keine setzt
 voraus, dass die nächste je kommt.
 
-### Stufe A — wissen, was ein Paket hergibt
+### Stufe A — wissen, was ein Paket hergibt ✅ erledigt
 
-Forschung, kein Code. Sie kommt zuerst, weil sie entscheidet, wie viel von
-Stufe C überhaupt zeichenbar ist — und weil eine Karte, die auf Vermutungen
-gebaut ist, hinterher umgebaut werden müsste.
+Forschung, kein Code. Sie kam zuerst, weil sie entscheidet, wie viel von
+Stufe C überhaupt zeichenbar ist. Belege in
+[`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md),
+Abschnitt „Die Paketebene"; gelesen wird das Ergebnis von
+`meshdash_proto::packet`.
 
-- **Aufbau des rohen Pakets.** `PUSH_CODE_RX_LOG_DATA` liefert jedes gehörte
-  Paket mit SNR und RSSI. Was in seinen Bytes steht — Routentyp, Nutzlasttyp,
-  Pfadfeld —, ist **unverifiziert**. Zu klären am Firmware-Quelltext, mit
-  Beleg in [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
-- **Kommen diese Pushes von selbst**, oder muss das Protokollieren am Node
-  eingeschaltet werden? Wenn es Sendezeit oder Strom kostet, gehört es unter
-  eine Option und standardmäßig aus — wie die Nachbarabfrage.
-- **Zuordnung Pfad-Hash zu Knoten.** Ein Weg besteht aus Hashes, nicht aus
-  Schlüsseln. Wie der Hash gebildet wird, ist unverifiziert. **Ohne diese
-  Antwort lässt sich ein Weg zählen, aber nicht zeichnen** — dann zeigt die
-  Karte Wege nur, wo ein Trace sie belegt, und sagt das auch.
-- **Rahmen der Pfad-Antworten** (`RESP_CODE_ADVERT_PATH`,
-  `PUSH_CODE_PATH_DISCOVERY_RESPONSE`) — offene Frage 3 der Protokollnotizen.
+- [x] **Aufbau des rohen Pakets** — Header mit Routentyp, Nutzlasttyp und
+      Version, Transportcodes bei zwei der vier Routentypen, dann Pfad und
+      verschlüsselte Nutzlast.
+- [x] **Kommen diese Pushes von selbst?** Ja, und zwar für **jedes** gehörte
+      Paket, vor jeder Prüfung, ohne Schalter. Auch Fremdes und Verworfenes.
+      Eine Konfigurationsoption dafür wäre eine Erfindung — was MeshDash
+      behält, entscheidet MeshDash.
+- [x] **Zuordnung Pfad-Hash zu Knoten** — der „Hash" ist keiner: es sind die
+      ersten Bytes des öffentlichen Schlüssels. Wege sind damit zuordenbar.
+- [x] **Rahmen der Pfad-Antworten** — beide geklärt.
 
-Ergebnis dieser Stufe ist ein aktualisiertes Forschungsdokument und eine
-klare Aussage, welche der drei Karten-Ebenen aus Stufe C tragen.
+**Was daraus für die Kartenebenen folgt:**
+
+- **Knoten** trägt. Unverändert von Positionen abhängig, das ist Stufe B.
+- **Verbindungen** trägt, und besser als gedacht: Aus jedem gehörten Paket
+  lässt sich ablesen, welche Stationen es weitergereicht haben — nicht nur
+  aus einem Trace. Der Vorbehalt ist ein anderer als befürchtet: Ein
+  Stationseintrag ist in aller Regel **ein Byte**. In einem Mesh mit einigen
+  Dutzend Knoten teilen sich zwei davon mit hoher Wahrscheinlichkeit das erste
+  Byte — dasselbe Geburtstagsproblem wie beim Absenderpräfix einer Nachricht,
+  und dieselbe Antwort: Bei mehreren Kandidaten wird niemand benannt.
+- **Verkehr** trägt, mit einer Einschränkung, die keine technische ist: Die
+  Nutzlast fremder Pakete ist verschlüsselt und geht MeshDash nichts an.
+  Gezeigt wird, **dass** etwas lief, welcher Art und wie gut empfangen — nicht
+  was drinstand. Gespeichert wird die Nutzlast gar nicht erst.
+
+**Offen bleibt die Menge.** Ein Rahmen je gehörtem Paket ist auf einem regen
+Mesh viel. Bevor davon etwas in die Datenbank geht, braucht es eine
+Entscheidung über Verdichtung und Aufbewahrung — sonst wächst die Datei
+schneller als alles andere zusammen. Gehört zu Stufe C.
 
 ### Stufe B — genug Knoten, um eine Karte zu sein
 

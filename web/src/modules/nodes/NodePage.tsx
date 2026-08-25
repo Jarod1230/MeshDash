@@ -6,6 +6,9 @@ import { useNow } from '../../lib/useNow';
 import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
+import { PresenceBand, type Presence } from '../../ui/PresenceBand';
+import { RangePicker } from '../../ui/RangePicker';
+import { useTimeRange } from '../../lib/timeRange';
 import {
   describeRoute,
   shortKey,
@@ -49,6 +52,8 @@ export function NodePage() {
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const sightings = usePagedResource<Sighting>(`/nodes/adverts?node=${key}`, SIGHTINGS_PAGE);
   const readings = useResource<NeighbourSample[]>(`/telemetry/neighbours?node=${key}&limit=50`);
+  const range = useTimeRange('7d');
+  const presence = useResource<Presence>(`/nodes/presence?node=${key}${range.query}`);
   const routeChanges = usePagedResource<RouteChange>(
     `/nodes/route-changes?node=${key}`,
     ROUTE_CHANGES_PAGE,
@@ -122,6 +127,27 @@ export function NodePage() {
           />
           <Fact term="Typ" value={String(contact.contact_type)} />
         </dl>
+      </section>
+
+      <section className="rounded-lg border border-mesh-border bg-mesh-surface">
+        <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-mesh-border px-4 py-2.5">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="text-sm text-mesh-text">Erreichbarkeit</h2>
+            <span className="text-xs text-mesh-faint">
+              wie oft dieser Knoten je Abschnitt zu hören war
+            </span>
+          </div>
+          <RangePicker range={range} label="Zeitraum der Erreichbarkeit" />
+        </header>
+        <div className="px-4 py-3">
+          {presence.error !== null && presence.data === null ? (
+            <p className="text-xs text-mesh-faint">Die Erreichbarkeit konnte nicht geladen werden.</p>
+          ) : presence.data === null ? (
+            <Loading what="Die Erreichbarkeit" />
+          ) : (
+            <PresenceBand presence={presence.data} />
+          )}
+        </div>
       </section>
 
       <Panel title="Wegwechsel" hint="wenn das Mesh diesen Knoten neu geroutet hat">

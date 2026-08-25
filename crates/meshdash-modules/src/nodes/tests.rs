@@ -414,3 +414,79 @@ async fn an_unchanged_route_records_nothing() {
         "the same route seen again is not a change"
     );
 }
+
+#[tokio::test]
+async fn presence_counts_sightings_per_bucket() {
+    let context = context_with(vec![]).await;
+    // Three sightings: two in the first hour, one in the third.
+    for at in [
+        "2026-08-21T10:05:00+00:00",
+        "2026-08-21T10:45:00.123456+00:00",
+        "2026-08-21T12:30:00+00:00",
+    ] {
+        sqlx::query("INSERT INTO nodes_adverts (public_key, heard_at, was_new) VALUES (?, ?, 0)")
+            .bind("aa".repeat(32))
+            .bind(at)
+            .execute(context.db.pool())
+            .await
+            .unwrap();
+    }
+
+    let presence = read_presence(
+        &context,
+        &"aa".repeat(32),
+        DateTime::parse_from_rfc3339("2026-08-21T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        DateTime::parse_from_rfc3339("2026-08-21T13:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        3,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        presence
+            .buckets
+            .iter()
+            .map(|b| b.sightings)
+            .collect::<Vec<_>>(),
+        vec![2, 0, 1],
+        "an hour without a sighting is a zero, not a missing bucket"
+    );
+}
+
+#[tokio::test]
+async fn presence_ignores_other_nodes_and_other_times() {
+    let context = context_with(vec![]).await;
+    let rows = [
+        ("aa".repeat(32), "2026-08-21T10:30:00+00:00"),
+        ("bb".repeat(32), "2026-08-21T10:30:00+00:00"),
+        ("aa".repeat(32), "2026-08-20T10:30:00+00:00"),
+    ];
+    for (key, at) in rows {
+        sqlx::query("INSERT INTO nodes_adverts (public_key, heard_at, was_new) VALUES (?, ?, 0)")
+            .bind(key)
+            .bind(at)
+            .execute(context.db.pool())
+            .await
+            .unwrap();
+    }
+
+    let presence = read_presence(
+        &context,
+        &"aa".repeat(32),
+        DateTime::parse_from_rfc3339("2026-08-21T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        DateTime::parse_from_rfc3339("2026-08-21T11:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        2,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(presence.buckets.iter().map(|b| b.sightings).sum::<i64>(), 1);
+}

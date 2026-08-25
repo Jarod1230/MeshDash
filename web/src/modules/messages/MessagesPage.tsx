@@ -9,6 +9,8 @@ import { useNow } from '../../lib/useNow';
 import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
+import { SearchBox } from '../../ui/SearchBox';
+import { useDebounced } from '../../lib/useDebounced';
 import { exactTime, relativeTime } from '../../lib/time';
 import { isMessageWaiting } from '../../lib/pushes';
 
@@ -25,8 +27,11 @@ const PAGE = 100;
  */
 export function MessagesPage() {
   const now = useNow();
-  const direct = usePagedResource<DirectMessage>('/messages/received', PAGE);
-  const channel = usePagedResource<ChannelMessage>('/messages/channel-received', PAGE);
+  const [search, setSearch] = useState('');
+  const query = useDebounced(search.trim());
+  const suffix = query === '' ? '' : `?q=${encodeURIComponent(query)}`;
+  const direct = usePagedResource<DirectMessage>(`/messages/received${suffix}`, PAGE);
+  const channel = usePagedResource<ChannelMessage>(`/messages/channel-received${suffix}`, PAGE);
   const channels = useResource<Channel[]>('/messages/channels');
   const [tab, setTab] = useState<'gespräche' | 'direkt' | 'kanäle'>('gespräche');
   const [openConversation, setOpenConversation] = useState<Conversation | null>(null);
@@ -67,7 +72,8 @@ export function MessagesPage() {
         <SendForm channels={channels.data ?? []} onSent={reloadAll} />
       </section>
 
-      <div className="flex gap-1" role="tablist" aria-label="Art der Nachrichten">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1" role="tablist" aria-label="Art der Nachrichten">
         {(['gespräche', 'direkt', 'kanäle'] as const).map((option) => (
           <button
             key={option}
@@ -83,7 +89,17 @@ export function MessagesPage() {
           >
             {option}
           </button>
-        ))}
+          ))}
+        </div>
+
+        {tab !== 'gespräche' && (
+          <SearchBox
+            value={search}
+            onChange={setSearch}
+            label="Nachrichten durchsuchen"
+            placeholder="Text oder Absenderpräfix"
+          />
+        )}
       </div>
 
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">

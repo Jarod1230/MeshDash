@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Suchen.** Nachrichten lassen sich nach Text oder Absenderpräfix
+  durchsuchen (`?q=` an der API), die Knotenliste nach Name oder Schlüssel.
+  Was getippt wird, gilt wörtlich: eine Suche nach `80%` findet die Nachricht
+  mit `80%` und nicht alle. Bei den Knoten filtern Liste, Netz, Karte und
+  Sichtungen gemeinsam.
+
 - **Erreichbarkeit als Band.** Die Knotenseite zeigt, wie oft ein Knoten je
   Zeitabschnitt zu hören war — hell für viel, dunkel für still. Eine Liste von
   Sichtungen beantwortet „wann gehört"; über eine Woche sind das hunderte

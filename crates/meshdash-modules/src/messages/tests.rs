@@ -73,7 +73,7 @@ async fn starts_with_nothing_stored() {
     let context = context_with(vec![]).await;
 
     assert!(
-        read_messages(&context, &Window::paged(500, None))
+        read_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .is_empty()
@@ -88,7 +88,7 @@ async fn fetches_until_the_node_has_no_more() {
 
     assert_eq!(fetched, 3);
     assert_eq!(
-        read_messages(&context, &Window::paged(500, None))
+        read_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .len(),
@@ -108,7 +108,7 @@ async fn keeps_what_the_node_reported() {
     let context = context_with(queue(vec!["Hallo Mesh"])).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, &Window::paged(500, None))
+    let messages = read_messages(&context, &Window::paged(500, None), None)
         .await
         .unwrap();
 
@@ -124,7 +124,7 @@ async fn reports_the_newest_first() {
     let context = context_with(queue(vec!["Alt", "Neu"])).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, &Window::paged(500, None))
+    let messages = read_messages(&context, &Window::paged(500, None), None)
         .await
         .unwrap();
 
@@ -140,7 +140,7 @@ async fn keeps_history_the_node_has_already_forgotten() {
     drain_messages(&context).await.unwrap();
 
     assert_eq!(
-        read_messages(&context, &Window::paged(500, None))
+        read_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .len(),
@@ -158,7 +158,7 @@ async fn fetches_when_the_node_rings_the_bell() {
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     assert_eq!(
-        read_messages(&context, &Window::paged(500, None))
+        read_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .len(),
@@ -176,7 +176,7 @@ async fn ignores_pushes_that_are_not_about_messages() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     assert!(
-        read_messages(&context, &Window::paged(500, None))
+        read_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .is_empty(),
@@ -292,7 +292,7 @@ async fn drains_channel_messages_from_the_same_queue() {
 
     assert_eq!(drain_messages(&context).await.unwrap(), 1);
 
-    let messages = read_channel_messages(&context, &Window::paged(500, None))
+    let messages = read_channel_messages(&context, &Window::paged(500, None), None)
         .await
         .unwrap();
     assert_eq!(messages.len(), 1);
@@ -315,14 +315,14 @@ async fn keeps_channel_and_direct_messages_apart() {
     drain_messages(&context).await.unwrap();
 
     assert_eq!(
-        read_messages(&context, &Window::paged(500, None))
+        read_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .len(),
         1
     );
     assert_eq!(
-        read_channel_messages(&context, &Window::paged(500, None))
+        read_channel_messages(&context, &Window::paged(500, None), None)
             .await
             .unwrap()
             .len(),
@@ -484,7 +484,7 @@ async fn a_listing_never_returns_more_than_asked_for() {
     drain_messages(&context).await.unwrap();
 
     assert_eq!(
-        read_messages(&context, &Window::paged(3, None))
+        read_messages(&context, &Window::paged(3, None), None)
             .await
             .unwrap()
             .len(),
@@ -505,7 +505,7 @@ async fn a_channel_listing_is_bounded_too() {
     drain_messages(&context).await.unwrap();
 
     assert_eq!(
-        read_channel_messages(&context, &Window::paged(4, None))
+        read_channel_messages(&context, &Window::paged(4, None), None)
             .await
             .unwrap()
             .len(),
@@ -526,7 +526,7 @@ async fn a_bounded_listing_still_starts_at_the_newest() {
     let context = context_with(script).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, &Window::paged(1, None))
+    let messages = read_messages(&context, &Window::paged(1, None), None)
         .await
         .unwrap();
     assert_eq!(messages[0].text, "Neu", "the limit must cut the old end");
@@ -600,7 +600,7 @@ async fn puts_the_name_on_a_received_message() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     drain_messages(&context).await.unwrap();
 
-    let messages = read_messages(&context, &Window::paged(10, None))
+    let messages = read_messages(&context, &Window::paged(10, None), None)
         .await
         .unwrap();
 
@@ -892,10 +892,10 @@ async fn a_cursor_continues_where_the_page_ended() {
     let context = context_with(queue(vec!["Erste", "Zweite", "Dritte"])).await;
     drain_messages(&context).await.unwrap();
 
-    let erste_seite = read_messages(&context, &Window::paged(2, None))
+    let erste_seite = read_messages(&context, &Window::paged(2, None), None)
         .await
         .unwrap();
-    let zweite_seite = read_messages(&context, &Window::paged(2, Some(erste_seite[1].id)))
+    let zweite_seite = read_messages(&context, &Window::paged(2, Some(erste_seite[1].id)), None)
         .await
         .unwrap();
 
@@ -908,5 +908,58 @@ async fn a_cursor_continues_where_the_page_ended() {
         zweite_seite.iter().map(|m| &m.text).collect::<Vec<_>>(),
         vec!["Erste"],
         "the cursor must exclude what the first page already showed"
+    );
+}
+
+#[tokio::test]
+async fn a_search_narrows_the_messages_to_matching_text() {
+    let context = context_with(queue(vec![
+        "Antenne montiert",
+        "Akku leer",
+        "antenne getauscht",
+    ]))
+    .await;
+    drain_messages(&context).await.unwrap();
+
+    let found = read_messages(&context, &Window::paged(500, None), Some("antenne"))
+        .await
+        .unwrap();
+
+    assert_eq!(found.len(), 2, "case must not decide who matches");
+    assert!(
+        found
+            .iter()
+            .all(|message| message.text.to_lowercase().contains("antenne"))
+    );
+}
+
+#[tokio::test]
+async fn a_search_takes_wildcards_literally() {
+    // Someone searching for a percent sign means a percent sign. Passed
+    // through to LIKE it would match every message instead.
+    let context = context_with(queue(vec!["Akku 80% voll", "Antenne montiert"])).await;
+    drain_messages(&context).await.unwrap();
+
+    let found = read_messages(&context, &Window::paged(500, None), Some("80%"))
+        .await
+        .unwrap();
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].text, "Akku 80% voll");
+}
+
+#[tokio::test]
+async fn a_search_also_finds_a_sender_prefix() {
+    let context = context_with(queue(vec!["Hallo"])).await;
+    drain_messages(&context).await.unwrap();
+
+    let found = read_messages(&context, &Window::paged(500, None), Some("aaaaaa"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        found.len(),
+        1,
+        "the prefix is what a message is filed under"
     );
 }

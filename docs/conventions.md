@@ -82,6 +82,9 @@ inhaltlichen Änderungen vermischt.
   wiederholte, was Seite eins schon zeigte.
 - Die Antwort bleibt ein Array. Kein Umschlag mit `next`-Feld: der Cursor ist
   das `id` des letzten Eintrags, den der Aufrufer ohnehin in der Hand hat.
+- Volltextsuche als `?q=`. Leer oder nur Leerzeichen heißt „alles", nicht
+  „Einträge, die nichts enthalten". Was jemand tippt, wird wörtlich gesucht —
+  `%` und `_` sind für den Suchenden Zeichen und keine Platzhalter.
 - Zeiträume als `?since=<rfc3339>&until=<rfc3339>`, beide Enden einschließlich
   und einzeln weglassbar. Ein Wert, der kein Zeitstempel ist, beantwortet die
   Anfrage mit 400 und `invalid_parameter` — auch der leere: `since=` ist etwas

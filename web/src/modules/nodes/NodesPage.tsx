@@ -7,6 +7,7 @@ import { Topology } from './Topology';
 import { describeRoute, shortKey, type KnownContact, type Sighting } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
+import { SearchBox } from '../../ui/SearchBox';
 import { useResource } from '../../lib/useResource';
 import { exactTime, relativeTime } from '../../lib/time';
 import { isAdvert } from '../../lib/pushes';
@@ -30,6 +31,7 @@ export function NodesPage() {
 /** The list, the ring chart and the map — three views of the same set. */
 function NodeList() {
   const now = useNow();
+  const [search, setSearch] = useState('');
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const sightings = useResource<Sighting[]>('/nodes/adverts?limit=50');
   const [view, setView] = useState<'liste' | 'netz' | 'karte'>('liste');
@@ -62,6 +64,13 @@ function NodeList() {
   const heard = contacts.data.filter(
     (contact) => (now - new Date(contact.last_seen).getTime()) / 1000 < 3600,
   );
+  // Filtered here rather than by the API: the contact list arrives whole and
+  // is a few hundred rows at most, so a round trip per keystroke would buy
+  // nothing and cost the responsiveness of typing.
+  const shown = matching(contacts.data, search);
+  // The sightings follow the same filter. Leaving them whole would put
+  // fifteen rows under a table that just said nothing matched.
+  const shownSightings = matchingSightings(sightings.data ?? [], shown, search);
 
   return (
     <div className="space-y-4">
@@ -71,7 +80,15 @@ function NodeList() {
           <Figure label="in der letzten Stunde gehört" value={heard.length} accent />
         </dl>
 
-        <div className="flex gap-1" role="tablist" aria-label="Darstellung">
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchBox
+            value={search}
+            onChange={setSearch}
+            label="Knoten durchsuchen"
+            placeholder="Name oder Schlüssel"
+          />
+
+          <div className="flex gap-1" role="tablist" aria-label="Darstellung">
           {(['liste', 'netz', 'karte'] as const).map((option) => (
             <button
               key={option}
@@ -87,22 +104,25 @@ function NodeList() {
             >
               {option}
             </button>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">
         {view === 'netz' ? (
-          <Topology contacts={contacts.data} now={now} />
+          <Topology contacts={shown} now={now} />
         ) : view === 'karte' ? (
-          <Map contacts={contacts.data} now={now} />
+          <Map contacts={shown} now={now} />
         ) : contacts.data.length === 0 ? (
           <Empty>
             Der Node kennt noch keine Kontakte. Sie erscheinen, sobald er welche meldet oder ein
             Advert eintrifft.
           </Empty>
+        ) : shown.length === 0 ? (
+          <Empty>Kein Knoten passt zu „{search}".</Empty>
         ) : (
-          <ContactTable contacts={contacts.data} now={now} />
+          <ContactTable contacts={shown} now={now} />
         )}
       </section>
 
@@ -111,14 +131,20 @@ function NodeList() {
           <h2 className="text-sm text-mesh-text">Sichtungen</h2>
           <span className="text-xs text-mesh-faint">wer sich zuletzt gemeldet hat</span>
         </header>
-        {sightings.data === null || sightings.data.length === 0 ? (
-          <Empty>
-            Noch nichts gehört. Jedes Advert, das eintrifft, wird hier festgehalten — auch von einem
-            Knoten, zu dem es noch keinen Kontakt gibt.
-          </Empty>
+        {shownSightings.length === 0 ? (
+          search.trim() === '' ? (
+            <Empty>
+              Noch nichts gehört. Jedes Advert, das eintrifft, wird hier festgehalten — auch von
+              einem Knoten, zu dem es noch keinen Kontakt gibt.
+            </Empty>
+          ) : (
+            // Not the same statement as "nothing was heard": the recording is
+            // fine, the search is what came up empty.
+            <Empty>Keine Sichtung passt zu „{search}".</Empty>
+          )
         ) : (
           <ul className="divide-y divide-mesh-border text-sm">
-            {sightings.data.slice(0, 15).map((sighting) => {
+            {shownSightings.slice(0, 15).map((sighting) => {
               const contact = contacts.data?.find(
                 (candidate) => candidate.public_key === sighting.public_key,
               );
@@ -234,5 +260,48 @@ function ContactTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The contacts a search matches, by name or by key.
+ *
+ * The key is matched anywhere, not only at the front: what people have at hand
+ * is usually the six-byte prefix a message was filed under, and that sits at
+ * the front — but a key copied out of a route sits in the middle of nothing.
+ */
+export function matching(
+  contacts: readonly KnownContact[],
+  search: string,
+): readonly KnownContact[] {
+  const needle = search.trim().toLowerCase();
+  if (needle === '') return contacts;
+
+  return contacts.filter(
+    (contact) =>
+      contact.name.toLowerCase().includes(needle) ||
+      contact.public_key.toLowerCase().includes(needle),
+  );
+}
+
+/**
+ * The sightings a search matches.
+ *
+ * A sighting carries a key and nothing else, so it matches when its contact
+ * matches — or, for a key nobody has a contact for, when the key itself
+ * contains what was typed. Those keys are exactly the ones worth finding: a
+ * node that transmits without being in the contact list.
+ */
+export function matchingSightings(
+  sightings: readonly Sighting[],
+  shownContacts: readonly KnownContact[],
+  search: string,
+): readonly Sighting[] {
+  const needle = search.trim().toLowerCase();
+  if (needle === '') return sightings;
+
+  const keys = new Set(shownContacts.map((contact) => contact.public_key));
+  return sightings.filter(
+    (sighting) => keys.has(sighting.public_key) || sighting.public_key.toLowerCase().includes(needle),
   );
 }

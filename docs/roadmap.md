@@ -202,7 +202,11 @@ Damit ist Stufe 1 erledigt. Von Stufe 2 stehen zwei Stücke:
 - [x] **Erreichbarkeit über die Zeit** — je Knoten ein Band aus gleich langen
       Abschnitten, das zeigt, wann er zu hören war und wann nicht.
 
-Offen in Stufe 2: Suche, `alerts`.
+- [x] **Suche** — Nachrichten nach Text und Absender, Knoten nach Name und
+      Schlüssel.
+
+Offen in Stufe 2: `alerts` — wartet auf die Entscheidung, wohin eine Warnung
+gehen soll (nur Oberfläche, Webhook, E-Mail oder zurück ins Mesh).
 
 ## Gesammelte Einfälle
 

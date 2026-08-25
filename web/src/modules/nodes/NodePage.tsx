@@ -6,6 +6,7 @@ import { useNow } from '../../lib/useNow';
 import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
+import { PositionForm } from './PositionForm';
 import { PresenceBand, type Presence } from '../../ui/PresenceBand';
 import { RangePicker } from '../../ui/RangePicker';
 import { useTimeRange } from '../../lib/timeRange';
@@ -121,12 +122,18 @@ export function NodePage() {
             term="Position"
             value={
               contact.latitude === null || contact.longitude === null
-                ? 'meldet keine'
-                : `${contact.latitude.toFixed(5)}, ${contact.longitude.toFixed(5)}`
+                ? 'keine'
+                : `${contact.latitude.toFixed(5)}, ${contact.longitude.toFixed(5)}${
+                    contact.position_source === 'manual' ? ' (gesetzt)' : ''
+                  }`
             }
           />
           <Fact term="Typ" value={String(contact.contact_type)} />
         </dl>
+
+        <div className="mt-5 border-t border-mesh-border pt-4">
+          <PositionForm contact={contact} onSaved={contacts.reload} />
+        </div>
       </section>
 
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">

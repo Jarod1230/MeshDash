@@ -40,7 +40,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Query, State},
-    routing::get,
+    routing::{get, put},
 };
 use chrono::{DateTime, Utc};
 use meshdash_core::{
@@ -153,6 +153,22 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX nodes_route_changes_key ON nodes_route_changes (public_key, id);
     ",
     },
+    Migration {
+        version: 5,
+        description: "positions the operator set by hand",
+        sql: "
+        -- Kept apart from nodes_contacts on purpose. That row is overwritten
+        -- by every contact listing and every advert; a correction the
+        -- operator made would be gone with the next one. Here it survives,
+        -- and it survives the contact being forgotten and rediscovered too.
+        CREATE TABLE nodes_manual_positions (
+            public_key  TEXT    PRIMARY KEY,
+            latitude    REAL    NOT NULL,
+            longitude   REAL    NOT NULL,
+            set_at      TEXT    NOT NULL
+        );
+    ",
+    },
 ];
 
 /// Largest number of sightings a single request may ask for.
@@ -191,10 +207,24 @@ pub struct KnownContact {
     /// the hop count and the byte count are different numbers. See
     /// `meshdash_proto::path`.
     pub stations: Option<u8>,
-    /// Latitude in degrees, if known.
+    /// Latitude in degrees that applies, if any.
+    ///
+    /// A position the operator set wins over the one the node reports: the
+    /// operator knows where the repeater stands, the node only knows what its
+    /// GPS told it, and half the nodes carry no GPS at all.
     pub latitude: Option<f64>,
-    /// Longitude in degrees, if known.
+    /// Longitude in degrees that applies, if any.
     pub longitude: Option<f64>,
+    /// Where the position that applies comes from, or `None` without one.
+    pub position_source: Option<PositionSource>,
+    /// Latitude the node itself reported, even where a set one overrides it.
+    ///
+    /// Kept visible rather than hidden: a node whose GPS puts it in the wrong
+    /// valley is worth noticing, and it cannot be noticed if the correction
+    /// swallows the claim.
+    pub reported_latitude: Option<f64>,
+    /// Longitude the node itself reported.
+    pub reported_longitude: Option<f64>,
     /// When the contact last advertised itself, in seconds since the epoch.
     pub last_advert: u32,
     /// When MeshDash first recorded this contact.
@@ -219,7 +249,8 @@ impl Module for NodesModule {
                 .route("/contacts", get(list_contacts))
                 .route("/adverts", get(list_adverts))
                 .route("/route-changes", get(list_route_changes))
-                .route("/presence", get(node_presence)),
+                .route("/presence", get(node_presence))
+                .route("/position", put(put_position).delete(delete_position)),
         )
     }
 
@@ -817,14 +848,190 @@ type ContactRow = (
     i64,
     String,
     String,
+    Option<f64>,
+    Option<f64>,
 );
+
+/// Where a node's position comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PositionSource {
+    /// The node advertised these coordinates itself.
+    Reported,
+    /// The operator wrote them down.
+    Manual,
+}
+
+/// Why a position could not be stored.
+#[derive(Debug)]
+pub enum PositionError {
+    /// Latitude or longitude lies outside the globe.
+    OutOfRange {
+        /// Which of the two.
+        field: &'static str,
+        /// The value as it arrived.
+        value: f64,
+    },
+    /// The key is not 64 hex characters.
+    BadKey,
+    /// The database could not be written.
+    Storage(sqlx::Error),
+}
+
+impl From<sqlx::Error> for PositionError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl axum::response::IntoResponse for PositionError {
+    fn into_response(self) -> axum::response::Response {
+        let (code, message) = match self {
+            Self::OutOfRange { field, value } => (
+                "invalid_parameter",
+                format!("{field} is outside the globe: {value}"),
+            ),
+            Self::BadKey => (
+                "invalid_parameter",
+                "public_key must be 64 hex characters".to_owned(),
+            ),
+            Self::Storage(error) => {
+                tracing::error!(%error, "could not store the position");
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
+                        "error": { "code": "storage_failed", "message": "could not store the position" }
+                    })),
+                )
+                    .into_response();
+            }
+        };
+
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": { "code": code, "message": message } })),
+        )
+            .into_response()
+    }
+}
+
+/// What a request sends to place a node.
+#[derive(Debug, Deserialize)]
+pub struct PositionRequest {
+    /// Whose position, lowercase hex.
+    public_key: String,
+    /// Latitude in degrees.
+    latitude: f64,
+    /// Longitude in degrees.
+    longitude: f64,
+}
+
+/// What a request sends to take a position back.
+#[derive(Debug, Deserialize)]
+pub struct PositionKey {
+    /// Whose position, lowercase hex.
+    public_key: String,
+}
+
+async fn put_position(
+    State(context): State<AppContext>,
+    Json(request): Json<PositionRequest>,
+) -> Result<axum::http::StatusCode, PositionError> {
+    set_position(
+        &context,
+        &request.public_key,
+        request.latitude,
+        request.longitude,
+    )
+    .await?;
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+async fn delete_position(
+    State(context): State<AppContext>,
+    Json(request): Json<PositionKey>,
+) -> Result<axum::http::StatusCode, PositionError> {
+    clear_position(&context, &request.public_key).await?;
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Writes down where a node stands, whatever the node says about itself.
+pub async fn set_position(
+    context: &AppContext,
+    public_key: &str,
+    latitude: f64,
+    longitude: f64,
+) -> Result<(), PositionError> {
+    if !is_key(public_key) {
+        return Err(PositionError::BadKey);
+    }
+
+    // Refused rather than clamped: a latitude of 91 is a typo or a unit
+    // mix-up, and clamping it to 90 would put a node at the pole and call it
+    // an answer.
+    if !(-90.0..=90.0).contains(&latitude) {
+        return Err(PositionError::OutOfRange {
+            field: "latitude",
+            value: latitude,
+        });
+    }
+    if !(-180.0..=180.0).contains(&longitude) {
+        return Err(PositionError::OutOfRange {
+            field: "longitude",
+            value: longitude,
+        });
+    }
+
+    sqlx::query(
+        "INSERT INTO nodes_manual_positions (public_key, latitude, longitude, set_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (public_key) DO UPDATE SET
+            latitude = excluded.latitude,
+            longitude = excluded.longitude,
+            set_at = excluded.set_at",
+    )
+    .bind(public_key)
+    .bind(latitude)
+    .bind(longitude)
+    .bind(Utc::now().to_rfc3339())
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
+
+/// Takes a set position back, leaving whatever the node reports.
+pub async fn clear_position(context: &AppContext, public_key: &str) -> Result<(), PositionError> {
+    if !is_key(public_key) {
+        return Err(PositionError::BadKey);
+    }
+
+    sqlx::query("DELETE FROM nodes_manual_positions WHERE public_key = ?")
+        .bind(public_key)
+        .execute(context.db.pool())
+        .await?;
+
+    Ok(())
+}
+
+/// Whether this is a full public key in the form the API uses.
+fn is_key(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
 
 /// Reads every known contact, most recently seen first.
 pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sqlx::Error> {
     let rows: Vec<ContactRow> = sqlx::query_as(
-        "SELECT public_key, name, contact_type, flags, path, stations, latitude,
-                longitude, last_advert, first_seen, last_seen
-         FROM nodes_contacts ORDER BY last_seen DESC, public_key",
+        // LEFT JOIN within this module's own tables — the rule forbids
+        // reaching into another module's, not joining one's own.
+        "SELECT c.public_key, c.name, c.contact_type, c.flags, c.path, c.stations,
+                c.latitude, c.longitude, c.last_advert, c.first_seen, c.last_seen,
+                m.latitude, m.longitude
+         FROM nodes_contacts c
+         LEFT JOIN nodes_manual_positions m ON m.public_key = c.public_key
+         ORDER BY c.last_seen DESC, c.public_key",
     )
     .fetch_all(context.db.pool())
     .await?;
@@ -832,6 +1039,27 @@ pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sq
     Ok(rows
         .into_iter()
         .filter_map(|row| {
+            // Microdegrees from the node, plain degrees from the operator:
+            // the node's own field is an i32 of microdegrees, and a set
+            // position never went through it.
+            let reported_latitude = row.6.map(|value| value as f64 / 1e6);
+            let reported_longitude = row.7.map(|value| value as f64 / 1e6);
+            let (latitude, longitude, position_source) = match (row.11, row.12) {
+                (Some(latitude), Some(longitude)) => (
+                    Some(latitude),
+                    Some(longitude),
+                    Some(PositionSource::Manual),
+                ),
+                _ => match (reported_latitude, reported_longitude) {
+                    (Some(latitude), Some(longitude)) => (
+                        Some(latitude),
+                        Some(longitude),
+                        Some(PositionSource::Reported),
+                    ),
+                    _ => (None, None, None),
+                },
+            };
+
             Some(KnownContact {
                 public_key: row.0,
                 name: row.1,
@@ -839,8 +1067,11 @@ pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sq
                 flags: row.3 as u8,
                 path: row.4,
                 stations: row.5.map(|value| value as u8),
-                latitude: row.6.map(|value| value as f64 / 1e6),
-                longitude: row.7.map(|value| value as f64 / 1e6),
+                latitude,
+                longitude,
+                position_source,
+                reported_latitude,
+                reported_longitude,
                 last_advert: row.8 as u32,
                 first_seen: parse_time(&row.9)?,
                 last_seen: parse_time(&row.10)?,

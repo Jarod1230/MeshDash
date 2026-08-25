@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Position von Hand setzen.** Die meisten Knoten melden keine Koordinaten,
+  aber der Betreiber weiß, wo sein Repeater steht. Auf der Knotenseite lässt
+  sich die Position eintragen; sie schlägt die gemeldete und überlebt jedes
+  Advert. Was der Knoten selbst behauptet, bleibt daneben sichtbar — ein GPS im
+  falschen Tal fällt sonst niemandem auf. Neu ist
+  `PUT`/`DELETE /api/v1/nodes/position`.
+
 - **Pakete lesen, die das Funkmodul hört.** `meshdash_proto::packet` liest den
   unverschlüsselten Teil eines Pakets: wie es geroutet wurde, was es trägt und
   welche Stationen es weitergereicht haben. Grundlage für die Verkehrsebene der

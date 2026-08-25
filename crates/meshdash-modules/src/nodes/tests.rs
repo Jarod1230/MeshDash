@@ -490,3 +490,69 @@ async fn presence_ignores_other_nodes_and_other_times() {
 
     assert_eq!(presence.buckets.iter().map(|b| b.sightings).sum::<i64>(), 1);
 }
+
+#[tokio::test]
+async fn a_position_set_by_hand_wins_over_the_reported_one() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    set_position(&context, &"aa".repeat(32), 48.137154, 11.576124)
+        .await
+        .unwrap();
+
+    let contact = &read_contacts(&context).await.unwrap()[0];
+    assert_eq!(contact.position_source, Some(PositionSource::Manual));
+    assert_eq!(contact.latitude, Some(48.137154));
+    assert_eq!(contact.longitude, Some(11.576124));
+    // What the node itself claims stays readable — a node whose GPS is off by
+    // a valley is worth seeing, not worth hiding.
+    assert_eq!(contact.reported_latitude, Some(52.520008));
+}
+
+#[tokio::test]
+async fn an_advert_does_not_overwrite_a_position_set_by_hand() {
+    let context = context_with(vec![]).await;
+    push(&context, new_advert_frame(0xCD, "Nachbar")).await;
+    set_position(&context, &"cd".repeat(32), 48.137154, 11.576124)
+        .await
+        .unwrap();
+
+    // The node advertises itself again, with its own coordinates.
+    push(&context, new_advert_frame(0xCD, "Nachbar")).await;
+
+    let contact = &read_contacts(&context).await.unwrap()[0];
+    assert_eq!(
+        contact.latitude,
+        Some(48.137154),
+        "the operator's correction must survive the next advert"
+    );
+}
+
+#[tokio::test]
+async fn a_position_can_be_taken_back() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[])])).await;
+    sync_contacts(&context).await.unwrap();
+    set_position(&context, &"aa".repeat(32), 48.137154, 11.576124)
+        .await
+        .unwrap();
+
+    clear_position(&context, &"aa".repeat(32)).await.unwrap();
+
+    let contact = &read_contacts(&context).await.unwrap()[0];
+    assert_eq!(contact.position_source, Some(PositionSource::Reported));
+    assert_eq!(contact.latitude, Some(52.520008));
+}
+
+#[tokio::test]
+async fn a_position_outside_the_globe_is_refused() {
+    let context = context_with(vec![]).await;
+
+    assert!(matches!(
+        set_position(&context, &"aa".repeat(32), 91.0, 0.0).await,
+        Err(PositionError::OutOfRange { .. })
+    ));
+    assert!(matches!(
+        set_position(&context, &"aa".repeat(32), 0.0, -181.0).await,
+        Err(PositionError::OutOfRange { .. })
+    ));
+}

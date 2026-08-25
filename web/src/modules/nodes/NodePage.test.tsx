@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NodePage } from './NodePage';
@@ -11,6 +12,9 @@ const contact: KnownContact = {
   name: 'Repeater Nord',
   contact_type: 2,
   flags: 0,
+  position_source: null,
+  reported_latitude: null,
+  reported_longitude: null,
   path: '0102',
   stations: 2,
   latitude: 52.520008,
@@ -164,5 +168,70 @@ describe('Erreichbarkeit', () => {
     const band = await screen.findByRole('img', { name: /Abschnitten des Zeitraums gehört/ });
     // Silence must be readable as silence, not as a hole in the recording.
     expect(band).toHaveAccessibleName('In 1 von 2 Abschnitten des Zeitraums gehört');
+  });
+});
+
+describe('Position setzen', () => {
+  it('offers to place a node that reports nothing', async () => {
+    vi.stubGlobal('fetch', answers({ contacts: [{ ...contact, latitude: null, longitude: null }] }));
+    show();
+
+    expect(await screen.findByText(/steht er auf keiner Karte/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Position setzen' })).toBeInTheDocument();
+    // Nothing to take back until something was set.
+    expect(screen.queryByRole('button', { name: 'Zurücknehmen' })).not.toBeInTheDocument();
+  });
+
+  it('sends what was typed and reloads', async () => {
+    const fetchMock = answers({ contacts: [{ ...contact, latitude: null, longitude: null }] });
+    vi.stubGlobal('fetch', fetchMock);
+    show();
+
+    await userEvent.type(await screen.findByLabelText('Breite'), '48.137');
+    await userEvent.type(screen.getByLabelText('Länge'), '11.576');
+    await userEvent.click(screen.getByRole('button', { name: 'Position setzen' }));
+
+    const put = fetchMock.mock.calls.find(
+      (call: unknown[]) => (call[1] as RequestInit | undefined)?.method === 'PUT',
+    );
+    expect(put).toBeDefined();
+    expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
+      public_key: KEY,
+      latitude: 48.137,
+      longitude: 11.576,
+    });
+  });
+
+  it('says what is wrong instead of sending nonsense', async () => {
+    vi.stubGlobal('fetch', answers({ contacts: [{ ...contact, latitude: null, longitude: null }] }));
+    show();
+
+    await userEvent.type(await screen.findByLabelText('Breite'), 'Nordkamm');
+    await userEvent.click(screen.getByRole('button', { name: 'Position setzen' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Dezimalzahlen');
+  });
+
+  it('shows what the node claims beside a position that was set', async () => {
+    vi.stubGlobal(
+      'fetch',
+      answers({
+        contacts: [
+          {
+            ...contact,
+            latitude: 48.137,
+            longitude: 11.576,
+            position_source: 'manual',
+            reported_latitude: 52.520008,
+            reported_longitude: 13.404954,
+          },
+        ],
+      }),
+    );
+    show();
+
+    // The node's own claim stays readable — a GPS in the wrong valley is
+    // worth noticing.
+    expect(await screen.findByText(/52.52001, 13.40495/)).toBeInTheDocument();
   });
 });

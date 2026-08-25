@@ -1,9 +1,17 @@
 /** What `/api/v1/nodes/contacts` answers. */
+/** Where a node's position comes from. */
+export type PositionSource = 'reported' | 'manual';
+
 export interface KnownContact {
   readonly public_key: string;
   readonly name: string;
   readonly contact_type: number;
   readonly flags: number;
+  /** Where the position that applies comes from, or null without one. */
+  readonly position_source: PositionSource | null;
+  /** What the node itself claims, even where a set position overrides it. */
+  readonly reported_latitude: number | null;
+  readonly reported_longitude: number | null;
   /**
    * The known route as hex hop bytes, or `null` when the node has no route to
    * this contact.

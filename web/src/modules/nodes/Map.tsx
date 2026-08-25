@@ -135,8 +135,9 @@ export function Map({
   if (projection === null) {
     return (
       <p className="px-4 py-6 text-sm text-mesh-muted">
-        Kein Knoten meldet eine Position. Ein Node sendet sie nur mit, wenn sie bei ihm eingestellt
-        ist — die meisten tun das nicht.
+        Kein Knoten hat eine Position. Ein Node sendet sie nur mit, wenn sie bei ihm eingestellt ist
+        — die meisten tun das nicht. Wo ein Knoten steht, weißt aber meist du: Auf seiner Seite
+        lässt sich die Position eintragen, und sie bleibt dort stehen.
       </p>
     );
   }
@@ -201,8 +202,9 @@ export function Map({
           {withoutPosition > 0 && (
             <>
               {' '}
-              {withoutPosition} {withoutPosition === 1 ? 'Knoten meldet' : 'Knoten melden'} keine
-              Position und {withoutPosition === 1 ? 'fehlt' : 'fehlen'} hier.
+              {withoutPosition} {withoutPosition === 1 ? 'Knoten hat' : 'Knoten haben'} keine
+              Position und {withoutPosition === 1 ? 'fehlt' : 'fehlen'} hier — auf der Seite eines
+              Knotens lässt sie sich eintragen.
             </>
           )}
         </p>
@@ -215,6 +217,9 @@ export function Map({
               >
                 {node.contact.name}
               </Link>
+              {node.contact.position_source === 'manual' && (
+                <span className="text-mesh-faint">gesetzt</span>
+              )}
               <a
                 href={`https://www.openstreetmap.org/?mlat=${node.contact.latitude}&mlon=${node.contact.longitude}#map=13/${node.contact.latitude}/${node.contact.longitude}`}
                 target="_blank"

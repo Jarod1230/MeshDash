@@ -279,9 +279,10 @@ schneller als alles andere zusammen. Gehört zu Stufe C.
 Eine Karte mit zwei Punkten ist keine. Heute meldet kaum ein Knoten
 Koordinaten, deshalb kommt das vor der Karte.
 
-- **Position von Hand setzen.** Der Betreiber weiß, wo sein Repeater steht,
-  auch wenn der Node es nicht meldet. Von Hand gesetzte Positionen werden als
-  solche gekennzeichnet und nie von einem Advert überschrieben.
+- [x] **Position von Hand setzen.** Der Betreiber weiß, wo sein Repeater steht,
+  auch wenn der Node es nicht meldet. Gesetzte Positionen sind als solche
+  gekennzeichnet, schlagen die gemeldete und werden nie von einem Advert
+  überschrieben; was der Knoten meldet, bleibt daneben sichtbar.
 - **Positionen aus der Nachbartelemetrie auf die Karte.** Sie gehören
   `telemetry` und brauchen den Weg über ein Ereignis nach
   [ADR-0007](decisions/0007-modul-ereignisse.md) — der offene Punkt aus

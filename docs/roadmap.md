@@ -291,11 +291,12 @@ selbst hat.
   Quelle füllt Lücken.
 - **Ehrlich über die Lücke.** Die Karte sagt, wie viele Knoten sie *nicht*
   zeigt, statt sie stillschweigend wegzulassen.
-- **Traceroute nutzbar machen.** `CMD_SEND_TRACE_PATH` liefert die Stationen
+- [x] **Traceroute als Aktion.** `CMD_SEND_TRACE_PATH` liefert die Stationen
   eines Weges samt Empfangsqualität je Abschnitt — die einzige belegte Quelle
-  für „wer hört wen wie gut" jenseits des eigenen Node. Erst als Aktion und
-  Ergebnisanzeige, dann als Kartenebene. Sie ist zugleich die Datengrundlage,
-  auf der die Triangulation aus Stufe D später aufsetzt.
+  für „wer hört wen wie gut" jenseits des eigenen Node. Auf der Knotenseite
+  als „Weg messen", nicht auf einem Timer. Die Kartenebene daraus folgt in
+  Stufe C; die Messungen sind zugleich die Datengrundlage, auf der die
+  Triangulation aus Stufe D später aufsetzt.
 - **Ein eigenes Advert mit Position senden.** `set_advert_position` gibt es im
   Protokoll längst; wer den eigenen Node verortet, bringt den ersten sicheren
   Punkt auf die Karte — und den Anker, ohne den jede Schätzung frei schwebt.

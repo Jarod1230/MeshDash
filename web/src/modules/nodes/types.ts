@@ -69,6 +69,25 @@ export interface RouteChange {
   readonly previous_stations: number | null;
 }
 
+/** One traced route and how well each station heard the one before it. */
+export interface Trace {
+  readonly id: number;
+  readonly public_key: string;
+  readonly asked_at: string;
+  /** Null while nothing has come back — which may stay that way. */
+  readonly answered_at: string | null;
+  readonly final_snr: number | null;
+  readonly hops: readonly TraceHop[];
+}
+
+/** One station on a traced route. */
+export interface TraceHop {
+  /** Leading bytes of that station's key, hex. Usually one byte. */
+  readonly key_prefix: string;
+  /** Null where several stations share one measurement. */
+  readonly snr: number | null;
+}
+
 /** A key is 64 hex digits; nobody reads that. Six are enough to tell apart. */
 export function shortKey(publicKey: string): string {
   return publicKey.slice(0, 6);

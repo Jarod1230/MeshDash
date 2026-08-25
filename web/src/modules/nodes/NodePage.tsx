@@ -7,13 +7,17 @@ import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
 import { PresenceBand, type Presence } from '../../ui/PresenceBand';
+import { TracePanel } from './TracePanel';
 import { RangePicker } from '../../ui/RangePicker';
+import { useLiveReload, type AppEvent } from '../../lib/events';
+import { isTrace } from '../../lib/pushes';
 import { useTimeRange } from '../../lib/timeRange';
 import {
   describeRoute,
   shortKey,
   type KnownContact,
   type RouteChange,
+  type Trace,
   type Sighting,
 } from './types';
 import type { ConversationMessage } from '../messages/types';
@@ -54,12 +58,20 @@ export function NodePage() {
   const readings = useResource<NeighbourSample[]>(`/telemetry/neighbours?node=${key}&limit=50`);
   const range = useTimeRange('7d');
   const presence = useResource<Presence>(`/nodes/presence?node=${key}${range.query}`);
+  const traces = useResource<Trace[]>(`/nodes/traces?node=${key}&limit=10`);
   const routeChanges = usePagedResource<RouteChange>(
     `/nodes/route-changes?node=${key}`,
     ROUTE_CHANGES_PAGE,
   );
   const thread = useResource<ConversationMessage[]>(
     `/messages/conversation?with=${key.slice(0, 12)}&limit=50`,
+  );
+
+  // A trace answer is a push, not a REST round-trip. Without this the
+  // measurement would sit unanswered until the page was opened again.
+  useLiveReload(
+    (event: AppEvent) => event.type === 'push' && isTrace(event.payload),
+    traces.reload,
   );
 
   if (contacts.error !== null && contacts.data === null) {
@@ -149,6 +161,15 @@ export function NodePage() {
           )}
         </div>
       </section>
+
+      <Panel title="Weg messen" hint="wie gut die Stationen einander hören">
+        <TracePanel
+          contact={contact}
+          traces={traces.data}
+          now={now}
+          onStarted={traces.reload}
+        />
+      </Panel>
 
       <Panel title="Wegwechsel" hint="wenn das Mesh diesen Knoten neu geroutet hat">
         {routeChanges.items === null ? (

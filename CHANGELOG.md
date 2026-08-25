@@ -12,6 +12,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Weg messen.** Auf der Knotenseite lässt sich der bekannte Weg zu einem
+  Knoten ablaufen — Station für Station, mit Empfangsqualität je Strecke.
+  Das ist die belegte Quelle dafür, wie zwei *andere* Knoten einander hören;
+  jede andere Messung gilt nur am eigenen Node. Kostet Sendezeit, deshalb nur
+  auf Nachfrage, nie auf einem Timer. Neu ist `/api/v1/nodes/traces`.
+  Unbeantwortete Versuche bleiben stehen: auch das ist ein Befund über die
+  Route. Die Kartenebene daraus kommt später.
+
 - **Positionen aus der Nachbartelemetrie auf der Karte.** Antwortet ein Knoten
   auf eine Telemetrieanfrage mit seiner Position, steht er jetzt auf der Karte,
   auch wenn sein Advert keine mitbringt — gekennzeichnet als „aus Telemetrie".

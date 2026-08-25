@@ -185,6 +185,24 @@ fn new_advert_frame(key: u8, name: &str) -> Vec<u8> {
     payload
 }
 
+/// A contact with a route of our choosing.
+fn contact_with_path(key: u8, name: &str, hops: &[u8]) -> Contact {
+    Contact {
+        public_key: [key; 32],
+        contact_type: 2,
+        flags: 0,
+        path: (!hops.is_empty()).then(|| meshdash_proto::contact::Route {
+            stations: hops.len() as u8,
+            hops: hops.to_vec(),
+        }),
+        name: name.into(),
+        last_advert: 0,
+        latitude: None,
+        longitude: None,
+        last_modified: 0,
+    }
+}
+
 /// A new-contact advert carrying a route of our choosing.
 fn new_advert_frame_with_path(key: u8, name: &str, path: &[u8]) -> Vec<u8> {
     let mut payload = contact_frame(key, name, path);
@@ -489,4 +507,108 @@ async fn presence_ignores_other_nodes_and_other_times() {
     .unwrap();
 
     assert_eq!(presence.buckets.iter().map(|b| b.sightings).sum::<i64>(), 1);
+}
+
+/// The node's receipt for a trace: the same frame a sent message gets, with
+/// the tag where the acknowledgement would be.
+fn trace_receipt(tag: u32, timeout_ms: u32) -> Vec<u8> {
+    let mut frame = vec![u8::from(Response::Sent), 0];
+    frame.extend_from_slice(&tag.to_le_bytes());
+    frame.extend_from_slice(&timeout_ms.to_le_bytes());
+    frame
+}
+
+/// A trace coming back over two stations, one SNR each.
+fn trace_answer(tag: u32, hops: &[u8], snrs: &[f32], final_snr: f32) -> Vec<u8> {
+    let mut frame = vec![
+        u8::from(meshdash_proto::opcode::Push::TraceData),
+        0,
+        hops.len() as u8,
+        0, // flags: one SNR per station
+    ];
+    frame.extend_from_slice(&tag.to_le_bytes());
+    frame.extend_from_slice(&0u32.to_le_bytes()); // authentication code
+    frame.extend_from_slice(hops);
+    frame.extend(snrs.iter().map(|snr| (snr * 4.0) as i8 as u8));
+    frame.push((final_snr * 4.0) as i8 as u8);
+    frame
+}
+
+#[tokio::test]
+async fn a_trace_records_every_station_and_its_reception() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(trace_receipt(0x1234_5678, 4_000)),
+    ])
+    .await;
+    store_contact(&context, &contact_with_path(0xAA, "Fern", &[0x03, 0x07]))
+        .await
+        .unwrap();
+
+    start_trace(&context, &"aa".repeat(32)).await.unwrap();
+
+    // The answer comes over the bus, the way the link delivers it. Fed in
+    // here rather than scripted into the mock: the mock hands out its frames
+    // as fast as the reader asks for them, so an answer scripted next to the
+    // receipt can arrive before the request that it answers.
+    push(
+        &context,
+        trace_answer(0x1234_5678, &[0x03, 0x07], &[6.5, -2.0], 9.0),
+    )
+    .await;
+
+    let traces = read_traces(&context, None, &Window::paged(10, None))
+        .await
+        .unwrap();
+    assert_eq!(traces.len(), 1);
+    assert_eq!(traces[0].public_key, "aa".repeat(32));
+    assert_eq!(traces[0].final_snr, Some(9.0));
+    assert_eq!(
+        traces[0]
+            .hops
+            .iter()
+            .map(|hop| (hop.key_prefix.clone(), hop.snr))
+            .collect::<Vec<_>>(),
+        vec![("03".into(), Some(6.5)), ("07".into(), Some(-2.0))]
+    );
+}
+
+#[tokio::test]
+async fn a_trace_that_never_comes_back_stays_unanswered() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(trace_receipt(0xAAAA_BBBB, 4_000)),
+    ])
+    .await;
+    store_contact(&context, &contact_with_path(0xBB, "Still", &[0x05]))
+        .await
+        .unwrap();
+
+    start_trace(&context, &"bb".repeat(32)).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let traces = read_traces(&context, None, &Window::paged(10, None))
+        .await
+        .unwrap();
+    // Recorded as asked and unanswered rather than not recorded: "we tried
+    // and nothing came back" is a finding about the route.
+    assert_eq!(traces.len(), 1);
+    assert_eq!(traces[0].answered_at, None);
+    assert!(traces[0].hops.is_empty());
+}
+
+#[tokio::test]
+async fn a_node_without_a_route_cannot_be_traced() {
+    let context = context_with(vec![]).await;
+    store_contact(&context, &contact_with_path(0xCC, "Direkt", &[]))
+        .await
+        .unwrap();
+
+    // A trace follows a route station by station. With no station in
+    // between there is nothing to ask about, and the firmware refuses the
+    // frame outright.
+    assert!(matches!(
+        start_trace(&context, &"cc".repeat(32)).await,
+        Err(TraceError::NoRoute)
+    ));
 }

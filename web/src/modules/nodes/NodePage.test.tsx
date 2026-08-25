@@ -32,6 +32,8 @@ function answers(overrides: Record<string, unknown> = {}) {
           ? (overrides['adverts'] ?? [])
           : path.includes('/nodes/presence')
           ? (overrides['presence'] ?? { from: '', to: '', buckets: [] })
+          : path.includes('/nodes/traces')
+          ? (overrides['traces'] ?? [])
           : path.includes('/nodes/route-changes')
             ? (overrides['routeChanges'] ?? [])
             : path.includes('/telemetry/neighbours')
@@ -165,5 +167,67 @@ describe('Erreichbarkeit', () => {
     const band = await screen.findByRole('img', { name: /Abschnitten des Zeitraums gehört/ });
     // Silence must be readable as silence, not as a hole in the recording.
     expect(band).toHaveAccessibleName('In 1 von 2 Abschnitten des Zeitraums gehört');
+  });
+});
+
+describe('Weg messen', () => {
+  it('reads a finished trace as stations with their reception', async () => {
+    vi.stubGlobal(
+      'fetch',
+      answers({
+        traces: [
+          {
+            id: 4,
+            public_key: KEY,
+            asked_at: new Date(Date.now() - 600_000).toISOString(),
+            answered_at: new Date(Date.now() - 599_000).toISOString(),
+            final_snr: 9,
+            hops: [
+              { key_prefix: '03', snr: 6.5 },
+              { key_prefix: '07', snr: -2 },
+            ],
+          },
+        ],
+      }),
+    );
+    show();
+
+    // "2 Stationen" also stands in the facts above as the node's route, so
+    // the assertion goes for what only the measurement has: the stations
+    // themselves and the reception of the last leg.
+    expect(await screen.findByText('03')).toBeInTheDocument();
+    expect(screen.getByText('07')).toBeInTheDocument();
+    expect(screen.getByText('letzte Strecke')).toBeInTheDocument();
+  });
+
+  it('says plainly when a trace went unanswered', async () => {
+    vi.stubGlobal(
+      'fetch',
+      answers({
+        traces: [
+          {
+            id: 5,
+            public_key: KEY,
+            asked_at: new Date(Date.now() - 600_000).toISOString(),
+            answered_at: null,
+            final_snr: null,
+            hops: [],
+          },
+        ],
+      }),
+    );
+    show();
+
+    // Not an empty row: "we asked and nothing came back" is a finding about
+    // the route.
+    expect(await screen.findByText('keine Antwort')).toBeInTheDocument();
+  });
+
+  it('does not offer to trace a node with nothing in between', async () => {
+    vi.stubGlobal('fetch', answers({ contacts: [{ ...contact, stations: 0 }] }));
+    show();
+
+    expect(await screen.findByRole('button', { name: 'Weg messen' })).toBeDisabled();
+    expect(screen.getByText(/direkt erreichbar/)).toBeInTheDocument();
   });
 });

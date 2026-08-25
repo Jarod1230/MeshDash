@@ -12,6 +12,11 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Positionen aus der Nachbartelemetrie auf der Karte.** Antwortet ein Knoten
+  auf eine Telemetrieanfrage mit seiner Position, steht er jetzt auf der Karte,
+  auch wenn sein Advert keine mitbringt — gekennzeichnet als „aus Telemetrie".
+  Die Angabe aus dem Advert behält den Vorrang; die zweite Quelle füllt Lücken.
+
 - **Pakete lesen, die das Funkmodul hört.** `meshdash_proto::packet` liest den
   unverschlüsselten Teil eines Pakets: wie es geroutet wurde, was es trägt und
   welche Stationen es weitergereicht haben. Grundlage für die Verkehrsebene der

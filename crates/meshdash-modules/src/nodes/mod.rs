@@ -153,6 +153,23 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX nodes_route_changes_key ON nodes_route_changes (public_key, id);
     ",
     },
+    Migration {
+        version: 5,
+        description: "positions a node reported in its telemetry",
+        sql: "
+        -- Kept apart from nodes_contacts because they arrive on a different
+        -- path: a contact row is written by the contact listing and by
+        -- adverts, and a position that came from telemetry would be erased by
+        -- the next listing that carries none.
+        CREATE TABLE nodes_telemetry_positions (
+            public_key  TEXT    PRIMARY KEY,
+            latitude    REAL    NOT NULL,
+            longitude   REAL    NOT NULL,
+            altitude    REAL,
+            at          TEXT    NOT NULL
+        );
+    ",
+    },
 ];
 
 /// Largest number of sightings a single request may ask for.
@@ -191,10 +208,16 @@ pub struct KnownContact {
     /// the hop count and the byte count are different numbers. See
     /// `meshdash_proto::path`.
     pub stations: Option<u8>,
-    /// Latitude in degrees, if known.
+    /// Latitude in degrees that applies, if any.
+    ///
+    /// The advert wins over a telemetry position: it is what the node tells
+    /// everybody, while a telemetry answer goes to whoever asked. The second
+    /// source exists to fill gaps, not to compete — see [`PositionSource`].
     pub latitude: Option<f64>,
-    /// Longitude in degrees, if known.
+    /// Longitude in degrees that applies, if any.
     pub longitude: Option<f64>,
+    /// Where the position that applies comes from, or `None` without one.
+    pub position_source: Option<PositionSource>,
     /// When the contact last advertised itself, in seconds since the epoch.
     pub last_advert: u32,
     /// When MeshDash first recorded this contact.
@@ -242,6 +265,13 @@ impl Module for NodesModule {
                             && let Err(error) = record_advert(&context, &advert).await
                         {
                             tracing::error!(%error, "could not record an advert");
+                        }
+                    }
+                    Ok(AppEvent::Module { module, kind, data })
+                        if module == "telemetry" && kind == "position" =>
+                    {
+                        if let Err(error) = record_telemetry_position(&context, &data).await {
+                            tracing::error!(%error, "could not record a reported position");
                         }
                     }
                     Ok(_) => {}
@@ -817,14 +847,78 @@ type ContactRow = (
     i64,
     String,
     String,
+    Option<f64>,
+    Option<f64>,
 );
+
+/// Where a node's position comes from.
+///
+/// Both are the node's own account of itself; neither is entered by hand
+/// ([ADR-0012](../../../docs/decisions/0012-positionen-nur-aus-dem-mesh.md)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PositionSource {
+    /// From the advert the node broadcasts to everybody.
+    Advert,
+    /// From a telemetry answer the node gave when asked.
+    Telemetry,
+}
+
+/// Records a position another module heard about.
+///
+/// A payload that does not fit is skipped rather than fatal: what
+/// `AppEvent::Module` carries belongs to the publishing module and may change
+/// — see ADR-0007.
+async fn record_telemetry_position(
+    context: &AppContext,
+    data: &serde_json::Value,
+) -> Result<(), sqlx::Error> {
+    let (Some(public_key), Some(latitude), Some(longitude)) = (
+        data.get("public_key").and_then(|value| value.as_str()),
+        data.get("latitude").and_then(serde_json::Value::as_f64),
+        data.get("longitude").and_then(serde_json::Value::as_f64),
+    ) else {
+        tracing::warn!("a position announcement was missing fields");
+        return Ok(());
+    };
+
+    // Zero is not a position: the firmware stores it for "unset", and taking
+    // it at face value would put the node in the Gulf of Guinea.
+    if latitude == 0.0 && longitude == 0.0 {
+        return Ok(());
+    }
+
+    sqlx::query(
+        "INSERT INTO nodes_telemetry_positions (public_key, latitude, longitude, altitude, at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (public_key) DO UPDATE SET
+            latitude = excluded.latitude,
+            longitude = excluded.longitude,
+            altitude = excluded.altitude,
+            at = excluded.at",
+    )
+    .bind(public_key)
+    .bind(latitude)
+    .bind(longitude)
+    .bind(data.get("altitude").and_then(serde_json::Value::as_f64))
+    .bind(Utc::now().to_rfc3339())
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
 
 /// Reads every known contact, most recently seen first.
 pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sqlx::Error> {
     let rows: Vec<ContactRow> = sqlx::query_as(
-        "SELECT public_key, name, contact_type, flags, path, stations, latitude,
-                longitude, last_advert, first_seen, last_seen
-         FROM nodes_contacts ORDER BY last_seen DESC, public_key",
+        // A LEFT JOIN within this module's own tables. The rule forbids
+        // reaching into another module's, not joining one's own.
+        "SELECT c.public_key, c.name, c.contact_type, c.flags, c.path, c.stations,
+                c.latitude, c.longitude, c.last_advert, c.first_seen, c.last_seen,
+                t.latitude, t.longitude
+         FROM nodes_contacts c
+         LEFT JOIN nodes_telemetry_positions t ON t.public_key = c.public_key
+         ORDER BY c.last_seen DESC, c.public_key",
     )
     .fetch_all(context.db.pool())
     .await?;
@@ -832,6 +926,33 @@ pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sq
     Ok(rows
         .into_iter()
         .filter_map(|row| {
+            // Microdegrees in the advert, plain degrees in telemetry: the
+            // advert field is an i32 of microdegrees, CayenneLPP is not.
+            let advert = match (row.6, row.7) {
+                (Some(latitude), Some(longitude)) => {
+                    Some((latitude as f64 / 1e6, longitude as f64 / 1e6))
+                }
+                _ => None,
+            };
+            let telemetry = match (row.11, row.12) {
+                (Some(latitude), Some(longitude)) => Some((latitude, longitude)),
+                _ => None,
+            };
+
+            let (latitude, longitude, position_source) = match (advert, telemetry) {
+                (Some((latitude, longitude)), _) => (
+                    Some(latitude),
+                    Some(longitude),
+                    Some(PositionSource::Advert),
+                ),
+                (None, Some((latitude, longitude))) => (
+                    Some(latitude),
+                    Some(longitude),
+                    Some(PositionSource::Telemetry),
+                ),
+                (None, None) => (None, None, None),
+            };
+
             Some(KnownContact {
                 public_key: row.0,
                 name: row.1,
@@ -839,8 +960,9 @@ pub async fn read_contacts(context: &AppContext) -> Result<Vec<KnownContact>, sq
                 flags: row.3 as u8,
                 path: row.4,
                 stations: row.5.map(|value| value as u8),
-                latitude: row.6.map(|value| value as f64 / 1e6),
-                longitude: row.7.map(|value| value as f64 / 1e6),
+                latitude,
+                longitude,
+                position_source,
                 last_advert: row.8 as u32,
                 first_seen: parse_time(&row.9)?,
                 last_seen: parse_time(&row.10)?,

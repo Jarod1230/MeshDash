@@ -1,9 +1,19 @@
 /** What `/api/v1/nodes/contacts` answers. */
+/**
+ * Where a node's position comes from.
+ *
+ * Both are the node's own account of itself — nothing here is entered by
+ * hand, see ADR-0012.
+ */
+export type PositionSource = 'advert' | 'telemetry';
+
 export interface KnownContact {
   readonly public_key: string;
   readonly name: string;
   readonly contact_type: number;
   readonly flags: number;
+  /** Where the position that applies comes from, or null without one. */
+  readonly position_source: PositionSource | null;
   /**
    * The known route as hex hop bytes, or `null` when the node has no route to
    * this contact.

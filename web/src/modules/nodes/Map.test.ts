@@ -7,6 +7,7 @@ const at = (name: string, latitude: number | null, longitude: number | null): Kn
   name,
   contact_type: 2,
   flags: 0,
+  position_source: null,
   path: '',
   stations: 0,
   latitude,
@@ -99,5 +100,18 @@ describe('formatDistance', () => {
     expect(formatDistance(750)).toBe('750 m');
     expect(formatDistance(1_000)).toBe('1 km');
     expect(formatDistance(12_500)).toBe('12,5 km');
+  });
+});
+
+describe('Herkunft einer Position', () => {
+  it('keeps a telemetry position on the map like any other', () => {
+    // The map does not care where a position came from — it cares that it is
+    // one. The label is for the reader, not for the projection.
+    const contacts = [
+      at('aa', 48.137, 11.576),
+      { ...at('bb', 48.2, 11.6), position_source: 'telemetry' as const },
+    ];
+
+    expect(positioned(contacts)).toHaveLength(2);
   });
 });

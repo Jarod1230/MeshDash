@@ -7,6 +7,7 @@ const contact = (name: string, stations: number | null, minutesAgo: number): Kno
   name,
   contact_type: 2,
   flags: 0,
+  position_source: null,
   path: stations === null ? null : '',
   stations,
   latitude: null,

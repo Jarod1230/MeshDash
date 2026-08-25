@@ -169,6 +169,8 @@ pub struct ListQuery {
     /// Which stretch of time to cover.
     #[serde(flatten)]
     range: TimeRange,
+    /// Only entries containing this text.
+    q: Option<String>,
 }
 
 impl ListQuery {
@@ -184,6 +186,17 @@ impl ListQuery {
             self.before,
             self.range.bounds()?,
         ))
+    }
+
+    /// What to search for, if anything.
+    ///
+    /// Blank is the same as absent: an empty search box means "everything",
+    /// not "entries containing nothing".
+    fn search(&self) -> Option<&str> {
+        self.q
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
     }
 }
 
@@ -369,7 +382,7 @@ async fn list_messages(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredMessage>>, ListError> {
-    read_messages(&context, &query.window()?)
+    read_messages(&context, &query.window()?, query.search())
         .await
         .map(Json)
         .map_err(ListError::from)
@@ -1159,7 +1172,7 @@ async fn list_channel_messages(
     State(context): State<AppContext>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<StoredChannelMessage>>, ListError> {
-    read_channel_messages(&context, &query.window()?)
+    read_channel_messages(&context, &query.window()?, query.search())
         .await
         .map(Json)
         .map_err(ListError::from)
@@ -1175,6 +1188,19 @@ async fn list_channels(
         .map_err(ListError::from)
 }
 
+/// Turns what someone typed into a LIKE pattern that means "contains this".
+///
+/// `%` and `_` are wildcards to LIKE and ordinary characters to whoever typed
+/// them — a search for `80%` must not match every message. They are escaped,
+/// along with the escape character itself.
+fn contains(search: &str) -> String {
+    let escaped = search
+        .replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_");
+    format!("%{escaped}%")
+}
+
 /// One row of `messages_channel_received`.
 type ChannelMessageRow = (i64, i64, String, i64, Option<f64>, Option<i64>, i64, String);
 
@@ -1182,18 +1208,23 @@ type ChannelMessageRow = (i64, i64, String, i64, Option<f64>, Option<i64>, i64, 
 pub async fn read_channel_messages(
     context: &AppContext,
     window: &Window,
+    search: Option<&str>,
 ) -> Result<Vec<StoredChannelMessage>, sqlx::Error> {
+    let pattern = search.map(contains);
+
     let rows: Vec<ChannelMessageRow> = sqlx::query_as(
         "SELECT id, channel_index, text, text_type, snr, path_len, sent_at, received_at
          FROM messages_channel_received
          WHERE (?1 IS NULL OR id < ?1)
            AND (?2 IS NULL OR received_at >= ?2)
            AND (?3 IS NULL OR received_at <= ?3)
-         ORDER BY id DESC LIMIT ?4",
+           AND (?4 IS NULL OR text LIKE ?4 ESCAPE '\\')
+         ORDER BY id DESC LIMIT ?5",
     )
     .bind(window.before)
     .bind(&window.since)
     .bind(&window.until)
+    .bind(&pattern)
     .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;
@@ -1251,18 +1282,24 @@ type MessageRow = (
 pub async fn read_messages(
     context: &AppContext,
     window: &Window,
+    search: Option<&str>,
 ) -> Result<Vec<StoredMessage>, sqlx::Error> {
+    let pattern = search.map(contains);
+
     let rows: Vec<MessageRow> = sqlx::query_as(
         "SELECT id, sender_prefix, text, text_type, snr, path_len, sent_at, received_at
          FROM messages_received
          WHERE (?1 IS NULL OR id < ?1)
            AND (?2 IS NULL OR received_at >= ?2)
            AND (?3 IS NULL OR received_at <= ?3)
-         ORDER BY id DESC LIMIT ?4",
+           AND (?4 IS NULL OR text LIKE ?4 ESCAPE '\\'
+                           OR sender_prefix LIKE ?4 ESCAPE '\\')
+         ORDER BY id DESC LIMIT ?5",
     )
     .bind(window.before)
     .bind(&window.since)
     .bind(&window.until)
+    .bind(&pattern)
     .bind(window.limit)
     .fetch_all(context.db.pool())
     .await?;

@@ -279,9 +279,11 @@ schneller als alles andere zusammen. Gehört zu Stufe C.
 Eine Karte mit zwei Punkten ist keine. Heute meldet kaum ein Knoten
 Koordinaten, deshalb kommt das vor der Karte.
 
-- **Position von Hand setzen.** Der Betreiber weiß, wo sein Repeater steht,
-  auch wenn der Node es nicht meldet. Von Hand gesetzte Positionen werden als
-  solche gekennzeichnet und nie von einem Advert überschrieben.
+**Positionen kommen aus dem Mesh oder gar nicht** — kein Eingabefeld für
+Koordinaten, siehe [ADR-0012](decisions/0012-positionen-nur-aus-dem-mesh.md).
+Damit bleibt für diese Stufe nur, jede Quelle auszuschöpfen, die das Mesh
+selbst hat.
+
 - **Positionen aus der Nachbartelemetrie auf die Karte.** Sie gehören
   `telemetry` und brauchen den Weg über ein Ereignis nach
   [ADR-0007](decisions/0007-modul-ereignisse.md) — der offene Punkt aus
@@ -291,7 +293,11 @@ Koordinaten, deshalb kommt das vor der Karte.
 - **Traceroute nutzbar machen.** `CMD_SEND_TRACE_PATH` liefert die Stationen
   eines Weges samt Empfangsqualität je Abschnitt — die einzige belegte Quelle
   für „wer hört wen wie gut" jenseits des eigenen Node. Erst als Aktion und
-  Ergebnisanzeige, dann als Kartenebene.
+  Ergebnisanzeige, dann als Kartenebene. Sie ist zugleich die Datengrundlage,
+  auf der die Triangulation aus Stufe D später aufsetzt.
+- **Ein eigenes Advert mit Position senden.** `set_advert_position` gibt es im
+  Protokoll längst; wer den eigenen Node verortet, bringt den ersten sicheren
+  Punkt auf die Karte — und den Anker, ohne den jede Schätzung frei schwebt.
 
 ### Stufe C — die Karte als Leitansicht
 
@@ -329,6 +335,17 @@ Koordinaten, deshalb kommt das vor der Karte.
   [`../SECURITY.md`](../SECURITY.md).
 - **Kachelvorrat vorwärmen** — einen Ausschnitt einmal holen und behalten, für
   den Einsatz ohne Uplink. Nach ADR-0011 ein voller Cache, kein Umbau.
+- **Knoten triangulieren.** Der vorgesehene Weg für alle Knoten, die keine
+  Position melden ([ADR-0012](decisions/0012-positionen-nur-aus-dem-mesh.md)):
+  aus den Empfangsqualitäten gegenüber verorteten Nachbarn geschätzt. Kommt
+  bewusst spät, weil sie auf allem davor aufsetzt — verortete Anker aus Stufe B
+  und gemessene Verbindungen aus Stufe C.
+
+  Zwei Vorbehalte, jetzt schon absehbar: Aus Empfangsqualität eine Entfernung
+  zu schätzen, ist bei LoRa grob — Gelände, Antennenhöhe und Sendeleistung
+  wirken stärker als die Entfernung —, und ohne verortete Anker gibt es keinen
+  Bezugspunkt. Eine geschätzte Position wird als geschätzt gezeigt, mit ihrer
+  Unsicherheit, oder sie wird nicht gezeigt.
 
 ## Gesammelte Einfälle
 

@@ -175,9 +175,12 @@ zählen oder zu sortieren, und Nachrichten liest niemand auf einer Karte.
 - **Ein Knoten ohne Position ist auf einer Karte nicht darstellbar.** Heute
   meldet kaum einer Koordinaten. Die Karte braucht deshalb einen ehrlichen
   Umgang damit — sie zeigt, wie viele Knoten sie *nicht* zeigt, statt sie
-  stillschweigend wegzulassen, und der Betreiber kann eine Position von Hand
-  eintragen. Das ist kein Beiwerk, sondern die Bedingung, unter der die
-  Leitansicht überhaupt trägt.
+  stillschweigend wegzulassen. Das ist kein Beiwerk, sondern die Bedingung,
+  unter der die Leitansicht überhaupt trägt.
+
+  *Nachtrag:* Hier stand, der Betreiber könne eine Position von Hand eintragen.
+  Das ist mit [ADR-0012](0012-positionen-nur-aus-dem-mesh.md) verworfen —
+  Positionen kommen aus dem Mesh oder gar nicht.
 - Was auf der Karte an Verkehr sichtbar wird, hängt an zwei Protokollfragen,
   die noch offen sind — Aufbau des rohen Pakets und Zuordnung der Pfad-Hashes
   zu Knoten. Sie werden **vor** der Karte geklärt, siehe

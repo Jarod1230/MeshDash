@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Erreichbarkeit als Band.** Die Knotenseite zeigt, wie oft ein Knoten je
+  Zeitabschnitt zu hören war — hell für viel, dunkel für still. Eine Liste von
+  Sichtungen beantwortet „wann gehört"; über eine Woche sind das hunderte
+  Zeilen. Das Band beantwortet, wonach man sie durchsucht hätte: war er die
+  ganze Zeit da, oder kommt und geht er. Zeitraum von 1 Stunde bis alles.
+  Neu ist `/api/v1/nodes/presence`.
+
 - **Wegwechsel werden aufgezeichnet.** Ändert das Mesh die Route zu einem
   Knoten, hielt die Kontaktzeile bisher nur den aktuellen Weg fest — dass sich
   etwas bewegt hat, war danach nicht mehr zu sehen. Jede Änderung wird jetzt

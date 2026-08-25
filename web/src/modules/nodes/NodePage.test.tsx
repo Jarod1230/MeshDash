@@ -29,6 +29,8 @@ function answers(overrides: Record<string, unknown> = {}) {
         ? (overrides['contacts'] ?? [contact])
         : path.includes('/nodes/adverts')
           ? (overrides['adverts'] ?? [])
+          : path.includes('/nodes/presence')
+          ? (overrides['presence'] ?? { from: '', to: '', buckets: [] })
           : path.includes('/nodes/route-changes')
             ? (overrides['routeChanges'] ?? [])
             : path.includes('/telemetry/neighbours')
@@ -139,5 +141,28 @@ describe('Wegwechsel', () => {
     show();
 
     expect(await screen.findByText(/hat sich nicht geändert/)).toBeInTheDocument();
+  });
+});
+
+describe('Erreichbarkeit', () => {
+  it('shows the band over the stretches the API answered with', async () => {
+    vi.stubGlobal(
+      'fetch',
+      answers({
+        presence: {
+          from: '2026-08-20T00:00:00Z',
+          to: '2026-08-21T00:00:00Z',
+          buckets: [
+            { from: '2026-08-20T00:00:00Z', to: '2026-08-20T12:00:00Z', sightings: 4 },
+            { from: '2026-08-20T12:00:00Z', to: '2026-08-21T00:00:00Z', sightings: 0 },
+          ],
+        },
+      }),
+    );
+    show();
+
+    const band = await screen.findByRole('img', { name: /Abschnitten des Zeitraums gehört/ });
+    // Silence must be readable as silence, not as a hole in the recording.
+    expect(band).toHaveAccessibleName('In 1 von 2 Abschnitten des Zeitraums gehört');
   });
 });

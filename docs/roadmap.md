@@ -199,7 +199,10 @@ Damit ist Stufe 1 erledigt. Von Stufe 2 stehen zwei Stücke:
 - [x] **Pfadwechsel** — jede Änderung der Route zu einem Knoten wird mit alter
       und neuer Route festgehalten und steht auf der Knotenseite.
 
-Offen in Stufe 2: Suche, Erreichbarkeit je Knoten über die Zeit, `alerts`.
+- [x] **Erreichbarkeit über die Zeit** — je Knoten ein Band aus gleich langen
+      Abschnitten, das zeigt, wann er zu hören war und wann nicht.
+
+Offen in Stufe 2: Suche, `alerts`.
 
 ## Gesammelte Einfälle
 

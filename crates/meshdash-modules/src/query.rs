@@ -64,7 +64,25 @@ pub struct Bounds {
     pub until: Option<String>,
 }
 
+/// Both ends as moments, for a caller that has to compare or compute with
+/// them rather than hand them to SQL.
+#[derive(Debug, Default, PartialEq)]
+pub struct Times {
+    /// Oldest moment to include.
+    pub since: Option<DateTime<Utc>>,
+    /// Newest moment to include.
+    pub until: Option<DateTime<Utc>>,
+}
+
 impl TimeRange {
+    /// Reads both ends as moments, or says which one could not be read.
+    pub fn times(&self) -> Result<Times, BadTimeRange> {
+        Ok(Times {
+            since: parse_time(self.since.as_deref(), "since")?,
+            until: parse_time(self.until.as_deref(), "until")?,
+        })
+    }
+
     /// Reads both ends, or says which one could not be read.
     pub fn bounds(&self) -> Result<Bounds, BadTimeRange> {
         Ok(Bounds {
@@ -75,10 +93,17 @@ impl TimeRange {
 }
 
 fn parse(value: Option<&str>, field: &'static str) -> Result<Option<String>, BadTimeRange> {
+    Ok(parse_time(value, field)?.map(|time| time.to_rfc3339()))
+}
+
+fn parse_time(
+    value: Option<&str>,
+    field: &'static str,
+) -> Result<Option<DateTime<Utc>>, BadTimeRange> {
     match value {
         None => Ok(None),
         Some(text) => DateTime::parse_from_rfc3339(text)
-            .map(|time| Some(time.with_timezone(&Utc).to_rfc3339()))
+            .map(|time| Some(time.with_timezone(&Utc)))
             .map_err(|_| BadTimeRange {
                 field,
                 value: text.to_owned(),
@@ -184,6 +209,19 @@ mod tests {
             .into_response();
 
         assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn reads_both_ends_as_moments_too() {
+        let times = range(Some("2026-08-22T22:00:00+02:00"), None)
+            .times()
+            .unwrap();
+
+        assert_eq!(
+            times.since.map(|time| time.to_rfc3339()).as_deref(),
+            Some("2026-08-22T20:00:00+00:00")
+        );
+        assert_eq!(times.until, None);
     }
 
     #[test]

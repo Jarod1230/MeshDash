@@ -218,7 +218,8 @@ impl Module for NodesModule {
             Router::new()
                 .route("/contacts", get(list_contacts))
                 .route("/adverts", get(list_adverts))
-                .route("/route-changes", get(list_route_changes)),
+                .route("/route-changes", get(list_route_changes))
+                .route("/presence", get(node_presence)),
         )
     }
 
@@ -506,6 +507,161 @@ pub async fn read_route_changes(
         .collect())
 }
 
+/// How often a node was heard, cut into equal stretches of time.
+///
+/// A listing of sightings answers "when was it heard"; this answers "how
+/// reachable has it been" — which is a different question as soon as the
+/// stretch is longer than a screen holds.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Presence {
+    /// Start of the whole stretch.
+    pub from: DateTime<Utc>,
+    /// End of the whole stretch.
+    pub to: DateTime<Utc>,
+    /// The equal stretches it is cut into, oldest first.
+    pub buckets: Vec<PresenceBucket>,
+}
+
+/// One stretch of time and how often the node was heard within it.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct PresenceBucket {
+    /// Start of this stretch.
+    pub from: DateTime<Utc>,
+    /// End of this stretch.
+    pub to: DateTime<Utc>,
+    /// How many adverts arrived in it. Zero means silence, not missing data.
+    pub sightings: i64,
+}
+
+/// How many stretches the presence is cut into unless asked otherwise.
+const DEFAULT_BUCKETS: i64 = 48;
+
+/// Most stretches a single request may ask for.
+///
+/// One pixel per stretch is the useful floor; beyond that the answer grows
+/// without telling anyone more.
+const MAX_BUCKETS: i64 = 500;
+
+/// How far back the presence reaches when the request names no start.
+const DEFAULT_PRESENCE_HOURS: i64 = 24;
+
+/// Which node's reachability to answer with, over which stretch.
+#[derive(Debug, Deserialize, Default)]
+pub struct PresenceQuery {
+    /// Whose reachability, lowercase hex. Required.
+    node: Option<String>,
+    /// How many stretches to cut the time into.
+    buckets: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
+}
+
+/// Answers how reachable one node has been.
+async fn node_presence(
+    State(context): State<AppContext>,
+    Query(query): Query<PresenceQuery>,
+) -> Result<Json<Presence>, ListError> {
+    let Some(node) = query.node.as_deref() else {
+        return Err(ListError::MissingNode);
+    };
+
+    let times = query.range.times()?;
+    let to = times.until.unwrap_or_else(Utc::now);
+    let from = match times.since {
+        Some(time) => time,
+        // Without a start, the band covers everything known about this node —
+        // that is what "alles" in the interface promises. A fixed window here
+        // would answer a different question than the one that was asked.
+        None => first_sighting(&context, node)
+            .await
+            .map_err(ListError::from)?
+            .unwrap_or_else(|| to - chrono::Duration::hours(DEFAULT_PRESENCE_HOURS)),
+    };
+
+    if from >= to {
+        return Err(ListError::BackwardsRange);
+    }
+
+    let buckets = query
+        .buckets
+        .unwrap_or(DEFAULT_BUCKETS)
+        .clamp(1, MAX_BUCKETS);
+
+    read_presence(&context, node, from, to, buckets)
+        .await
+        .map(Json)
+        .map_err(ListError::from)
+}
+
+/// When this node was first heard, if it ever was.
+async fn first_sighting(
+    context: &AppContext,
+    node: &str,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    let earliest: Option<(String,)> =
+        sqlx::query_as("SELECT MIN(heard_at) FROM nodes_adverts WHERE public_key = ?")
+            .bind(node)
+            .fetch_optional(context.db.pool())
+            .await?;
+
+    Ok(earliest.and_then(|(text,)| {
+        DateTime::parse_from_rfc3339(&text)
+            .ok()
+            .map(|time| time.with_timezone(&Utc))
+    }))
+}
+
+/// Counts sightings per equal stretch of time, oldest first.
+pub async fn read_presence(
+    context: &AppContext,
+    node: &str,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    buckets: i64,
+) -> Result<Presence, sqlx::Error> {
+    let start = from.timestamp();
+    // Rounded up so the last stretch reaches the end instead of stopping just
+    // short of it.
+    let width = ((to.timestamp() - start) as f64 / buckets as f64).ceil() as i64;
+    let width = width.max(1);
+
+    // Counted in SQL rather than by reading every row: a month of adverts from
+    // a busy node is tens of thousands of rows, and all the interface draws
+    // from them is one number per stretch.
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT (CAST(strftime('%s', heard_at) AS INTEGER) - ?2) / ?3 AS bucket, COUNT(*)
+         FROM nodes_adverts
+         WHERE public_key = ?1
+           AND heard_at >= ?4
+           AND heard_at <= ?5
+         GROUP BY bucket",
+    )
+    .bind(node)
+    .bind(start)
+    .bind(width)
+    .bind(from.to_rfc3339())
+    .bind(to.to_rfc3339())
+    .fetch_all(context.db.pool())
+    .await?;
+
+    let counted: std::collections::HashMap<i64, i64> = rows.into_iter().collect();
+
+    Ok(Presence {
+        from,
+        to,
+        buckets: (0..buckets)
+            .map(|index| PresenceBucket {
+                from: from + chrono::Duration::seconds(index * width),
+                to: from + chrono::Duration::seconds((index + 1) * width),
+                // A stretch nobody was heard in is a zero. Leaving it out
+                // would make silence look like a gap in the recording.
+                sightings: counted.get(&index).copied().unwrap_or(0),
+            })
+            .collect(),
+    })
+}
+
 /// Tells whoever is listening that this contact exists, under this name.
 ///
 /// Fire and forget: nobody may be listening, and this module must not care.
@@ -723,6 +879,10 @@ pub enum ListError {
     Storage(sqlx::Error),
     /// The request asked for a time range that is not a time.
     BadRange(BadTimeRange),
+    /// The request asked about a node without saying which.
+    MissingNode,
+    /// The request asked for a stretch that ends before it starts.
+    BackwardsRange,
 }
 
 impl From<sqlx::Error> for ListError {
@@ -752,6 +912,28 @@ impl axum::response::IntoResponse for ListError {
                     .into_response()
             }
             Self::BadRange(bad) => bad.into_response(),
+            Self::MissingNode => (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "invalid_parameter",
+                        "message": "node is required: reachability is about one node"
+                    }
+                })),
+            )
+                .into_response(),
+            // Both timestamps are readable, so saying one of them is not a
+            // timestamp would send the caller looking in the wrong place.
+            Self::BackwardsRange => (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "invalid_parameter",
+                        "message": "until must lie after since"
+                    }
+                })),
+            )
+                .into_response(),
         }
     }
 }

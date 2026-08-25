@@ -362,6 +362,14 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   Verzeichnislisting. Festgehalten, damit die Frage später nicht auf
   „`libudev` einbinden oder keine Portliste" verengt wird — es gibt einen
   dritten Weg.
+- **Ein Kommando ohne Node hängt unbegrenzt.** Wer etwas sendet, während kein
+  Node verbunden ist, wartet ewig: Der Antwort-Timeout im Link greift erst,
+  *nachdem* ein Kommando hinausgegangen ist, und ohne Verbindung geht es gar
+  nicht erst hinaus. Betrifft jeden schreibenden Endpunkt gleichermaßen —
+  Nachricht senden, Weg messen, später Fernadministration. Am laufenden Dienst
+  beobachtet: beide Aufrufe antworten nach zehn Sekunden noch immer nicht. Der
+  saubere Weg wäre, eine Anfrage ohne Verbindung sofort abzulehnen, statt sie
+  in die Warteschlange zu legen.
 - **Achsenbeschriftung bei winzigem Wertebereich.** Zeigt eine Kurve nur
   wenige Millivolt Unterschied, rundet die Y-Achse alle Marken auf denselben
   Text — beim Ausprobieren stand dreimal `4.10` untereinander. Die Zahl der

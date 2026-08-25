@@ -48,6 +48,17 @@ export function describeRoute(stations: number | null): string {
   return stations === 1 ? '1 Station' : `${stations} Stationen`;
 }
 
+/** One recorded change of the route to a node. */
+export interface RouteChange {
+  readonly id: number;
+  readonly public_key: string;
+  readonly changed_at: string;
+  readonly path: string | null;
+  readonly stations: number | null;
+  readonly previous_path: string | null;
+  readonly previous_stations: number | null;
+}
+
 /** A key is 64 hex digits; nobody reads that. Six are enough to tell apart. */
 export function shortKey(publicKey: string): string {
   return publicKey.slice(0, 6);

@@ -29,9 +29,11 @@ function answers(overrides: Record<string, unknown> = {}) {
         ? (overrides['contacts'] ?? [contact])
         : path.includes('/nodes/adverts')
           ? (overrides['adverts'] ?? [])
-          : path.includes('/telemetry/neighbours')
-            ? (overrides['readings'] ?? [])
-            : (overrides['thread'] ?? []);
+          : path.includes('/nodes/route-changes')
+            ? (overrides['routeChanges'] ?? [])
+            : path.includes('/telemetry/neighbours')
+              ? (overrides['readings'] ?? [])
+              : (overrides['thread'] ?? []);
     return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
   });
 }
@@ -103,5 +105,39 @@ describe('NodePage', () => {
     show();
 
     expect(await screen.findByText(/nicht nach Messwerten gefragt/)).toBeInTheDocument();
+  });
+});
+
+describe('Wegwechsel', () => {
+  it('reads a change as a step from one route to another', async () => {
+    vi.stubGlobal(
+      'fetch',
+      answers({
+        routeChanges: [
+          {
+            id: 7,
+            public_key: KEY,
+            changed_at: new Date(Date.now() - 3_600_000).toISOString(),
+            path: '010203',
+            stations: 3,
+            previous_path: '01',
+            previous_stations: 1,
+          },
+        ],
+      }),
+    );
+    show();
+
+    expect(await screen.findByText('1 Station')).toBeInTheDocument();
+    expect(screen.getByText('3 Stationen')).toBeInTheDocument();
+    // The hop bytes themselves, for comparing two routes station by station.
+    expect(screen.getByText('01 → 010203')).toBeInTheDocument();
+  });
+
+  it('says why an empty history is not a gap in the recording', async () => {
+    vi.stubGlobal('fetch', answers());
+    show();
+
+    expect(await screen.findByText(/hat sich nicht geändert/)).toBeInTheDocument();
   });
 });

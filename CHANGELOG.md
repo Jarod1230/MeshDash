@@ -12,6 +12,12 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Wegwechsel werden aufgezeichnet.** Ändert das Mesh die Route zu einem
+  Knoten, hielt die Kontaktzeile bisher nur den aktuellen Weg fest — dass sich
+  etwas bewegt hat, war danach nicht mehr zu sehen. Jede Änderung wird jetzt
+  mit alter und neuer Route festgehalten und steht auf der Knotenseite. Neu ist
+  `/api/v1/nodes/route-changes`.
+
 - **Zeitraum wählen.** Die Telemetrieseite zeigt nicht mehr die letzten *n*
   Messwerte, sondern eine wählbare Spanne — 1 Stunde bis 30 Tage, oder alles.
   Alle Kurven der Seite folgen derselben Wahl, sonst wären sie nicht

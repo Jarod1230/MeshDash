@@ -185,6 +185,13 @@ fn new_advert_frame(key: u8, name: &str) -> Vec<u8> {
     payload
 }
 
+/// A new-contact advert carrying a route of our choosing.
+fn new_advert_frame_with_path(key: u8, name: &str, path: &[u8]) -> Vec<u8> {
+    let mut payload = contact_frame(key, name, path);
+    payload[0] = u8::from(meshdash_proto::opcode::Push::NewAdvert);
+    payload
+}
+
 /// Hands the module a push and waits for it to be processed.
 async fn push(context: &AppContext, payload: Vec<u8>) {
     context.events.publish(AppEvent::Push { payload });
@@ -350,4 +357,60 @@ async fn a_cursor_continues_the_sighting_list() {
     assert_eq!(zweite_seite.len(), 1);
     // The oldest one is the first advert, the one that carried a name.
     assert!(zweite_seite[0].was_new);
+}
+
+#[tokio::test]
+async fn a_changed_route_is_recorded_as_a_change() {
+    // Two listings for the same contact: first over one station, then over
+    // two. Overwriting the row alone loses the fact that anything moved.
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[0x03])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    let changes = read_route_changes(&context, None, &Window::paged(50, None))
+        .await
+        .unwrap();
+
+    assert!(
+        changes.is_empty(),
+        "the first route known is not a change, it is the starting point"
+    );
+}
+
+#[tokio::test]
+async fn a_route_that_moves_leaves_a_trail() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[0x03])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    push(
+        &context,
+        new_advert_frame_with_path(0xAA, "Node", &[0x03, 0x07]),
+    )
+    .await;
+
+    let changes = read_route_changes(&context, None, &Window::paged(50, None))
+        .await
+        .unwrap();
+
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].public_key, "aa".repeat(32));
+    assert_eq!(changes[0].previous_path.as_deref(), Some("03"));
+    assert_eq!(changes[0].previous_stations, Some(1));
+    assert_eq!(changes[0].path.as_deref(), Some("0307"));
+    assert_eq!(changes[0].stations, Some(2));
+}
+
+#[tokio::test]
+async fn an_unchanged_route_records_nothing() {
+    let context = context_with(listing(vec![contact_frame(0xAA, "Node", &[0x03])])).await;
+    sync_contacts(&context).await.unwrap();
+
+    push(&context, new_advert_frame_with_path(0xAA, "Node", &[0x03])).await;
+
+    assert!(
+        read_route_changes(&context, None, &Window::paged(50, None))
+            .await
+            .unwrap()
+            .is_empty(),
+        "the same route seen again is not a change"
+    );
 }

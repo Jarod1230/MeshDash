@@ -6,7 +6,13 @@ import { useNow } from '../../lib/useNow';
 import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
-import { describeRoute, shortKey, type KnownContact, type Sighting } from './types';
+import {
+  describeRoute,
+  shortKey,
+  type KnownContact,
+  type RouteChange,
+  type Sighting,
+} from './types';
 import type { ConversationMessage } from '../messages/types';
 
 /**
@@ -33,6 +39,9 @@ interface NeighbourSample {
 /** How many sightings one page of the history holds. */
 const SIGHTINGS_PAGE = 25;
 
+/** How many route changes one page holds. Rarer than sightings, so fewer. */
+const ROUTE_CHANGES_PAGE = 15;
+
 export function NodePage() {
   const { key = '' } = useParams();
   const now = useNow();
@@ -40,6 +49,10 @@ export function NodePage() {
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const sightings = usePagedResource<Sighting>(`/nodes/adverts?node=${key}`, SIGHTINGS_PAGE);
   const readings = useResource<NeighbourSample[]>(`/telemetry/neighbours?node=${key}&limit=50`);
+  const routeChanges = usePagedResource<RouteChange>(
+    `/nodes/route-changes?node=${key}`,
+    ROUTE_CHANGES_PAGE,
+  );
   const thread = useResource<ConversationMessage[]>(
     `/messages/conversation?with=${key.slice(0, 12)}&limit=50`,
   );
@@ -110,6 +123,56 @@ export function NodePage() {
           <Fact term="Typ" value={String(contact.contact_type)} />
         </dl>
       </section>
+
+      <Panel title="Wegwechsel" hint="wenn das Mesh diesen Knoten neu geroutet hat">
+        {routeChanges.items === null ? (
+          <Loading what="Die Wegwechsel" />
+        ) : routeChanges.items.length === 0 ? (
+          <Empty>
+            Der Weg zu diesem Knoten hat sich nicht geändert, seit MeshDash ihn kennt. Aufgezeichnet
+            wird erst ab dem zweiten bekannten Weg — der erste ist der Anfang der Geschichte, nicht
+            ein Schritt darin.
+          </Empty>
+        ) : (
+          <>
+            <ul className="divide-y divide-mesh-border text-sm">
+              {routeChanges.items.map((change) => (
+                <li key={change.id} className="px-4 py-2.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <span className="text-mesh-text">
+                      <span className="text-mesh-muted">{describeRoute(change.previous_stations)}</span>
+                      <span className="mx-2 text-mesh-faint">→</span>
+                      {describeRoute(change.stations)}
+                    </span>
+                    <span
+                      className="tabular shrink-0 text-xs text-mesh-muted"
+                      title={exactTime(change.changed_at)}
+                    >
+                      {relativeTime(change.changed_at, new Date(now))}
+                    </span>
+                  </div>
+                  {/* The hop bytes themselves, for whoever compares two routes
+                      station by station. Hex, because that is what they are. */}
+                  <p className="tabular mt-0.5 truncate text-xs text-mesh-faint">
+                    {change.previous_path === null || change.previous_path === ''
+                      ? '—'
+                      : change.previous_path}
+                    {' → '}
+                    {change.path === null || change.path === '' ? '—' : change.path}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {routeChanges.hasMore && (
+              <More
+                onClick={routeChanges.loadMore}
+                loading={routeChanges.loadingMore}
+                what="Wegwechsel"
+              />
+            )}
+          </>
+        )}
+      </Panel>
 
       <Panel title="Sichtungen" hint="wann dieser Knoten zu hören war">
         {sightings.items === null ? (

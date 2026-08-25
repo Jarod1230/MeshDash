@@ -10,21 +10,25 @@ spricht über Serial oder TCP mit einem MeshCore-Companion-Node, persistiert des
 Ereignisse und stellt sie einem React-Frontend als REST-API und WebSocket-Stream
 bereit. Ausgeliefert wird ein einzelnes Binary mit eingebettetem Frontend.
 
-**Projektstand: Backend steht (Schritte 1 bis 6 der Roadmap erledigt).**
+**Projektstand: Dienst und Oberfläche laufen (Schritte 1 bis 7 erledigt).**
 Protokoll-Codec, Transport mit Reconnect, Kern mit Datenbank und Event-Bus,
 HTTP-Server mit Authentifizierung und WebSocket sowie vier Module — `system`,
 `nodes`, `messages`, `telemetry`. Der Dienst läuft und liefert Daten unter
 `/api/v1/`.
 
-**Was fehlt: die Oberfläche.** Das Frontend ist eine Platzhalterseite mit leerer
-Modul-Registry; Schritt 7 baut sie aus. Den Stand im Einzelnen führt
-`docs/roadmap.md`.
+**Wohin es geht: die Karte wird die Leitansicht.** Eine Region mit den Knoten
+darin, auf der Empfang und Verkehr sichtbar werden; die Listen bleiben daneben.
+Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`, der Weg dorthin
+steht als Stufen A bis D in `docs/roadmap.md`. Wer an der Oberfläche baut,
+liest das Zielbild zuerst — sonst entsteht eine weitere Seite neben der Karte
+statt einer Ebene auf ihr.
 
 **Zum Protokoll:** Framing, sämtliche Opcodes und die bisher benötigten
 Nutzlasten sind am Firmware-Quellcode verifiziert (Commit `d929643`). Nicht
-verifiziert und deshalb nicht umgesetzt sind `RESP_CODE_STATS`,
-`PUSH_CODE_TELEMETRY_RESPONSE` (CayenneLPP) sowie die Bedeutung der Bytes `type`
-und `flags` eines Kontakts. Für alles Unverifizierte gilt Regel 1 unten
+verifiziert sind der Aufbau des rohen Pakets aus `PUSH_CODE_RX_LOG_DATA`, die
+Bildung der Pfad-Hashes, der Rahmen der Pfad-Antworten sowie die Bedeutung der
+Bytes `type` und `flags` eines Kontakts. Die ersten drei stehen als Stufe A der
+Roadmap an, weil die Karte darauf aufbaut. Für alles Unverifizierte gilt Regel 1 unten
 unverändert — auch dann, wenn danebenliegende Werte längst belegt sind.
 
 ## Wo was steht

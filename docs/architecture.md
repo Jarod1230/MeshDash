@@ -31,7 +31,7 @@ Der Umsetzungsstand steht in [`roadmap.md`](roadmap.md).
 └───────────────┬──────────────────────────────────────────────┘
                 │
 ┌───────────────▼──────────────────────────────────────────────┐
-│  meshdash-modules — nodes │ messages │ telemetry │ map │ …    │
+│  meshdash-modules — nodes │ messages │ telemetry │ system │ …  │
 │  je Modul: Migrationen, Routen, Event-Handler, Hintergrundjobs│
 └───────────────┬──────────────────────────────────────────────┘
                 │  Module-Trait, Event-Bus, AppContext

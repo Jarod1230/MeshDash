@@ -1,6 +1,6 @@
 # ADR-0010: Die Karte ist eine Ansicht in `nodes`, ohne Kartenkacheln
 
-- **Status:** Angenommen
+- **Status:** Abgelöst durch [ADR-0011](0011-karte-als-leitansicht.md)
 - **Datum:** 2026-08-20
 - **Betrifft:** Modul `nodes` (Frontend), Punkt „`map`" in der Roadmap
 

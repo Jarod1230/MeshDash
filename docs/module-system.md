@@ -155,6 +155,12 @@ beantwortet **eine fachliche Frage**. „Wo sind meine Knoten" ist keine andere
 Frage als „welche Knoten habe ich", sondern dieselbe in anderer Darstellung —
 und die Positionen gehören bereits `nodes`.
 
+Dass die Karte inzwischen zur **Leitansicht** wird und Daten aus drei Modulen
+zeigt ([ADR-0011](decisions/0011-karte-als-leitansicht.md)), ändert daran
+nichts, sondern bestätigt es: Sie wird damit erst recht kein Modul, sondern ein
+Client, der mehrere öffentliche Modul-APIs liest — wie die Knotenseite. Ein
+Modul, das die Tabellen dreier anderer bräuchte, wäre der falsche Zuschnitt.
+
 Ein eigenes Modul hätte sich denselben Bestand über den Ereignisbus noch einmal
 aufbauen müssen, nur um die Regel „keine fremden Tabellen" einzuhalten. Die
 Regel schützt vor **Kopplung**, nicht vor Darstellung; sie so zu befolgen hätte

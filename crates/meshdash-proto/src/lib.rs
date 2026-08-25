@@ -38,6 +38,7 @@ pub mod frame;
 pub mod lpp;
 pub mod message;
 pub mod opcode;
+pub mod packet;
 pub mod path;
 pub mod push;
 pub mod response;

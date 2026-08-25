@@ -10,6 +10,13 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Added
+
+- **Pakete lesen, die das Funkmodul hört.** `meshdash_proto::packet` liest den
+  unverschlüsselten Teil eines Pakets: wie es geroutet wurde, was es trägt und
+  welche Stationen es weitergereicht haben. Grundlage für die Verkehrsebene der
+  Karte. Noch nirgends angeschlossen — der Dienst verhält sich unverändert.
+
 ### Changed
 
 - **Zielbild neu gefasst: MeshDash öffnet auf der Karte.** Statt vier Seiten

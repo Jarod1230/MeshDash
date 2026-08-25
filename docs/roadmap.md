@@ -6,6 +6,27 @@ Grundsatz: **Von unten nach oben.** Erst das Protokoll, dann der Transport, dann
 der Kern, dann Module. Umgekehrt baut man eine Oberfläche für Daten, die man
 noch nicht zuverlässig lesen kann.
 
+## Wohin das führt
+
+**Die Karte ist die Leitansicht.** Eine Region mit den Knoten darin, und alles
+Weitere wird auf ihr sichtbar: wer wen hört und wie gut, worüber der Verkehr
+gerade läuft, wo die Kette reißt. Von dort führt jeder Weg tiefer — Knoten,
+Verbindung, Paket —, statt dass man sich die Karte aus vier Listen im Kopf
+zusammensetzt. Entschieden in
+[ADR-0011](decisions/0011-karte-als-leitansicht.md).
+
+Die Listen bleiben daneben. Was sich zählen, sortieren und durchsuchen lässt,
+tut das in einer Tabelle besser als auf einer Fläche.
+
+Der Weg dorthin steht unten als **Stufen A bis D**. Sie hängen aneinander:
+Ohne A weiß niemand, was ein Paket überhaupt hergibt; ohne B hat die Karte zu
+wenige Knoten, um eine Karte zu sein.
+
+**Was schon steht und stehen bleibt:** die vier Module, das Blättern, die
+Zeiträume, die Suche, Erreichbarkeit und Wegwechsel. Nichts davon wird
+weggeworfen — die Karte ist eine zweite Tür zu denselben Daten, und ein Teil
+davon ist erst durch diese Vorarbeiten überhaupt zeichenbar.
+
 ## Schritt 1 — Gerüst ✅ erledigt
 
 Ziel war: `cargo build` und `pnpm build` laufen durch, auch wenn sie noch nichts tun.
@@ -136,15 +157,12 @@ unter „Danach".
 
 Nicht terminiert, nicht durchdacht — jeweils erst ein ADR, dann Code:
 
-- [x] **Karte** — umgesetzt als dritte Ansicht im Modul `nodes`, nicht als
-  eigenes Modul; ohne Kartenkacheln, siehe
-  [ADR-0010](decisions/0010-karte.md). Offen: Positionen aus der
-  Nachbartelemetrie erscheinen dort noch nicht — sie gehören `telemetry` und
-  bräuchten den Weg über ein Ereignis nach
-  [ADR-0007](decisions/0007-modul-ereignisse.md).
-- **`admin`** — Repeater-Fernadministration. Braucht vorher eine Antwort auf die
-  Frage nach den Zugangsdaten, siehe [`../SECURITY.md`](../SECURITY.md)
-- **`alerts`** — Benachrichtigung bei Node-Ausfall
+- [x] **Karte** — umgesetzt als dritte Ansicht im Modul `nodes`, ohne
+  Kartenkacheln. Diese Entscheidung ist abgelöst: Die Karte wird die
+  Leitansicht und bekommt Kacheln über MeshDash, siehe
+  [ADR-0011](decisions/0011-karte-als-leitansicht.md) und „Der Weg zur Karte"
+  weiter unten.
+- **`admin`** und **`alerts`** — beide unter „Der Weg zur Karte", Stufe D.
 - **BLE-Transport** — siehe [ADR-0003](decisions/0003-transport-priorisierung.md)
 - **Mehrere Gateways gleichzeitig** — siehe „Offene Punkte" in `architecture.md`
 - **Telemetrie fremder Nodes** — entschieden in
@@ -206,7 +224,83 @@ Damit ist Stufe 1 erledigt. Von Stufe 2 stehen zwei Stücke:
       Schlüssel.
 
 Offen in Stufe 2: `alerts` — wartet auf die Entscheidung, wohin eine Warnung
-gehen soll (nur Oberfläche, Webhook, E-Mail oder zurück ins Mesh).
+gehen soll (nur Oberfläche, Webhook, E-Mail oder zurück ins Mesh). Es zieht
+mit Stufe D um, weil eine Warnung dort hingehört, wo man sie sieht.
+
+## Der Weg zur Karte
+
+Vier Stufen, in dieser Reihenfolge. Jede ist für sich brauchbar; keine setzt
+voraus, dass die nächste je kommt.
+
+### Stufe A — wissen, was ein Paket hergibt
+
+Forschung, kein Code. Sie kommt zuerst, weil sie entscheidet, wie viel von
+Stufe C überhaupt zeichenbar ist — und weil eine Karte, die auf Vermutungen
+gebaut ist, hinterher umgebaut werden müsste.
+
+- **Aufbau des rohen Pakets.** `PUSH_CODE_RX_LOG_DATA` liefert jedes gehörte
+  Paket mit SNR und RSSI. Was in seinen Bytes steht — Routentyp, Nutzlasttyp,
+  Pfadfeld —, ist **unverifiziert**. Zu klären am Firmware-Quelltext, mit
+  Beleg in [`research/meshcore-companion-protocol.md`](research/meshcore-companion-protocol.md).
+- **Kommen diese Pushes von selbst**, oder muss das Protokollieren am Node
+  eingeschaltet werden? Wenn es Sendezeit oder Strom kostet, gehört es unter
+  eine Option und standardmäßig aus — wie die Nachbarabfrage.
+- **Zuordnung Pfad-Hash zu Knoten.** Ein Weg besteht aus Hashes, nicht aus
+  Schlüsseln. Wie der Hash gebildet wird, ist unverifiziert. **Ohne diese
+  Antwort lässt sich ein Weg zählen, aber nicht zeichnen** — dann zeigt die
+  Karte Wege nur, wo ein Trace sie belegt, und sagt das auch.
+- **Rahmen der Pfad-Antworten** (`RESP_CODE_ADVERT_PATH`,
+  `PUSH_CODE_PATH_DISCOVERY_RESPONSE`) — offene Frage 3 der Protokollnotizen.
+
+Ergebnis dieser Stufe ist ein aktualisiertes Forschungsdokument und eine
+klare Aussage, welche der drei Karten-Ebenen aus Stufe C tragen.
+
+### Stufe B — genug Knoten, um eine Karte zu sein
+
+Eine Karte mit zwei Punkten ist keine. Heute meldet kaum ein Knoten
+Koordinaten, deshalb kommt das vor der Karte.
+
+- **Position von Hand setzen.** Der Betreiber weiß, wo sein Repeater steht,
+  auch wenn der Node es nicht meldet. Von Hand gesetzte Positionen werden als
+  solche gekennzeichnet und nie von einem Advert überschrieben.
+- **Positionen aus der Nachbartelemetrie auf die Karte.** Sie gehören
+  `telemetry` und brauchen den Weg über ein Ereignis nach
+  [ADR-0007](decisions/0007-modul-ereignisse.md) — der offene Punkt aus
+  ADR-0010, den ADR-0011 dringlicher macht.
+- **Ehrlich über die Lücke.** Die Karte sagt, wie viele Knoten sie *nicht*
+  zeigt, statt sie stillschweigend wegzulassen.
+- **Traceroute nutzbar machen.** `CMD_SEND_TRACE_PATH` liefert die Stationen
+  eines Weges samt Empfangsqualität je Abschnitt — die einzige belegte Quelle
+  für „wer hört wen wie gut" jenseits des eigenen Node. Erst als Aktion und
+  Ergebnisanzeige, dann als Kartenebene.
+
+### Stufe C — die Karte als Leitansicht
+
+- **Kartenfläche mit Kacheln über MeshDash** — Endpunkt, Plattencache,
+  Konfigurationsoption; ohne Quelle bleibt es bei der eigenen Zeichnung
+  ([ADR-0011](decisions/0011-karte-als-leitansicht.md)).
+- **Knotenebene** — jeder Knoten an seinem Ort, Zustand an der Farbe:
+  gerade gehört, still, ausgefallen.
+- **Verbindungsebene** — Linien für belegte Wege, Stärke nach
+  Empfangsqualität. Was nur vermutet ist, wird nicht gezeichnet.
+- **Verkehrsebene** — was gerade läuft, live über den vorhandenen
+  Ereignisstrom. Wie weit sie geht, entscheidet Stufe A: von „ein Paket kam
+  an, so gut war es" bis zur verfolgten Bahn über die Stationen.
+- **Tiefer eintreten** — Klick auf einen Knoten öffnet, was die Knotenseite
+  heute zeigt; Klick auf eine Verbindung ihre Geschichte; Klick auf ein Paket
+  seinen Weg. Die Karte bleibt stehen, der Rest wird daneben aufgeblättert.
+- **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
+  Abspielen: dieselbe Region vor einer Woche.
+
+### Stufe D — handeln, wo man es sieht
+
+- **`alerts`** — Warnung bei Ausfall; auf der Karte an dem Knoten, um den es
+  geht. Braucht die Entscheidung, wohin eine Warnung sonst noch geht.
+- **`admin`** — Fernadministration von Repeatern, erreichbar aus der Karte.
+  Braucht vorher die Antwort auf die Frage nach den Zugangsdaten, siehe
+  [`../SECURITY.md`](../SECURITY.md).
+- **Kachelvorrat vorwärmen** — einen Ausschnitt einmal holen und behalten, für
+  den Einsatz ohne Uplink. Nach ADR-0011 ein voller Cache, kein Umbau.
 
 ## Gesammelte Einfälle
 

@@ -8,15 +8,18 @@ noch nicht zuverlässig lesen kann.
 
 ## Wohin das führt
 
-**Die Karte ist die Leitansicht.** Eine Region mit den Knoten darin, und alles
-Weitere wird auf ihr sichtbar: wer wen hört und wie gut, worüber der Verkehr
-gerade läuft, wo die Kette reißt. Von dort führt jeder Weg tiefer — Knoten,
-Verbindung, Paket —, statt dass man sich die Karte aus vier Listen im Kopf
-zusammensetzt. Entschieden in
-[ADR-0011](decisions/0011-karte-als-leitansicht.md).
+**MeshDash öffnet auf der Karte.** Formatfüllend, mit der Bedienung als
+Overlay darauf: eine Region mit den Knoten darin, auf der alles Weitere
+sichtbar wird — wer wen hört und wie gut, worüber der Verkehr gerade läuft, wo
+die Kette reißt. Von dort führt jeder Weg tiefer, oder man geht über die Reiter
+direkt hinein. Drei Schichten, beschrieben in
+[ADR-0011](decisions/0011-karte-als-leitansicht.md): die Karte, ein
+Kontextpanel daneben, und die volle Ansicht als Blende darüber. Die Karte
+bleibt dabei stehen und wird nicht neu aufgebaut.
 
-Die Listen bleiben daneben. Was sich zählen, sortieren und durchsuchen lässt,
-tut das in einer Tabelle besser als auf einer Fläche.
+Die Listen bleiben — als dritte Schicht, direkt über die Reiter erreichbar. Was
+sich zählen, sortieren und durchsuchen lässt, tut das in einer Tabelle besser
+als auf einer Fläche.
 
 Der Weg dorthin steht unten als **Stufen A bis D**. Sie hängen aneinander:
 Ohne A weiß niemand, was ein Paket überhaupt hergibt; ohne B hat die Karte zu
@@ -276,9 +279,17 @@ Koordinaten, deshalb kommt das vor der Karte.
 
 ### Stufe C — die Karte als Leitansicht
 
+- **Die Hülle umbauen.** Die Karte wird die Grundfläche der Anwendung, die
+  Bedienung wandert als Overlay in die Ecken, die bisherigen Seiten werden zur
+  Blende darüber. Der Ausschnitt überlebt jeden Ausflug in die Tiefe, und der
+  Zustand steht in der Adresse, damit ein Link dieselbe Karte öffnet wie ein
+  Klick. Drei Schichten, siehe
+  [ADR-0011](decisions/0011-karte-als-leitansicht.md).
+- **Grundfläche nach Datenlage.** Solange zu wenige Knoten eine Position
+  melden, zeigt sie die topologische Anordnung statt einer Geografie mit zwei
+  Punkten darin — und sagt, wie viele sie nicht verorten kann.
 - **Kartenfläche mit Kacheln über MeshDash** — Endpunkt, Plattencache,
-  Konfigurationsoption; ohne Quelle bleibt es bei der eigenen Zeichnung
-  ([ADR-0011](decisions/0011-karte-als-leitansicht.md)).
+  Konfigurationsoption; ohne Quelle bleibt es bei der eigenen Zeichnung.
 - **Knotenebene** — jeder Knoten an seinem Ort, Zustand an der Farbe:
   gerade gehört, still, ausgefallen.
 - **Verbindungsebene** — Linien für belegte Wege, Stärke nach
@@ -286,9 +297,10 @@ Koordinaten, deshalb kommt das vor der Karte.
 - **Verkehrsebene** — was gerade läuft, live über den vorhandenen
   Ereignisstrom. Wie weit sie geht, entscheidet Stufe A: von „ein Paket kam
   an, so gut war es" bis zur verfolgten Bahn über die Stationen.
-- **Tiefer eintreten** — Klick auf einen Knoten öffnet, was die Knotenseite
-  heute zeigt; Klick auf eine Verbindung ihre Geschichte; Klick auf ein Paket
-  seinen Weg. Die Karte bleibt stehen, der Rest wird daneben aufgeblättert.
+- **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel; von
+  dort führt ein Schritt zur vollen Knotenseite. Klick auf eine Verbindung
+  zeigt ihre Geschichte, Klick auf ein Paket seinen Weg. Wer weiß, was er
+  sucht, geht über die Reiter direkt hinein, ohne den Umweg über die Fläche.
 - **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
   Abspielen: dieselbe Region vor einer Woche.
 

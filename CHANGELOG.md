@@ -12,9 +12,10 @@ jedem Minor-Release ändern.
 
 ### Changed
 
-- **Zielbild neu gefasst: Die Karte wird die Leitansicht.** Statt vier Seiten
-  nebeneinander eine Region mit den Knoten darin, auf der Empfang und Verkehr
-  sichtbar werden; die Listen bleiben daneben. Damit kommen Kartenkacheln —
+- **Zielbild neu gefasst: MeshDash öffnet auf der Karte.** Statt vier Seiten
+  nebeneinander eine Region mit den Knoten darin, formatfüllend, mit der
+  Bedienung als Overlay darauf; die Listen bleiben als Blende darüber und über
+  die Reiter direkt erreichbar. Damit kommen Kartenkacheln —
   ausgeliefert über MeshDash und dort zwischengelagert, damit der Kachelserver
   das Mesh nicht sieht. Ohne konfigurierte Quelle bleibt es bei der eigenen
   Zeichnung. Siehe `docs/decisions/0011-karte-als-leitansicht.md`; noch nichts

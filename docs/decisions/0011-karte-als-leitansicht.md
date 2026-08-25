@@ -39,9 +39,14 @@ und ihre Wege aus `nodes`, Empfangsqualität und fremde Messwerte aus
 `telemetry`, Verkehr aus `messages`. Wie die Knotenseite liest sie mehrere
 öffentliche Modul-APIs — was ein Client darf und ein Modul nicht.
 
-**Die Listen bleiben.** Die Karte tritt neben sie, nicht an ihre Stelle. Was
-sich zählen, sortieren und durchsuchen lässt, tut das in einer Tabelle besser
-als auf einer Fläche.
+**Die Karte ist der Grund, alles andere liegt darauf.** MeshDash öffnet auf der
+Karte, formatfüllend. Es gibt keine Seite „Karte" neben anderen Seiten — es
+gibt die Karte, und darüber Schichten, die sich öffnen und wieder schließen.
+Der Aufbau im Einzelnen steht unten unter „Drei Schichten".
+
+**Die Listen bleiben.** Sie werden zur dritten Schicht und bleiben über die
+Reiter direkt erreichbar, ohne Umweg über die Karte. Was sich zählen, sortieren
+und durchsuchen lässt, tut das in einer Tabelle besser als auf einer Fläche.
 
 **Kacheln kommen über MeshDash, nicht direkt aus dem Browser.** Der Dienst
 stellt sie unter `/api/v1/tiles/{z}/{x}/{y}` bereit und holt sie seinerseits
@@ -53,6 +58,56 @@ wie bisher nur Knoten, Verbindungen und eine Maßstabsleiste. Das ist der
 Auslieferungszustand.
 
 **Gezeichnet wird mit Leaflet**, Rasterkacheln, keine WebGL-Vektorkarte.
+
+## Drei Schichten
+
+Die Tiefe ist gestuft, und jede Stufe kostet den Blick auf die Karte weniger,
+als sie an Antwort bringt.
+
+**Schicht 0 — die Karte.** Sie füllt das Fenster und ist immer da. Sie wird
+nicht verlassen und nicht neu aufgebaut: Ausschnitt, Zoom und die eingeblendeten
+Ebenen überleben jeden Ausflug in die Tiefe. Wer aus einer Nachrichtenliste
+zurückkommt, sieht denselben Ausschnitt wie vorher.
+
+**Schicht 1 — Bedienung als Overlay.** Was heute Kopfleiste ist, schwebt über
+der Karte: Marke und Suche oben links, Verbindungsstatus und Reiter oben
+rechts, Ebenenschalter unten links, Maßstab und Zeitraum unten rechts. Sie
+liegen in den Ecken, weil die Mitte der Karte gehört.
+
+**Schicht 2 — das Kontextpanel.** Ein Klick auf ein Objekt öffnet eine Tafel an
+der Seite: Knoten, Verbindung oder Paket. Sie nimmt höchstens ein Drittel der
+Breite, das gewählte Objekt bleibt sichtbar und wird auf der Karte
+hervorgehoben. Das ist die häufigste Bewegung überhaupt — deshalb kostet sie
+einen Klick und keinen Seitenwechsel.
+
+**Schicht 3 — die volle Ansicht.** Knotenliste, Gespräche, Telemetrie. Sie legt
+sich als Blende über die Karte, erreichbar aus dem Kontextpanel („alles zu
+diesem Knoten") **oder** direkt über die Reiter, ohne vorher etwas auf der Karte
+zu suchen. Escape bringt zurück auf die Karte, die unverändert dasteht.
+
+Auf einem schmalen Schirm wird aus der seitlichen Tafel eine Schublade von
+unten, die sich zur vollen Höhe ziehen lässt. Die Schichten bleiben dieselben,
+nur ihre Richtung ändert sich.
+
+**Der Zustand steht in der Adresse** — `/?knoten=<key>` und `/?ansicht=knoten`.
+Ein Link auf einen Knoten muss dieselbe Karte öffnen wie ein Klick darauf,
+sonst ist die Karte kein gemeinsamer Bezugspunkt, sondern eine Sitzung.
+
+## Wenn die Karte leer wäre
+
+Eine Leitansicht wird am ersten Tag beurteilt. Heute meldet kaum ein Knoten
+Koordinaten — ein leeres Feld beim Öffnen wäre schlechter als die Übersicht,
+die es ersetzt, und der Betreiber hätte keinen Anhaltspunkt, woran das liegt.
+
+**Deshalb füllt sich die Grundfläche nach dem, was da ist:** Solange zu wenige
+Knoten eine Position haben, zeigt Schicht 0 die topologische Anordnung — die
+heutige Netzansicht, Abstand nach Zwischenstationen — statt einer Geografie mit
+zwei Punkten darin. Beides sind Anordnungen derselben Knoten; die Karte wechselt
+zur geografischen, sobald sie trägt, und sagt in beiden Fällen, wie viele Knoten
+sie nicht verorten kann und wie man das ändert.
+
+Das ist kein Notbehelf für den Anfang. Ein Mesh mit fünfzig Knoten, von denen
+zwölf Koordinaten melden, ist der Normalfall und nicht die Ausnahme.
 
 ## Begründung
 
@@ -107,8 +162,9 @@ zählen oder zu sortieren, und Nachrichten liest niemand auf einer Karte.
 
 ## Folgen
 
-- Die Navigation bekommt die Karte als erste Station; die Übersicht rückt
-  daneben statt davor.
+- MeshDash öffnet auf der Karte. Die bisherige Übersicht wird zur Schicht 3
+  wie die anderen Listen; ihre Kennzahlen wandern in das Overlay, wo sie neben
+  der Karte stehen statt vor ihr.
 - Neu: ein Endpunkt für Kacheln mitsamt Cache, eine Konfigurationsoption für
   die Quelle (Voreinstellung: keine), und ein Eintrag in
   [`configuration.md`](../configuration.md).

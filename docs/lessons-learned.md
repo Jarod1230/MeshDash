@@ -823,3 +823,28 @@ Loslassen über einem Knoten dessen Seite.
 **Woran es auffiel.** Nicht am Test — jsdom hat kein Layout und keine echten
 Zeigerereignisse. Am Blick in den Browser, beim ersten Versuch, einen der zwei
 echten Knoten anzuklicken.
+
+## 2026-08-27 — Bilder im DOM, an der richtigen Stelle, und nichts zu sehen
+
+**Was passierte.** Die Kartenkacheln wurden abgerufen (neun mal HTTP 200), die
+`<image>`-Elemente standen im SVG, mit richtiger Position, richtiger Größe,
+`visibility: visible`. Gezeichnet wurde nichts.
+
+**Die Ursache.** Die Kacheln kommen als Objekt-URL in die Seite, weil ein
+`<img>` kein Token mitschicken kann. Der Aufräumschritt beim Aushängen gab
+diese URLs frei — aber die Refs daneben, die sich merken, welche Kachel schon
+angefordert wurde, überlebten das Aushängen. React hängt im Entwicklungsmodus
+jede Komponente zweimal ein. Nach dem zweiten Einhängen galt jede Kachel als
+„schon geholt", während ihre URL bereits freigegeben war: Elemente an der
+richtigen Stelle, die auf ein Bild zeigen, das es nicht mehr gibt.
+
+**Was daraus folgt.** Ein Aufräumschritt muss **alles** zurücksetzen, was zu
+dem gehört, was er freigibt. Ein Ref, das den Wegwurf überlebt, ist danach eine
+Behauptung über einen Zustand, den es nicht mehr gibt. Das doppelte Einhängen
+ist dabei kein Sonderfall — es ist das, was beim ersten Seitenaufruf passiert.
+
+**Woran es auffiel.** Nicht am Test: jsdom zeichnet nicht. Am Blick in den
+Browser — und dann daran, die Fragen einzeln zu stellen, statt zu raten:
+Kommt die Anfrage an? Steht das Element da? Ist es sichtbar? Lässt sich das
+Bild hinter der URL noch laden? Erst die letzte Frage war mit Nein zu
+beantworten.

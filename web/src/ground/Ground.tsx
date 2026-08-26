@@ -6,15 +6,21 @@ import { useNow } from '../lib/useNow';
 import { useResource } from '../lib/useResource';
 import type { KnownContact } from '../modules/nodes/types';
 import { useSize } from './useSize';
+import { useTiles, tileKey } from './useTiles';
 import {
   fit,
   formatDistance,
   geography,
   isPlaceable,
+  metresPerPixel,
   onScreen,
+  panBy,
   rings,
   scaleStep,
+  toLatitude,
+  visibleTiles,
   zoomAt,
+  type Geography as GeographyOf,
   type GroundNode,
   type Placed,
   type View,
@@ -34,6 +40,13 @@ import {
  * the ring arrangement: distance from the centre means hops, which is measured,
  * and the angle means nothing, which is honest. Either way it says how many
  * nodes it cannot place, rather than quietly leaving them out.
+ *
+ * # The base map is optional and off by default
+ *
+ * Tiles come from MeshDash when the operator has named a source, and from
+ * nowhere when they have not. Without them the geography is drawn on an empty
+ * ground, which is what MeshDash shipped with and what it falls back to where
+ * there is no uplink.
  */
 const PADDING = 90;
 /** Below this many pixels apart, two labels are on top of each other. */
@@ -46,20 +59,19 @@ interface SelfNode {
   readonly longitude: number | null;
 }
 
-/** How far the reader has moved away from the view that fits everything. */
-interface Adjust {
-  readonly east: number;
-  readonly north: number;
-  readonly scale: number;
+/** What `/api/v1/tiles` answers. */
+interface TileInfo {
+  readonly available: boolean;
+  readonly attribution: string;
+  readonly max_zoom: number;
 }
-
-const UNTOUCHED: Adjust = { east: 0, north: 0, scale: 1 };
 
 export function Ground() {
   const now = useNow();
   const [attach, size] = useSize();
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const status = useResource<{ node_self: SelfNode | null }>('/system/status');
+  const tiles = useResource<TileInfo>('/tiles');
 
   useLiveReload(
     (event: AppEvent) => event.type === 'push' && isAdvert(event.payload),
@@ -78,7 +90,7 @@ export function Ground() {
         (geo === null ? (
           <Rings nodes={nodes} now={now} size={size} />
         ) : (
-          <Geography geo={geo} nodes={nodes} size={size} />
+          <Geography geo={geo} nodes={nodes} size={size} tiles={tiles.data ?? null} />
         ))}
     </div>
   );
@@ -121,58 +133,43 @@ function Geography({
   geo,
   nodes,
   size,
+  tiles,
 }: {
-  readonly geo: NonNullable<ReturnType<typeof geography>>;
+  readonly geo: GeographyOf;
   readonly nodes: readonly GroundNode[];
   readonly size: { readonly width: number; readonly height: number };
+  readonly tiles: TileInfo | null;
 }) {
   const navigate = useNavigate();
-  const [adjust, setAdjust] = useState<Adjust>(UNTOUCHED);
+  // Null means "whatever fits". Once the reader has moved, their view is kept
+  // as it is — including across a resize, which is what a map does.
+  const [moved, setMoved] = useState<View | null>(null);
   // Not pointer capture: capturing makes the SVG the target of the following
   // click, so a click on a node would never reach the node. Instead the drag
   // is tracked here, and a click that came out of a drag is ignored — nobody
   // means to open a node by letting go of the map on top of it.
   const drag = useRef({ active: false, x: 0, y: 0, moved: false });
+
+  const view = moved ?? fit(geo, size.width, size.height, PADDING);
   const open = (key: string) => {
     if (drag.current.moved) return;
     navigate(`/knoten/${key}`);
   };
 
-  // Derived rather than stored: the view that fits everything changes when
-  // the window resizes or a node appears, and a stored view would keep
-  // showing the old section without anybody having asked it to.
-  const base = fit(geo, size.width, size.height, PADDING);
-  const view: View = {
-    east: base.east + adjust.east,
-    north: base.north + adjust.north,
-    metresPerPixel: base.metresPerPixel * adjust.scale,
-  };
-
-  // Not memoised: it closes over `view`, which is derived fresh every render,
-  // so a memo would only ever hand back a stale closure.
-  const wheel = (event: React.WheelEvent<SVGSVGElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
-    const zoomed = zoomAt(
-      view,
-      event.deltaY > 0 ? 1.2 : 1 / 1.2,
-      event.clientX - box.left,
-      event.clientY - box.top,
-      size.width,
-      size.height,
-    );
-    setAdjust({
-      east: zoomed.east - base.east,
-      north: zoomed.north - base.north,
-      scale: zoomed.metresPerPixel / base.metresPerPixel,
-    });
-  };
+  const covering = tiles?.available === true ? visibleTiles(view, size.width, size.height, tiles.max_zoom) : [];
+  const images = useTiles(covering, tiles?.available === true);
 
   const placed = geo.placed.map((one) => ({
     one,
-    at: onScreen(one, view, size.width, size.height),
+    at: onScreen(one.world, view, size.width, size.height),
   }));
   const labelled = declutter(placed);
-  const step = scaleStep(size.width * view.metresPerPixel);
+
+  // True at the middle of the screen and nowhere else — that is Mercator, and
+  // over the span of a mesh the difference is smaller than the bar is wide.
+  const centreLatitude = toLatitude(view.centre.y);
+  const perPixel = metresPerPixel(view.zoom, centreLatitude);
+  const step = scaleStep(size.width * perPixel);
   const missing = nodes.filter((node) => !isPlaceable(node)).length;
 
   return (
@@ -180,10 +177,22 @@ function Geography({
       <svg
         width={size.width}
         height={size.height}
-        className="block cursor-grab touch-none active:cursor-grabbing"
+        className="block cursor-grab touch-none select-none active:cursor-grabbing"
         role="img"
         aria-label={`Karte mit ${geo.placed.length} verorteten Knoten`}
-        onWheel={wheel}
+        onWheel={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          setMoved(
+            zoomAt(
+              view,
+              event.deltaY > 0 ? -0.4 : 0.4,
+              event.clientX - box.left,
+              event.clientY - box.top,
+              size.width,
+              size.height,
+            ),
+          );
+        }}
         onPointerDown={(event) => {
           drag.current = { active: true, x: event.clientX, y: event.clientY, moved: false };
         }}
@@ -197,11 +206,7 @@ function Geography({
           if (Math.abs(dx) > 3 || Math.abs(dy) > 3) from.moved = true;
 
           drag.current = { ...from, x: event.clientX, y: event.clientY };
-          setAdjust((previous) => ({
-            ...previous,
-            east: previous.east - dx * view.metresPerPixel,
-            north: previous.north + dy * view.metresPerPixel,
-          }));
+          setMoved((previous) => panBy(previous ?? view, dx, dy));
         }}
         onPointerUp={() => {
           // `moved` deliberately survives: the click arrives after this.
@@ -211,6 +216,25 @@ function Geography({
           drag.current.active = false;
         }}
       >
+        {covering.map((tile) => {
+          const image = images.get(tileKey(tile));
+          if (image === undefined || image === '') return null;
+
+          return (
+            <image
+              key={tileKey(tile)}
+              href={image}
+              x={tile.left}
+              y={tile.top}
+              width={tile.size}
+              height={tile.size}
+              // Neighbouring tiles are drawn edge to edge; a fractional pixel
+              // between them shows as a seam across the whole map.
+              style={{ imageRendering: 'auto' }}
+            />
+          );
+        })}
+
         {placed.map(({ one, at }, index) => (
           <Node
             key={one.node.key}
@@ -223,9 +247,23 @@ function Geography({
         ))}
       </svg>
 
-      <ScaleBar step={step} pixels={step / view.metresPerPixel} />
+      {/* Scale and credit share the bottom left, in that order. Kept in one
+          row because two absolutely positioned boxes near the same corner
+          find each other sooner or later — the credit sat on the scale bar's
+          number and hid it. */}
+      <div className="pointer-events-none absolute bottom-4 left-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <ScaleBar step={step} pixels={step / perPixel} />
+        {tiles?.available === true && tiles.attribution !== '' && (
+          <span className="rounded bg-mesh-surface/80 px-1.5 py-0.5 text-[11px] text-mesh-faint backdrop-blur">
+            {tiles.attribution}
+          </span>
+        )}
+      </div>
 
-      <div className="pointer-events-none absolute right-4 bottom-14 flex flex-col items-end gap-1 text-xs text-mesh-faint">
+      {/* Each line carries its own background rather than the block having
+          one: over a light basemap, faint text on nothing is unreadable, and
+          a single box around them all would be a grey slab across the map. */}
+      <div className="pointer-events-none absolute right-4 bottom-14 flex flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
         <span>Norden ist oben · blass heißt: seit über einem Tag nicht gehört</span>
         {missing > 0 && (
           <span>
@@ -241,12 +279,18 @@ function Geography({
             Tooltip.
           </span>
         )}
+        {tiles !== null && !tiles.available && (
+          <span>
+            Ohne Kartenquelle. Eine lässt sich unter <span className="tabular">[modules.tiles]</span>{' '}
+            eintragen.
+          </span>
+        )}
       </div>
 
-      {adjust !== UNTOUCHED && (
+      {moved !== null && (
         <button
           type="button"
-          onClick={() => setAdjust(UNTOUCHED)}
+          onClick={() => setMoved(null)}
           className="absolute right-4 bottom-4 rounded-md border border-mesh-border bg-mesh-surface/90 px-2.5 py-1 text-xs text-mesh-muted backdrop-blur hover:text-mesh-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
         >
           alles zeigen
@@ -316,6 +360,10 @@ function Node({
         cy={y}
         r={node.own ? 6 : 5}
         className={stale ? 'fill-mesh-border' : 'fill-mesh-accent'}
+        // A dot on a photographic base needs an edge, or it disappears into
+        // whatever it happens to sit on.
+        stroke="rgba(0,0,0,0.55)"
+        strokeWidth={1}
       />
       {label && (
         <text
@@ -324,6 +372,10 @@ function Node({
           textAnchor="middle"
           fontSize={11}
           className={stale ? 'fill-mesh-faint' : 'fill-mesh-muted'}
+          // Same reason as the dot: a name has to stay readable over a map.
+          paintOrder="stroke"
+          stroke="rgba(0,0,0,0.55)"
+          strokeWidth={2.5}
         >
           {node.name}
         </text>
@@ -340,13 +392,13 @@ function Node({
 
 function ScaleBar({ step, pixels }: { readonly step: number; readonly pixels: number }) {
   return (
-    <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-2 text-xs text-mesh-muted">
+    <span className="flex items-center gap-2 text-xs text-mesh-muted">
       <span
         className="block h-2 border-x border-b border-mesh-muted"
         style={{ width: `${Math.round(pixels)}px` }}
       />
       <span className="tabular">{formatDistance(step)}</span>
-    </div>
+    </span>
   );
 }
 

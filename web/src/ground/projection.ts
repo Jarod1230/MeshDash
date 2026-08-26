@@ -5,24 +5,37 @@
  * function here is pure, and every one of them is the place where an honest
  * arrangement is decided rather than a pretty one.
  *
- * # Two spaces, not one
+ * # Web-Mercator, because the tiles are
  *
- * Positions become **metres east and north of a centre** first, and only then
- * pixels. That separation is what makes panning and zooming cheap — a pan
- * moves the centre, a zoom changes the scale, and neither touches the
- * projection. It also keeps one scale for both axes, so a scale bar means the
- * same in every direction.
+ * Raster tiles exist in Web-Mercator and nowhere else. A surface that draws
+ * both tiles and nodes has to speak the tiles' projection, or the two drift
+ * apart the further from the centre one looks.
  *
- * # The projection is local, not Web-Mercator
+ * Positions therefore become **world coordinates** first — the unit square
+ * that Web-Mercator maps the world onto, `0…1` in each direction, north-west
+ * at the origin — and only then pixels. The separation is what makes panning
+ * and zooming cheap: a pan moves the centre, a zoom changes one number, and
+ * neither touches the projection.
  *
- * Longitudes are squeezed by the cosine of the mean latitude. Web-Mercator
- * stretches north-south against east-west, which would make a single scale bar
- * wrong in one direction. Over the span of a mesh — tens of kilometres — this
- * approximation is more accurate than any global projection.
+ * The price of Mercator is that a scale bar is only true at one latitude. It
+ * is computed for the middle of the screen and stated as such, which over the
+ * span of a mesh — tens of kilometres — is a difference nobody can read off
+ * the bar anyway.
  */
 
-/** Metres per degree of latitude; the equatorial value is close enough here. */
-const METRES_PER_DEGREE = 111_320;
+/** Edge length of a raster tile, in pixels. The whole raster world uses this. */
+export const TILE_SIZE = 256;
+
+/**
+ * The latitude where Web-Mercator gives up.
+ *
+ * The projection stretches towards the poles without bound; every tile scheme
+ * cuts it here so the world comes out square.
+ */
+const MERCATOR_LIMIT = 85.05112878;
+
+/** Metres per pixel at the equator, at zoom 0. */
+const EQUATOR_METRES_PER_PIXEL = 156_543.033_928_040_97;
 
 /** Anything not heard for this long is drawn as faded, not as gone. */
 export const STALE_SECONDS = 86_400;
@@ -43,36 +56,37 @@ export interface GroundNode {
   readonly source: 'advert' | 'telemetry' | null;
 }
 
-/** A node placed in metre space, east and north of the centre. */
+/** A point on the Web-Mercator unit square. */
+export interface World {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** A node placed on that square. */
 export interface Placed {
   readonly node: GroundNode;
-  readonly east: number;
-  readonly north: number;
+  readonly world: World;
   readonly stale: boolean;
 }
 
 /** What part of the world is on screen, and how closely. */
 export interface View {
-  /** Metres east of the centre that sits in the middle of the screen. */
-  readonly east: number;
-  /** Metres north of it. */
-  readonly north: number;
-  /** How many metres one pixel covers. Larger means further out. */
-  readonly metresPerPixel: number;
-}
-
-/** Where the centre of the metre space lies in the real world. */
-export interface Anchor {
-  readonly latitude: number;
-  readonly longitude: number;
+  /** The world coordinate in the middle of the screen. */
+  readonly centre: World;
+  /**
+   * Zoom, as tile schemes count it: one step doubles the scale.
+   *
+   * Not an integer — a fitted view lands wherever it lands, and the tiles are
+   * scaled to match rather than the view being snapped to them.
+   */
+  readonly zoom: number;
 }
 
 /** A geographic arrangement, or nothing when there is too little to arrange. */
 export interface Geography {
   readonly placed: readonly Placed[];
-  readonly anchor: Anchor;
-  /** Metres from edge to edge of what was placed, on the longer side. */
-  readonly spanMetres: number;
+  /** The latitude in the middle, which is where the scale bar is true. */
+  readonly centreLatitude: number;
 }
 
 /**
@@ -89,8 +103,29 @@ export function isPlaceable(node: GroundNode): boolean {
   );
 }
 
+/** Projects a coordinate onto the Web-Mercator unit square. */
+export function toWorld(latitude: number, longitude: number): World {
+  const clamped = Math.min(Math.max(latitude, -MERCATOR_LIMIT), MERCATOR_LIMIT);
+  const sine = Math.sin((clamped * Math.PI) / 180);
+
+  return {
+    x: (longitude + 180) / 360,
+    y: 0.5 - Math.log((1 + sine) / (1 - sine)) / (4 * Math.PI),
+  };
+}
+
+/** Back from the unit square to a latitude, for the scale bar. */
+export function toLatitude(y: number): number {
+  return (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
+}
+
+/** How many pixels one unit of world coordinate covers at this zoom. */
+export function scaleOf(zoom: number): number {
+  return TILE_SIZE * 2 ** zoom;
+}
+
 /**
- * Arranges every node that reports a position, in metres from their centre.
+ * Arranges every node that reports a position.
  *
  * Returns null below two placed nodes: one point is not a geography. It has no
  * extent, no scale and no neighbours — the topological arrangement says more
@@ -100,66 +135,82 @@ export function geography(nodes: readonly GroundNode[], now: number): Geography 
   const placeable = nodes.filter(isPlaceable);
   if (placeable.length < 2) return null;
 
-  const latitudes = placeable.map((node) => node.latitude ?? 0);
-  const longitudes = placeable.map((node) => node.longitude ?? 0);
-  const centreLat = (Math.min(...latitudes) + Math.max(...latitudes)) / 2;
-  const centreLon = (Math.min(...longitudes) + Math.max(...longitudes)) / 2;
-  const lonScale = Math.cos((centreLat * Math.PI) / 180);
-
   const placed = placeable.map((node) => ({
     node,
-    east: ((node.longitude ?? 0) - centreLon) * METRES_PER_DEGREE * lonScale,
-    north: ((node.latitude ?? 0) - centreLat) * METRES_PER_DEGREE,
+    world: toWorld(node.latitude ?? 0, node.longitude ?? 0),
     stale: (now - node.lastSeen) / 1000 > STALE_SECONDS,
   }));
 
-  const heightMetres = (Math.max(...latitudes) - Math.min(...latitudes)) * METRES_PER_DEGREE;
-  const widthMetres =
-    (Math.max(...longitudes) - Math.min(...longitudes)) * METRES_PER_DEGREE * lonScale;
+  const ys = placed.map((one) => one.world.y);
 
   return {
     placed,
-    anchor: { latitude: centreLat, longitude: centreLon },
-    // Several nodes at one spot have no extent. A nominal kilometre keeps the
-    // scale bar honest instead of dividing by zero.
-    spanMetres: Math.max(heightMetres, widthMetres, 1_000),
+    centreLatitude: toLatitude((Math.min(...ys) + Math.max(...ys)) / 2),
   };
 }
 
-/** A view that shows everything placed, with room to breathe. */
-export function fit(
-  geo: Geography,
-  width: number,
-  height: number,
-  padding: number,
-): View {
-  const easts = geo.placed.map((node) => node.east);
-  const norths = geo.placed.map((node) => node.north);
-  const spanEast = Math.max(Math.max(...easts) - Math.min(...easts), 1);
-  const spanNorth = Math.max(Math.max(...norths) - Math.min(...norths), 1);
+/** How far apart the placed nodes are, on the unit square. */
+function extent(geo: Geography): {
+  readonly centre: World;
+  readonly spanX: number;
+  readonly spanY: number;
+} {
+  const xs = geo.placed.map((one) => one.world.x);
+  const ys = geo.placed.map((one) => one.world.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
 
+  return {
+    centre: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+    spanX: maxX - minX,
+    spanY: maxY - minY,
+  };
+}
+
+/** How close to look when every node sits on the same spot. */
+const CLOSE_ENOUGH = 16;
+
+/**
+ * How close a fitted view goes at most.
+ *
+ * Raster sources stop around here, and a metre per screen is finer than a mesh
+ * is ever measured. Only a fit is capped — somebody who zooms in further is
+ * asking for it and gets it.
+ */
+const FURTHEST_IN = 19;
+
+/** A view that shows everything placed, with room to breathe. */
+export function fit(geo: Geography, width: number, height: number, padding: number): View {
+  const { centre, spanX, spanY } = extent(geo);
   const usableWidth = Math.max(width - 2 * padding, 1);
   const usableHeight = Math.max(height - 2 * padding, 1);
 
+  // Nodes at one spot have no extent. Rather than dividing by zero, look as
+  // closely as a reported position is worth.
+  const forX = spanX > 0 ? Math.log2(usableWidth / (TILE_SIZE * spanX)) : Infinity;
+  const forY = spanY > 0 ? Math.log2(usableHeight / (TILE_SIZE * spanY)) : Infinity;
+  const tightest = Math.min(forX, forY);
+
   return {
-    east: (Math.min(...easts) + Math.max(...easts)) / 2,
-    north: (Math.min(...norths) + Math.max(...norths)) / 2,
-    // The looser of the two axes decides, so nothing falls outside.
-    metresPerPixel: Math.max(spanEast / usableWidth, spanNorth / usableHeight, 0.1),
+    centre,
+    zoom: clampZoom(Number.isFinite(tightest) ? Math.min(tightest, FURTHEST_IN) : CLOSE_ENOUGH),
   };
 }
 
-/** Where a placed node lands on screen, in pixels from the top left. */
+/** Where a world point lands on screen, in pixels from the top left. */
 export function onScreen(
-  placed: Placed,
+  world: World,
   view: View,
   width: number,
   height: number,
 ): { readonly x: number; readonly y: number } {
+  const scale = scaleOf(view.zoom);
+
   return {
-    x: width / 2 + (placed.east - view.east) / view.metresPerPixel,
-    // Screen y grows downwards, north does not.
-    y: height / 2 - (placed.north - view.north) / view.metresPerPixel,
+    x: width / 2 + (world.x - view.centre.x) * scale,
+    y: height / 2 + (world.y - view.centre.y) * scale,
   };
 }
 
@@ -172,31 +223,114 @@ export function onScreen(
  */
 export function zoomAt(
   view: View,
-  factor: number,
+  steps: number,
   x: number,
   y: number,
   width: number,
   height: number,
 ): View {
-  const next = clampScale(view.metresPerPixel * factor);
-  const changed = next - view.metresPerPixel;
+  const zoom = clampZoom(view.zoom + steps);
+  const before = scaleOf(view.zoom);
+  const after = scaleOf(zoom);
+
+  // The world point under the cursor, held in place by moving the centre.
+  const worldX = view.centre.x + (x - width / 2) / before;
+  const worldY = view.centre.y + (y - height / 2) / before;
 
   return {
-    east: view.east - (x - width / 2) * changed,
-    north: view.north + (y - height / 2) * changed,
-    metresPerPixel: next,
+    centre: {
+      x: worldX - (x - width / 2) / after,
+      y: worldY - (y - height / 2) / after,
+    },
+    zoom,
+  };
+}
+
+/** Moves the view by a drag, in pixels. */
+export function panBy(view: View, dx: number, dy: number): View {
+  const scale = scaleOf(view.zoom);
+
+  return {
+    centre: { x: view.centre.x - dx / scale, y: view.centre.y - dy / scale },
+    zoom: view.zoom,
   };
 }
 
 /**
- * Keeps the scale in a range that still means something.
+ * Keeps the zoom in a range that means something.
  *
- * Closer than a centimetre per pixel says more than any position is worth —
- * a reported coordinate is six decimal places, about ten centimetres. Further
- * out than a kilometre per pixel and the whole planet is a few screens wide.
+ * Below zero the whole world is smaller than one tile; past 22 a pixel is
+ * finer than any position a node reports, which is six decimal places or about
+ * ten centimetres.
  */
-function clampScale(metresPerPixel: number): number {
-  return Math.min(Math.max(metresPerPixel, 0.01), 1_000);
+function clampZoom(zoom: number): number {
+  return Math.min(Math.max(zoom, 0), 22);
+}
+
+/** How many metres one pixel covers, at the latitude it is asked about. */
+export function metresPerPixel(zoom: number, latitude: number): number {
+  return (EQUATOR_METRES_PER_PIXEL * Math.cos((latitude * Math.PI) / 180)) / 2 ** zoom;
+}
+
+/** One raster tile, and where it goes on screen. */
+export interface TileAt {
+  readonly z: number;
+  readonly x: number;
+  readonly y: number;
+  readonly left: number;
+  readonly top: number;
+  /** Edge length on screen. Not 256 unless the zoom happens to be whole. */
+  readonly size: number;
+}
+
+/**
+ * Which tiles cover the screen, and where each one goes.
+ *
+ * The tile level is the view's zoom rounded to a whole number and capped at
+ * what the source has; the tiles are then scaled to the actual zoom. Snapping
+ * the view to whole zoom levels instead would make a fitted view jump the
+ * moment it was drawn.
+ *
+ * Tiles outside the world are left out rather than wrapped. A mesh is a
+ * region, and a copy of Europe at the edge of the screen would be a lie about
+ * where the nodes are.
+ */
+export function visibleTiles(
+  view: View,
+  width: number,
+  height: number,
+  maxZoom: number,
+): TileAt[] {
+  const z = Math.min(Math.max(Math.round(view.zoom), 0), Math.floor(maxZoom));
+  const scale = scaleOf(view.zoom);
+  const count = 2 ** z;
+  const size = scale / count;
+
+  // The world coordinate at the top left corner of the screen.
+  const originX = view.centre.x - width / 2 / scale;
+  const originY = view.centre.y - height / 2 / scale;
+
+  const firstX = Math.floor(originX * count);
+  const lastX = Math.floor((originX + width / scale) * count);
+  const firstY = Math.floor(originY * count);
+  const lastY = Math.floor((originY + height / scale) * count);
+
+  const tiles: TileAt[] = [];
+
+  for (let y = Math.max(firstY, 0); y <= Math.min(lastY, count - 1); y += 1) {
+    for (let x = Math.max(firstX, 0); x <= Math.min(lastX, count - 1); x += 1) {
+      tiles.push({
+        z,
+        x,
+        y,
+        left: (x / count - originX) * scale,
+        top: (y / count - originY) * scale,
+        size,
+      });
+    }
+  }
+
+  return tiles;
 }
 
 /** A round number of metres that fits in about a quarter of the drawing. */

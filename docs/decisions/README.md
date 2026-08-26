@@ -43,5 +43,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0010](0010-karte.md) | Karte als Ansicht in `nodes`, ohne Kacheln | Abgelöst durch [0011](0011-karte-als-leitansicht.md) |
 | [0011](0011-karte-als-leitansicht.md) | Die Karte ist die Leitansicht, Kacheln über MeshDash | Angenommen |
 | [0012](0012-positionen-nur-aus-dem-mesh.md) | Positionen stammen nur aus dem Mesh, kein Handeintrag | Angenommen |
+| [0013](0013-den-eigenen-node-verorten.md) | Den eigenen Node verortet der Betreiber, alle anderen das Mesh | Angenommen |
 
 Vorlage: [`template.md`](template.md).

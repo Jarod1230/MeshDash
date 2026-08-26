@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Den eigenen Node verorten.** `PUT /api/v1/system/position` sagt dem Node in
+  Grad, wo er steht; er trägt es von da an in seinem Advert. Auf der
+  Übersichtsseite zusammen mit dem Advert-Knopf, weil das eine ohne das andere
+  im Mesh nichts ändert. Die einzige Position, die ein Mensch einträgt — und
+  auch sie erscheint auf der Karte erst, wenn sie als Advert zurückkommt, siehe
+  [ADR-0013](docs/decisions/0013-den-eigenen-node-verorten.md).
+
 - **Sich dem Mesh vorstellen.** `POST /api/v1/nodes/advert` lässt den Node ein
   eigenes Advert senden — geflutet oder nur an die direkten Nachbarn. Das ist
   der Weg, von dem Mesh gefunden zu werden; es kostet Sendezeit und geschieht

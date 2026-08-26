@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Query, State},
-    routing::get,
+    routing::{get, put},
 };
 use chrono::{DateTime, Utc};
 use meshdash_core::{
@@ -25,7 +25,11 @@ use meshdash_core::{
     event::AppEvent,
     module::{AppContext, Module},
 };
-use meshdash_proto::device::{self, DeviceInfo, SelfInfo};
+use meshdash_proto::{
+    command,
+    device::{self, DeviceInfo, SelfInfo},
+    opcode::Response,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::query::{BadTimeRange, TimeRange, Window};
@@ -263,7 +267,8 @@ impl Module for SystemModule {
         Some(
             Router::new()
                 .route("/status", get(status))
-                .route("/connections", get(connections)),
+                .route("/connections", get(connections))
+                .route("/position", put(put_position)),
         )
     }
 
@@ -562,6 +567,167 @@ fn parse_time(text: &str) -> Option<DateTime<Utc>> {
             None
         }
     }
+}
+
+/// Where the operator says this node stands.
+///
+/// Degrees, as everywhere in this API. The protocol counts in micro-degrees;
+/// the conversion happens here so nobody has to know that to place a node.
+#[derive(Debug, Deserialize)]
+pub struct PositionRequest {
+    /// Latitude in degrees, positive north.
+    pub latitude: f64,
+    /// Longitude in degrees, positive east.
+    pub longitude: f64,
+}
+
+/// Why the node kept the position it had.
+#[derive(Debug)]
+pub enum PositionError {
+    /// The coordinates are not coordinates, or lie outside what the node takes.
+    Unusable(String),
+    /// The node answered with something other than "done".
+    Refused {
+        /// What it answered with, first byte included.
+        answer: Vec<u8>,
+    },
+    /// The node could not be reached.
+    Link(String),
+    /// The node took it, but writing it down failed.
+    Storage(sqlx::Error),
+}
+
+impl axum::response::IntoResponse for PositionError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, code, message) = match self {
+            Self::Unusable(why) => (
+                axum::http::StatusCode::BAD_REQUEST,
+                "invalid_parameter",
+                why,
+            ),
+            Self::Refused { answer } => {
+                tracing::warn!(opcode = answer.first(), "the node refused the position");
+                (
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "node_refused",
+                    "the node refused the position".to_owned(),
+                )
+            }
+            Self::Link(error) => {
+                tracing::warn!(%error, "could not tell the node where it stands");
+                (
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "node_refused",
+                    "the node could not be reached".to_owned(),
+                )
+            }
+            Self::Storage(error) => {
+                tracing::error!(%error, "the node took the position but it could not be stored");
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "storage_failed",
+                    "the node took the position, but it could not be stored".to_owned(),
+                )
+            }
+        };
+
+        (
+            status,
+            Json(serde_json::json!({ "error": { "code": code, "message": message } })),
+        )
+            .into_response()
+    }
+}
+
+async fn put_position(
+    State(context): State<AppContext>,
+    Json(request): Json<PositionRequest>,
+) -> Result<axum::http::StatusCode, PositionError> {
+    set_position(&context, request.latitude, request.longitude).await?;
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Tells the node where it stands, so its next advert says so.
+///
+/// This is the one position in MeshDash a human supplies, and it is not a note
+/// on a map: it is a setting on the node, which the node then announces itself.
+/// Every other node's position still comes out of the mesh and nowhere else —
+/// see [ADR-0013](../../../../docs/decisions/0013-den-eigenen-node-verorten.md).
+///
+/// Setting it does not transmit anything. The mesh learns of it with the next
+/// advert, which somebody has to ask for.
+pub async fn set_position(
+    context: &AppContext,
+    latitude: f64,
+    longitude: f64,
+) -> Result<(), PositionError> {
+    let latitude_micro = to_micro_degrees(latitude, "the latitude")?;
+    let longitude_micro = to_micro_degrees(longitude, "the longitude")?;
+
+    // The firmware's own bounds are checked in here, so an impossible
+    // coordinate never goes on the wire.
+    let frame = command::set_advert_position(latitude_micro, longitude_micro)
+        .map_err(|error| PositionError::Unusable(error.to_string()))?;
+
+    let answer = context
+        .link
+        .request(frame)
+        .await
+        .map_err(|error| PositionError::Link(error.to_string()))?;
+
+    match answer.first().map(|&byte| Response::from(byte)) {
+        Some(Response::Ok) => {}
+        _ => return Err(PositionError::Refused { answer }),
+    }
+
+    // Written down because the node acknowledged exactly these coordinates,
+    // not because we assume they took. The next session start overwrites the
+    // row with what the node says about itself anyway.
+    store_position(context, latitude_micro, longitude_micro)
+        .await
+        .map_err(PositionError::Storage)
+}
+
+/// Turns degrees into the micro-degrees the protocol counts in.
+///
+/// Rejects what cannot be a coordinate before it becomes a number: `NaN` casts
+/// to zero in Rust, which would place the node off the coast of Africa without
+/// anything having failed.
+fn to_micro_degrees(degrees: f64, what: &str) -> Result<i32, PositionError> {
+    let micro = (degrees * 1e6).round();
+
+    if !micro.is_finite() || micro < f64::from(i32::MIN) || micro > f64::from(i32::MAX) {
+        return Err(PositionError::Unusable(format!(
+            "{what} of {degrees} is not a coordinate"
+        )));
+    }
+
+    Ok(micro as i32)
+}
+
+/// Records the position the node accepted, leaving the rest of the row alone.
+///
+/// Updates nothing when no session has been answered yet: without the node's
+/// own key and name there is no row to update, and inventing one would put a
+/// half-filled self description in front of the operator.
+async fn store_position(
+    context: &AppContext,
+    latitude_micro: i32,
+    longitude_micro: i32,
+) -> Result<(), sqlx::Error> {
+    let changed = sqlx::query("UPDATE system_self SET latitude = ?, longitude = ? WHERE id = 1")
+        .bind(f64::from(latitude_micro) / 1e6)
+        .bind(f64::from(longitude_micro) / 1e6)
+        .execute(context.db.pool())
+        .await?
+        .rows_affected();
+
+    if changed == 0 {
+        tracing::info!("the node took the position; it will be shown once a session starts");
+    }
+
+    Ok(())
 }
 
 /// Turns a storage failure into an API error.

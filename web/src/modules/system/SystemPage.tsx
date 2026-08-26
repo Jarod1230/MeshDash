@@ -1,3 +1,4 @@
+import { Announce } from './Announce';
 import { Carrier } from '../../ui/Carrier';
 import { LinkBand, type Change } from '../../ui/LinkBand';
 import { Empty, Failed, Loading } from '../../ui/States';
@@ -210,6 +211,12 @@ export function SystemPage() {
             <Fact term="Spreizfaktor" value={String(status.data.node_self.spreading_factor)} />
             <Fact term="Coderate" value={`4/${status.data.node_self.coding_rate}`} />
           </dl>
+
+          <Announce
+            latitude={status.data.node_self.latitude}
+            longitude={status.data.node_self.longitude}
+            onChanged={status.reload}
+          />
         </section>
       )}
 

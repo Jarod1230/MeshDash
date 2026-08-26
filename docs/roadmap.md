@@ -302,9 +302,14 @@ selbst hat.
   bekommen. Damit steht der erste sichere Punkt für die Karte fest.
 - [x] **Ein eigenes Advert senden.** `POST /api/v1/nodes/advert`, geflutet oder
   nur an die Nachbarn. Am 2026-08-26 am echten Mesh ausprobiert.
-- **Die eigene Position setzen.** `set_advert_position` gibt es im Protokoll
-  längst; wer den eigenen Node verortet, bringt seine Position ins Mesh — und
-  den Anker, ohne den jede Schätzung frei schwebt.
+- [x] **Die eigene Position setzen.** `PUT /api/v1/system/position` sagt dem
+  Node in Grad, wo er steht; das Advert daneben bringt es ins Mesh. Damit
+  steht der Anker, ohne den jede Schätzung frei schwebt. Die Grenze zu
+  [ADR-0012](decisions/0012-positionen-nur-aus-dem-mesh.md) zieht
+  [ADR-0013](decisions/0013-den-eigenen-node-verorten.md): den eigenen Node
+  verortet der Betreiber, alle anderen das Mesh.
+
+**Damit ist Stufe B erledigt.** Als Nächstes Stufe C.
 
 ### Stufe C — die Karte als Leitansicht
 

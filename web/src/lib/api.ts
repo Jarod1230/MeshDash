@@ -45,6 +45,15 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T | null>
   });
 }
 
+/** Replaces something through the API. Returns null for an empty (204) answer. */
+export async function apiPut<T>(path: string, body: unknown): Promise<T | null> {
+  return request<T | null>(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const token = readToken();
   const headers = new Headers(init.headers);

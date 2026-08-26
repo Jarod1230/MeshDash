@@ -373,3 +373,74 @@ async fn a_second_session_replaces_what_the_first_said() {
     let described = read_self(&context).await.unwrap().unwrap();
     assert_eq!(described.name, "DB0NEU");
 }
+
+#[tokio::test]
+async fn setting_the_position_reaches_the_node_and_the_row() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(vec![u8::from(Response::Ok)]),
+    ])
+    .await;
+
+    // A session first: without it there is no self description to update.
+    context.events.publish(AppEvent::SessionStarted {
+        payload: self_info_frame(),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    set_position(&context, 54.331026, 13.070254).await.unwrap();
+
+    let described = read_self(&context).await.unwrap().unwrap();
+    assert_eq!(described.latitude, Some(54.331026));
+    assert_eq!(described.longitude, Some(13.070254));
+}
+
+#[tokio::test]
+async fn a_refused_position_is_not_written_down() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(vec![u8::from(Response::Err), 1]),
+    ])
+    .await;
+
+    context.events.publish(AppEvent::SessionStarted {
+        payload: self_info_frame(),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    assert!(matches!(
+        set_position(&context, 10.0, 20.0).await,
+        Err(PositionError::Refused { .. })
+    ));
+
+    // Still what the node said about itself, not what we asked for.
+    let described = read_self(&context).await.unwrap().unwrap();
+    assert_eq!(described.latitude, Some(52.520008));
+}
+
+#[tokio::test]
+async fn a_coordinate_that_is_not_one_never_goes_on_the_wire() {
+    let context = context_with(vec![Step::Drop("nothing should be sent".into())]).await;
+
+    for (latitude, longitude) in [(f64::NAN, 0.0), (0.0, f64::INFINITY), (91.0, 0.0)] {
+        assert!(matches!(
+            set_position(&context, latitude, longitude).await,
+            Err(PositionError::Unusable(_))
+        ));
+    }
+}
+
+#[tokio::test]
+async fn a_position_set_before_the_node_introduced_itself_is_not_invented() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(vec![u8::from(Response::Ok)]),
+    ])
+    .await;
+
+    set_position(&context, 54.0, 13.0).await.unwrap();
+
+    // The node took it, but a self description without key and name would be
+    // a half-truth in front of the operator.
+    assert_eq!(read_self(&context).await.unwrap(), None);
+}

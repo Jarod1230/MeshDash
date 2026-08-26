@@ -323,8 +323,13 @@ selbst hat.
   Geografie mit Maßstab, darunter die Ringe nach Zwischenstationen. Beide
   sagen, wie viele Knoten sie nicht verorten können. Ein Punkt ist noch keine
   Geografie — er hat keine Ausdehnung, keinen Maßstab und keine Nachbarn.
-- **Kartenfläche mit Kacheln über MeshDash** — Endpunkt, Plattencache,
-  Konfigurationsoption; ohne Quelle bleibt es bei der eigenen Zeichnung.
+- **Kartenfläche mit Kacheln über MeshDash** — Endpunkt, Plattencache und
+  Konfigurationsoption stehen (Modul `tiles`); ohne Quelle bleibt es bei der
+  eigenen Zeichnung. **Offen ist die Anzeige:** Rasterkacheln liegen in
+  Web-Mercator, die Grundfläche rechnet heute lokal um den Mittelpunkt. Beides
+  zusammenzubringen heißt entweder Leaflet einzuziehen, wie ADR-0011 es
+  vorsieht, oder die eigene Zeichnung auf Web-Mercator umzustellen. Die
+  Entscheidung steht aus.
 - **Knotenebene** — jeder Knoten an seinem Ort, Zustand an der Farbe:
   gerade gehört, still, ausgefallen.
 - **Verbindungsebene** — Linien für belegte Wege, Stärke nach

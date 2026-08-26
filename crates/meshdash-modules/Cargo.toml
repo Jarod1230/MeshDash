@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 meshdash-core.workspace = true
 meshdash-proto.workspace = true
+reqwest.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true

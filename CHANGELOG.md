@@ -10,6 +10,19 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Added
+
+- **Kartenkacheln über MeshDash.** `GET /api/v1/tiles/{z}/{x}/{y}` holt eine
+  Kachel von der konfigurierten Quelle und legt sie als Datei ab; beim zweiten
+  Mal geht nichts mehr hinaus. `GET /api/v1/tiles` sagt, ob es überhaupt eine
+  Quelle gibt und wem die Karte gehört.
+
+  **Ohne `[modules.tiles] source` passiert nichts** — das ist der
+  Auslieferungszustand. Wer eine Quelle nennt, muss auch die Nennung des
+  Urhebers angeben, sonst startet der Dienst nicht: Die Bedingungen jedes
+  Kacheldienstes verlangen sie, und eine Karte, die verschweigt, wessen sie
+  ist, bringt ihren Betreiber ins Unrecht.
+
 ### Changed
 
 - **MeshDash öffnet auf der Karte.** Die Fläche mit den Knoten darauf ist jetzt

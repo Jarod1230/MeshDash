@@ -34,6 +34,13 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 figment = { version = "0.10", features = ["toml", "env"] }
 futures = "0.3"
 rust-embed = { version = "8", features = ["mime-guess"] }
+# Only outbound HTTP client in the project, for fetching map tiles. rustls
+# rather than the system's TLS, because sqlx already pulls rustls in and two
+# TLS stacks in one binary is one too many.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "http2",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = [

@@ -90,6 +90,29 @@ every_minutes = 30
 # Knoten, die so lange nichts von sich hören ließen, werden übersprungen —
 # an etwas zu senden, das nicht da ist, kostet nur Sendezeit.
 silent_after_hours = 24
+
+[modules.tiles]
+# Woher die Kartenkacheln kommen, als Vorlage mit {z}, {x} und {y}.
+# Leer heißt: keine Kacheln. Das ist der Auslieferungszustand — MeshDash läuft
+# an Orten ohne Uplink, und einen öffentlichen Server für den Betreiber
+# auszuwählen würde dort scheitern und nebenbei einem Fremden verraten, wo das
+# Mesh steht. Siehe ADR-0011.
+source = ""
+# Wem die Karte gehört. **Pflicht, sobald `source` gesetzt ist** — jeder
+# brauchbare Kacheldienst verlangt die Nennung in seinen Bedingungen, und der
+# Dienst startet ohne sie nicht. Erscheint auf der Karte.
+attribution = ""
+# Wohin geholte Kacheln gelegt werden. Ein Dateibaum <z>/<x>/<y>.<endung>.
+cache_dir = "data/tiles"
+# Tiefster Zoom, der weitergereicht wird. Tiefer zu fragen als die Quelle hat,
+# bringt nur 404er — auf deren Kosten.
+max_zoom = 19
+# Womit MeshDash sich beim Kacheldienst meldet. Nennt das Projekt, nicht den
+# Betreiber. Viele Dienste sperren allgemeine Kennungen.
+user_agent = "MeshDash/<version> (+https://github.com/Jarod1230/MeshDash)"
+# Wie viele Abrufe gleichzeitig hinausgehen dürfen. Eine gezogene Karte fragt
+# schneller nach Kacheln, als eine Quelle beantworten möchte; der Rest wartet.
+max_concurrent_fetches = 4
 ```
 
 ## Was noch fehlt

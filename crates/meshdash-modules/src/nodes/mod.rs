@@ -49,7 +49,7 @@ use meshdash_core::{
     module::{AppContext, Module},
 };
 use meshdash_proto::{
-    advert::Advert, command, contact::Contact, opcode::Response, push::PushEvent,
+    advert::Advert, command, contact::Contact, opcode::Response, push::PushEvent, send::SendReceipt,
 };
 use serde::{Deserialize, Serialize};
 
@@ -170,6 +170,37 @@ const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 6,
+        description: "traced routes and the reception along them",
+        sql: "
+        -- The row is written when the trace goes out, not when it comes
+        -- back: a trace that never returns is a finding about the route, and
+        -- it can only be one if the attempt was recorded.
+        CREATE TABLE nodes_traces (
+            id          INTEGER PRIMARY KEY,
+            tag         INTEGER NOT NULL,
+            public_key  TEXT    NOT NULL,
+            asked_at    TEXT    NOT NULL,
+            answered_at TEXT,
+            final_snr   REAL
+        );
+
+        CREATE INDEX nodes_traces_tag ON nodes_traces (tag);
+        CREATE INDEX nodes_traces_key ON nodes_traces (public_key, id);
+
+        -- One row per station, in travel order. Kept apart from the trace so
+        -- that a later query can ask 'how well does station X hear' across
+        -- every trace it appears in.
+        CREATE TABLE nodes_trace_hops (
+            trace_id    INTEGER NOT NULL,
+            position    INTEGER NOT NULL,
+            key_prefix  TEXT    NOT NULL,
+            snr         REAL,
+            PRIMARY KEY (trace_id, position)
+        );
+    ",
+    },
 ];
 
 /// Largest number of sightings a single request may ask for.
@@ -242,7 +273,8 @@ impl Module for NodesModule {
                 .route("/contacts", get(list_contacts))
                 .route("/adverts", get(list_adverts))
                 .route("/route-changes", get(list_route_changes))
-                .route("/presence", get(node_presence)),
+                .route("/presence", get(node_presence))
+                .route("/traces", get(list_traces).post(post_trace)),
         )
     }
 
@@ -253,18 +285,48 @@ impl Module for NodesModule {
         tokio::spawn(async move {
             loop {
                 match events.recv().await {
-                    // A fresh connection is the moment to catch up.
+                    // A fresh connection is the moment to catch up. On its
+                    // own task, because fetching the list means waiting for
+                    // the node: awaited here, this loop would stop reading
+                    // events until the answer came — and every advert and
+                    // trace answer arriving meanwhile would be missed. A
+                    // slow node made the module deaf.
                     Ok(AppEvent::NodeConnected) => {
-                        if let Err(error) = sync_contacts(&context).await {
-                            tracing::warn!(error, "could not fetch the contact list");
-                        }
+                        let context = Arc::clone(&context);
+                        tokio::spawn(async move {
+                            if let Err(error) = sync_contacts(&context).await {
+                                tracing::warn!(error, "could not fetch the contact list");
+                            }
+                        });
                     }
                     Ok(AppEvent::Push { payload }) => {
-                        // Every push lands here; only adverts concern us.
-                        if let Ok(PushEvent::Advert(advert)) = PushEvent::parse(&payload)
-                            && let Err(error) = record_advert(&context, &advert).await
-                        {
-                            tracing::error!(%error, "could not record an advert");
+                        // Every push lands here; adverts and traces concern us.
+                        match PushEvent::parse(&payload) {
+                            Ok(PushEvent::Advert(advert)) => {
+                                if let Err(error) = record_advert(&context, &advert).await {
+                                    tracing::error!(%error, "could not record an advert");
+                                }
+                            }
+                            Ok(PushEvent::Trace {
+                                tag,
+                                hop_hashes,
+                                hop_snrs,
+                                final_snr,
+                                ..
+                            }) => {
+                                if let Err(error) = record_trace_answer(
+                                    &context,
+                                    tag,
+                                    &hop_hashes,
+                                    &hop_snrs,
+                                    final_snr,
+                                )
+                                .await
+                                {
+                                    tracing::error!(%error, "could not record a trace answer");
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     Ok(AppEvent::Module { module, kind, data })
@@ -850,6 +912,390 @@ type ContactRow = (
     Option<f64>,
     Option<f64>,
 );
+
+type TraceRow = (i64, String, String, Option<String>, Option<f64>);
+
+/// One traced route and how well each station heard the one before it.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Trace {
+    /// Running number, ascending with the request. Cursor for the next page.
+    pub id: i64,
+    /// Whose route was traced, lowercase hex.
+    pub public_key: String,
+    /// When the trace went out.
+    pub asked_at: DateTime<Utc>,
+    /// When the answer arrived, or `None` if none ever did.
+    pub answered_at: Option<DateTime<Utc>>,
+    /// Reception of the last leg, back at this node.
+    pub final_snr: Option<f32>,
+    /// The stations, in travel order.
+    pub hops: Vec<TraceHop>,
+}
+
+/// One station on a traced route.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct TraceHop {
+    /// The leading bytes of that station's public key, lowercase hex.
+    ///
+    /// Usually a single byte. Matching it to a contact is a guess with more
+    /// than one candidate in a mesh of any size — see
+    /// `meshdash_proto::packet::Station`.
+    pub key_prefix: String,
+    /// How well this station heard the one before it, where the answer says.
+    ///
+    /// `None` where several stations share one measurement: the flags of a
+    /// trace may group them, and inventing a value per station would turn a
+    /// coarse measurement into a precise-looking lie.
+    pub snr: Option<f32>,
+}
+
+/// Why a trace could not be started.
+#[derive(Debug)]
+pub enum TraceError {
+    /// No contact with that key.
+    UnknownNode,
+    /// The contact has no route with a station on it.
+    NoRoute,
+    /// The key is not 64 hex characters.
+    BadKey,
+    /// The node refused or did not answer.
+    Link(String),
+    /// The database could not be read or written.
+    Storage(sqlx::Error),
+}
+
+impl From<sqlx::Error> for TraceError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl axum::response::IntoResponse for TraceError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, code, message) = match self {
+            Self::UnknownNode => (
+                axum::http::StatusCode::NOT_FOUND,
+                "not_found",
+                "no contact with that key".to_owned(),
+            ),
+            Self::NoRoute => (
+                axum::http::StatusCode::BAD_REQUEST,
+                "no_route",
+                // Said plainly, because it is a property of the mesh and not
+                // a mistake by the caller.
+                "this node has no route with a station on it — there is nothing to trace"
+                    .to_owned(),
+            ),
+            Self::BadKey => (
+                axum::http::StatusCode::BAD_REQUEST,
+                "invalid_parameter",
+                "public_key must be 64 hex characters".to_owned(),
+            ),
+            Self::Link(error) => {
+                tracing::warn!(%error, "the node would not send a trace");
+                (
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "node_refused",
+                    "the node did not send the trace".to_owned(),
+                )
+            }
+            Self::Storage(error) => {
+                tracing::error!(%error, "could not record the trace");
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "storage_failed",
+                    "could not record the trace".to_owned(),
+                )
+            }
+        };
+
+        (
+            status,
+            Json(serde_json::json!({ "error": { "code": code, "message": message } })),
+        )
+            .into_response()
+    }
+}
+
+/// Which node to trace.
+#[derive(Debug, Deserialize)]
+pub struct TraceRequest {
+    /// Whose route, lowercase hex.
+    public_key: String,
+}
+
+/// What a started trace answers with.
+#[derive(Debug, Serialize)]
+pub struct StartedTrace {
+    /// The row that will carry the answer once it arrives.
+    pub id: i64,
+    /// How long the node thinks the round trip takes, in milliseconds.
+    pub estimated_timeout_ms: u32,
+}
+
+async fn post_trace(
+    State(context): State<AppContext>,
+    Json(request): Json<TraceRequest>,
+) -> Result<Json<StartedTrace>, TraceError> {
+    start_trace(&context, &request.public_key).await.map(Json)
+}
+
+/// Which traces to answer with.
+#[derive(Debug, Deserialize, Default)]
+pub struct TraceQuery {
+    /// Only traces of this public key, lowercase hex.
+    node: Option<String>,
+    /// Only traces older than this one.
+    before: Option<i64>,
+    /// How many to return.
+    limit: Option<i64>,
+    /// Which stretch of time to cover.
+    #[serde(flatten)]
+    range: TimeRange,
+}
+
+impl TraceQuery {
+    fn window(&self) -> Result<Window, BadTimeRange> {
+        Ok(Window::new(
+            self.limit.unwrap_or(50).clamp(1, MAX_ADVERT_LIMIT),
+            self.before,
+            self.range.bounds()?,
+        ))
+    }
+}
+
+async fn list_traces(
+    State(context): State<AppContext>,
+    Query(query): Query<TraceQuery>,
+) -> Result<Json<Vec<Trace>>, ListError> {
+    read_traces(&context, query.node.as_deref(), &query.window()?)
+        .await
+        .map(Json)
+        .map_err(ListError::from)
+}
+
+/// Asks the mesh to walk the known route to a node and report each leg.
+///
+/// Costs airtime: the packet travels to the far end and back. It is therefore
+/// only ever sent because somebody asked for it — never on a timer.
+pub async fn start_trace(
+    context: &AppContext,
+    public_key: &str,
+) -> Result<StartedTrace, TraceError> {
+    if !is_key(public_key) {
+        return Err(TraceError::BadKey);
+    }
+
+    let route: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT path FROM nodes_contacts WHERE public_key = ?")
+            .bind(public_key)
+            .fetch_optional(context.db.pool())
+            .await?;
+
+    let Some((path,)) = route else {
+        return Err(TraceError::UnknownNode);
+    };
+
+    // A trace walks station by station. Without a station there is nothing to
+    // walk, and the firmware refuses a frame with an empty path anyway.
+    let hops = match path.as_deref().map(hex_to_bytes) {
+        Some(Some(hops)) if !hops.is_empty() => hops,
+        _ => return Err(TraceError::NoRoute),
+    };
+
+    // Four bytes that differ from last time, for the same reason as in
+    // telemetry: two identical requests would hash alike and the second would
+    // be dropped as a duplicate.
+    let tag = u32::from_le_bytes(nonce_from_clock());
+
+    // Flags zero: one byte per station, one SNR per station. The wider
+    // encodings exist but nothing here asks for them yet.
+    let frame = command::send_trace(tag, 0, 0, &hops)
+        .map_err(|error| TraceError::Link(error.to_string()))?;
+
+    // Written *before* sending, and that ordering matters: the answer arrives
+    // as a push on another task, and a row created after the receipt can lose
+    // the race against it. A trace whose answer found no row would be dropped
+    // as belonging to nobody.
+    let id = sqlx::query("INSERT INTO nodes_traces (tag, public_key, asked_at) VALUES (?, ?, ?)")
+        .bind(i64::from(tag))
+        .bind(public_key)
+        .bind(Utc::now().to_rfc3339())
+        .execute(context.db.pool())
+        .await?
+        .last_insert_rowid();
+
+    let receipt = match context.link.request(frame).await {
+        Ok(answer) => SendReceipt::parse(&answer)
+            .map_err(|error| TraceError::Link(format!("unreadable receipt: {error}"))),
+        Err(error) => Err(TraceError::Link(error.to_string())),
+    };
+
+    let receipt = match receipt {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            // Nothing went out, so nothing is pending. Left standing it would
+            // read as "asked, never answered", which is a different and
+            // wrong statement about the route.
+            sqlx::query("DELETE FROM nodes_traces WHERE id = ?")
+                .bind(id)
+                .execute(context.db.pool())
+                .await?;
+            return Err(error);
+        }
+    };
+
+    // The receipt echoes the tag; if a node ever answered with a different
+    // one, the row would wait for an answer that never matches.
+    if let Some(confirmed) = receipt.expected_ack
+        && confirmed != tag
+    {
+        tracing::warn!(sent = tag, confirmed, "the node confirmed a different tag");
+        sqlx::query("UPDATE nodes_traces SET tag = ? WHERE id = ?")
+            .bind(i64::from(confirmed))
+            .bind(id)
+            .execute(context.db.pool())
+            .await?;
+    }
+
+    Ok(StartedTrace {
+        id,
+        estimated_timeout_ms: receipt.estimated_timeout_ms,
+    })
+}
+
+/// Records what came back for a trace that was sent earlier.
+async fn record_trace_answer(
+    context: &AppContext,
+    tag: u32,
+    hop_hashes: &[u8],
+    hop_snrs: &[f32],
+    final_snr: f32,
+) -> Result<(), sqlx::Error> {
+    // Newest first: the same tag can come round again after a restart, and
+    // the answer belongs to the trace that was sent last.
+    let pending: Option<(i64,)> = sqlx::query_as(
+        "SELECT id FROM nodes_traces WHERE tag = ? AND answered_at IS NULL
+         ORDER BY id DESC LIMIT 1",
+    )
+    .bind(i64::from(tag))
+    .fetch_optional(context.db.pool())
+    .await?;
+
+    let Some((id,)) = pending else {
+        // Not an error: a trace started before a restart, or somebody else's
+        // answer. Recording it under no trace at all would be worse.
+        tracing::debug!(tag, "a trace answer arrived for no pending trace");
+        return Ok(());
+    };
+
+    sqlx::query("UPDATE nodes_traces SET answered_at = ?, final_snr = ? WHERE id = ?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(final_snr)
+        .bind(id)
+        .execute(context.db.pool())
+        .await?;
+
+    for (position, hash) in hop_hashes.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO nodes_trace_hops (trace_id, position, key_prefix, snr)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(position as i64)
+        .bind(format!("{hash:02x}"))
+        // Fewer measurements than stations is normal: the flags may group
+        // them. A station without its own reading gets none rather than a
+        // borrowed one.
+        .bind(hop_snrs.get(position).copied())
+        .execute(context.db.pool())
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Reads recorded traces, newest first.
+pub async fn read_traces(
+    context: &AppContext,
+    node: Option<&str>,
+    window: &Window,
+) -> Result<Vec<Trace>, sqlx::Error> {
+    let rows: Vec<TraceRow> = sqlx::query_as(
+        "SELECT id, public_key, asked_at, answered_at, final_snr
+         FROM nodes_traces
+         WHERE (?1 IS NULL OR public_key = ?1)
+           AND (?2 IS NULL OR id < ?2)
+           AND (?3 IS NULL OR asked_at >= ?3)
+           AND (?4 IS NULL OR asked_at <= ?4)
+         ORDER BY id DESC LIMIT ?5",
+    )
+    .bind(node)
+    .bind(window.before)
+    .bind(&window.since)
+    .bind(&window.until)
+    .bind(window.limit)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    let mut traces = Vec::with_capacity(rows.len());
+    for row in rows {
+        let hops: Vec<(String, Option<f64>)> = sqlx::query_as(
+            "SELECT key_prefix, snr FROM nodes_trace_hops WHERE trace_id = ? ORDER BY position",
+        )
+        .bind(row.0)
+        .fetch_all(context.db.pool())
+        .await?;
+
+        let Some(asked_at) = parse_time(&row.2) else {
+            continue;
+        };
+
+        traces.push(Trace {
+            id: row.0,
+            public_key: row.1,
+            asked_at,
+            answered_at: row.3.as_deref().and_then(parse_time),
+            final_snr: row.4.map(|value| value as f32),
+            hops: hops
+                .into_iter()
+                .map(|(key_prefix, snr)| TraceHop {
+                    key_prefix,
+                    snr: snr.map(|value| value as f32),
+                })
+                .collect(),
+        });
+    }
+
+    Ok(traces)
+}
+
+/// Reads a hex string back into bytes.
+fn hex_to_bytes(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        return None;
+    }
+
+    (0..text.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&text[index..index + 2], 16).ok())
+        .collect()
+}
+
+/// Whether this is a full public key in the form the API uses.
+fn is_key(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// Four bytes that differ from the last call.
+fn nonce_from_clock() -> [u8; 4] {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.subsec_nanos())
+        .unwrap_or(0);
+
+    nanos.to_le_bytes()
+}
 
 /// Where a node's position comes from.
 ///

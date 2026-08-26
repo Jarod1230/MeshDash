@@ -291,11 +291,12 @@ selbst hat.
   Quelle füllt Lücken.
 - **Ehrlich über die Lücke.** Die Karte sagt, wie viele Knoten sie *nicht*
   zeigt, statt sie stillschweigend wegzulassen.
-- **Traceroute nutzbar machen.** `CMD_SEND_TRACE_PATH` liefert die Stationen
+- [x] **Traceroute als Aktion.** `CMD_SEND_TRACE_PATH` liefert die Stationen
   eines Weges samt Empfangsqualität je Abschnitt — die einzige belegte Quelle
-  für „wer hört wen wie gut" jenseits des eigenen Node. Erst als Aktion und
-  Ergebnisanzeige, dann als Kartenebene. Sie ist zugleich die Datengrundlage,
-  auf der die Triangulation aus Stufe D später aufsetzt.
+  für „wer hört wen wie gut" jenseits des eigenen Node. Auf der Knotenseite
+  als „Weg messen", nicht auf einem Timer. Die Kartenebene daraus folgt in
+  Stufe C; die Messungen sind zugleich die Datengrundlage, auf der die
+  Triangulation aus Stufe D später aufsetzt.
 - **Ein eigenes Advert mit Position senden.** `set_advert_position` gibt es im
   Protokoll längst; wer den eigenen Node verortet, bringt den ersten sicheren
   Punkt auf die Karte — und den Anker, ohne den jede Schätzung frei schwebt.
@@ -361,6 +362,14 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   Verzeichnislisting. Festgehalten, damit die Frage später nicht auf
   „`libudev` einbinden oder keine Portliste" verengt wird — es gibt einen
   dritten Weg.
+- **Ein Kommando ohne Node hängt unbegrenzt.** Wer etwas sendet, während kein
+  Node verbunden ist, wartet ewig: Der Antwort-Timeout im Link greift erst,
+  *nachdem* ein Kommando hinausgegangen ist, und ohne Verbindung geht es gar
+  nicht erst hinaus. Betrifft jeden schreibenden Endpunkt gleichermaßen —
+  Nachricht senden, Weg messen, später Fernadministration. Am laufenden Dienst
+  beobachtet: beide Aufrufe antworten nach zehn Sekunden noch immer nicht. Der
+  saubere Weg wäre, eine Anfrage ohne Verbindung sofort abzulehnen, statt sie
+  in die Warteschlange zu legen.
 - **Achsenbeschriftung bei winzigem Wertebereich.** Zeigt eine Kurve nur
   wenige Millivolt Unterschied, rundet die Y-Achse alle Marken auf denselben
   Text — beim Ausprobieren stand dreimal `4.10` untereinander. Die Zahl der

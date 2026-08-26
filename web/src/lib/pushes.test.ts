@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAdvert, isMessageWaiting, pushOpcode } from './pushes';
+import { isAdvert, isMessageWaiting, isTrace, pushOpcode } from './pushes';
 
 describe('push opcodes', () => {
   it('reads the opcode from the leading byte', () => {
@@ -16,6 +16,11 @@ describe('push opcodes', () => {
   it('recognises the message bell', () => {
     expect(isMessageWaiting('83')).toBe(true);
     expect(isMessageWaiting('80aaaa')).toBe(false);
+  });
+
+  it('recognises a trace answer', () => {
+    expect(isTrace('89')).toBe(true);
+    expect(isTrace('80aaaa')).toBe(false);
   });
 
   it('treats a missing or unreadable payload as no opcode', () => {

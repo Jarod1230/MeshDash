@@ -642,3 +642,32 @@ async fn a_node_without_a_route_cannot_be_traced() {
         Err(TraceError::NoRoute)
     ));
 }
+
+#[tokio::test]
+async fn announcing_ourselves_asks_the_node_to_transmit() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(vec![u8::from(Response::Ok)]),
+    ])
+    .await;
+
+    // The script answers exactly one command. Getting an answer at all means
+    // the frame went out; what is in it is covered by the codec's own tests.
+    send_advert(&context, true).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_node_that_refuses_to_announce_is_reported() {
+    let context = context_with(vec![
+        Step::AwaitSent(1),
+        Step::Emit(vec![u8::from(Response::Err), 1]),
+    ])
+    .await;
+
+    // Silently swallowing this would leave the operator believing the mesh
+    // was told about this node.
+    assert!(matches!(
+        send_advert(&context, false).await,
+        Err(AdvertError::Refused { .. })
+    ));
+}

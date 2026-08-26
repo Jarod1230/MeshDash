@@ -27,7 +27,17 @@ export function TracePanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Three cases, not two: a route with stations can be measured, a direct
+  // one has nothing in between, and an unknown one is not the same as either.
+  // Saying "directly reachable" for an unknown route claims something the
+  // node never said.
   const traceable = contact.stations !== null && contact.stations > 0;
+  const why =
+    contact.stations === null
+      ? 'Zu diesem Knoten ist kein Weg bekannt. Was sich nicht ablaufen lässt, lässt sich auch nicht messen.'
+      : contact.stations === 0
+        ? 'Dieser Knoten ist direkt erreichbar — dazwischen liegt nichts, was sich messen ließe.'
+        : 'Ein Paket läuft den bekannten Weg ab und meldet jede Strecke. Kostet Sendezeit.';
 
   const start = async () => {
     setBusy(true);
@@ -53,11 +63,7 @@ export function TracePanel({
         >
           {busy ? 'wird gesendet …' : 'Weg messen'}
         </button>
-        <span className="text-xs text-mesh-faint">
-          {traceable
-            ? 'Ein Paket läuft den bekannten Weg ab und meldet jede Strecke. Kostet Sendezeit.'
-            : 'Dieser Knoten ist direkt erreichbar — dazwischen liegt nichts, was sich messen ließe.'}
-        </span>
+        <span className="text-xs text-mesh-faint">{why}</span>
       </div>
 
       {error !== null && (

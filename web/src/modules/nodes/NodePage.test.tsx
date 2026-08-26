@@ -230,4 +230,17 @@ describe('Weg messen', () => {
     expect(await screen.findByRole('button', { name: 'Weg messen' })).toBeDisabled();
     expect(screen.getByText(/direkt erreichbar/)).toBeInTheDocument();
   });
+
+  it('says an unknown route is unknown, not direct', async () => {
+    // Seen on real hardware: a contact whose route the node does not know
+    // was described as "directly reachable", which it never said. Two
+    // different statements — one is about the mesh, the other about a gap
+    // in what we know.
+    vi.stubGlobal('fetch', answers({ contacts: [{ ...contact, stations: null }] }));
+    show();
+
+    expect(await screen.findByText(/kein Weg bekannt/)).toBeInTheDocument();
+    expect(screen.queryByText(/direkt erreichbar/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Weg messen' })).toBeDisabled();
+  });
 });

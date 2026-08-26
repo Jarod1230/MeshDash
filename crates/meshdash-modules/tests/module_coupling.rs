@@ -27,12 +27,42 @@ use meshdash_modules::{
 use meshdash_proto::{contact::Contact, opcode::Response};
 use meshdash_transport::mock::{MockTransport, Step};
 
+/// Prefixes a test script with the answer to the session start.
+///
+/// Since the link announces itself on every connection, frame 1 on the wire
+/// is always `CMD_APP_START`. A script written as if the test's own command
+/// came first would have its answers handed to the session start instead.
+/// The `AwaitSent` counts inside the script are shifted by one to match.
+fn after_session_start(script: Vec<Step>) -> Vec<Step> {
+    let mut full = vec![Step::Emit(session_answer())];
+    for step in script {
+        match step {
+            Step::AwaitSent(count) => full.push(Step::AwaitSent(count + 1)),
+            // A dropped link reconnects, and the new connection starts a
+            // session of its own before anything else goes out.
+            Step::Drop(reason) => {
+                full.push(Step::Drop(reason));
+                full.push(Step::Emit(session_answer()));
+            }
+            other => full.push(other),
+        }
+    }
+    full
+}
+
+/// A minimal `RESP_CODE_SELF_INFO`, enough to end the session start.
+fn session_answer() -> Vec<u8> {
+    let mut payload = vec![0u8; 58];
+    payload[0] = u8::from(Response::SelfInfo);
+    payload
+}
+
 /// A context with **both** modules running, which is the point.
 async fn context_with(script: Vec<Step>) -> AppContext {
     let db = Database::open_in_memory().await.unwrap();
     let events = EventBus::new();
     let (link, task) = link::spawn(
-        MockTransport::new(script),
+        MockTransport::new(after_session_start(script)),
         LinkConfig::default(),
         events.clone(),
     );

@@ -31,7 +31,7 @@
 
 use std::time::Duration;
 
-use meshdash_proto::opcode;
+use meshdash_proto::{command, opcode};
 use meshdash_transport::{Transport, TransportError};
 use tokio::{
     sync::{mpsc, oneshot},
@@ -55,6 +55,12 @@ pub struct LinkConfig {
 
     /// How to behave when the connection is gone.
     pub reconnect: ReconnectConfig,
+
+    /// The name this application announces at the start of a session.
+    ///
+    /// The node logs it and nothing more, but it is what an operator sees in
+    /// the node's own log when wondering who is talking to it.
+    pub app_name: String,
 }
 
 impl Default for LinkConfig {
@@ -62,6 +68,7 @@ impl Default for LinkConfig {
         Self {
             response_timeout: Duration::from_secs(5),
             reconnect: ReconnectConfig::default(),
+            app_name: "MeshDash".to_owned(),
         }
     }
 }
@@ -293,7 +300,18 @@ where
                 continue;
             }
 
+            // The session start goes out before anyone is told the node is
+            // there. It is the only source for the node's own key, name and
+            // position — and it resets a half-finished contact listing in the
+            // firmware, so a module that starts fetching contacts on
+            // NodeConnected would have its listing cut off if this came after.
+            let session = self.start_session().await;
+
             self.events.publish(AppEvent::NodeConnected);
+
+            if let Some(payload) = session {
+                self.events.publish(AppEvent::SessionStarted { payload });
+            }
 
             let interruption = self.serve_until_disconnected().await;
             self.events.publish(AppEvent::NodeDisconnected {
@@ -471,6 +489,38 @@ where
         }
     }
 
+    /// Announces this application to the node and returns its answer.
+    ///
+    /// Failing is not fatal: a node that will not answer is still a node worth
+    /// reporting as connected. What is lost is its self-description, and the
+    /// modules that want it simply do not hear about it.
+    async fn start_session(&mut self) -> Option<Vec<u8>> {
+        let frame = match command::app_start(&self.config.app_name) {
+            Ok(frame) => frame,
+            Err(error) => {
+                tracing::error!(%error, "the application name does not fit a frame");
+                return None;
+            }
+        };
+
+        if let Err(error) = self.transport.send(&frame).await {
+            tracing::warn!(%error, "could not start a session with the node");
+            return None;
+        }
+
+        match tokio::time::timeout(self.config.response_timeout, self.await_answer()).await {
+            Ok(Ok(answer)) => Some(answer),
+            Ok(Err(error)) => {
+                tracing::warn!(%error, "the node broke off during the session start");
+                None
+            }
+            Err(_elapsed) => {
+                tracing::warn!("the node did not answer the session start");
+                None
+            }
+        }
+    }
+
     /// Reads until a reply shows up, broadcasting any pushes on the way.
     async fn await_answer(&mut self) -> Result<Vec<u8>, TransportError> {
         loop {
@@ -521,9 +571,40 @@ mod tests {
     }
 
     /// Keeps the actor from ending while a test still expects it to serve.
-    fn idle_after(mut script: Vec<Step>) -> Vec<Step> {
-        script.push(Step::Drop("script finished".into()));
-        script
+    ///
+    /// Every connection now begins with the session start the link sends by
+    /// itself, so the script answers that first. Without it the link would
+    /// wait out its response timeout before serving anything, and every
+    /// caller's answer would be off by one frame.
+    fn idle_after(script: Vec<Step>) -> Vec<Step> {
+        let mut full = vec![Step::Emit(session_answer())];
+        full.extend(script);
+        full.push(Step::Drop("script finished".into()));
+        full
+    }
+
+    /// A minimal `RESP_CODE_SELF_INFO`, enough to end the session start.
+    fn session_answer() -> Vec<u8> {
+        let mut payload = vec![0u8; 58];
+        payload[0] = u8::from(Response::SelfInfo);
+        payload
+    }
+
+    /// The next event that is not the link's own session start.
+    ///
+    /// Every connection now announces one, and no test below is about it.
+    async fn next_event(events: &mut tokio::sync::broadcast::Receiver<AppEvent>) -> AppEvent {
+        loop {
+            match events.recv().await.unwrap() {
+                AppEvent::SessionStarted { .. } => continue,
+                other => return other,
+            }
+        }
+    }
+
+    /// What a test sent, without the session start the link adds.
+    fn commands(sent: &meshdash_transport::mock::SentFrames) -> Vec<Vec<u8>> {
+        sent.snapshot().into_iter().skip(1).collect()
     }
 
     #[tokio::test]
@@ -539,7 +620,7 @@ mod tests {
 
         assert_eq!(Response::from(answer[0]), Response::Ok);
         assert_eq!(
-            sent.snapshot(),
+            commands(&sent),
             vec![frame(u8::from(Command::GetDeviceTime))]
         );
     }
@@ -570,6 +651,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn starts_a_session_before_anyone_is_told_the_node_is_there() {
+        // CMD_APP_START is the only way to learn the node's own key, name and
+        // position — and it resets a half-finished contact listing
+        // (`_iter_started = false` in MyMesh.cpp). A module that starts
+        // fetching contacts on NodeConnected would have its listing cut off
+        // if this went out afterwards.
+        let transport = MockTransport::new(idle_after(vec![]));
+        let sent = transport.sent_frames();
+        let bus = EventBus::new();
+        let (_link, prepared) = prepare(transport, brisk_reconnect(), bus.clone());
+        let mut events = bus.subscribe();
+        let _task = prepared.start();
+
+        let first = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .expect("expected an event")
+            .unwrap();
+        let second = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .expect("expected a second event")
+            .unwrap();
+
+        assert_eq!(first, AppEvent::NodeConnected);
+        assert_eq!(
+            second,
+            AppEvent::SessionStarted {
+                payload: session_answer()
+            }
+        );
+        assert_eq!(
+            sent.snapshot().first().map(|frame| frame[0]),
+            Some(u8::from(Command::AppStart)),
+            "the session start must be the first thing on the wire"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_node_that_will_not_start_a_session_is_still_announced() {
+        // Knowing the node is reachable is worth more than knowing its name.
+        let transport = MockTransport::new(idle_after(vec![]));
+        let bus = EventBus::new();
+        let (_link, prepared) = prepare(transport, brisk_reconnect(), bus.clone());
+        let mut events = bus.subscribe();
+        let _task = prepared.start();
+
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .expect("expected an event")
+                .unwrap(),
+            AppEvent::NodeConnected
+        );
+    }
+
+    #[tokio::test]
     async fn announces_that_the_node_is_reachable() {
         let transport = MockTransport::new(idle_after(vec![]));
         let bus = EventBus::new();
@@ -577,7 +713,7 @@ mod tests {
 
         let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
 
-        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
     }
 
     #[tokio::test]
@@ -588,9 +724,9 @@ mod tests {
 
         let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
 
-        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         assert!(matches!(
-            events.recv().await.unwrap(),
+            next_event(&mut events).await,
             AppEvent::NodeDisconnected { .. }
         ));
     }
@@ -603,9 +739,9 @@ mod tests {
 
         let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
 
-        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         assert_eq!(
-            events.recv().await.unwrap(),
+            next_event(&mut events).await,
             AppEvent::Push {
                 payload: vec![u8::from(Push::Advert)]
             }
@@ -634,9 +770,9 @@ mod tests {
             "the push must not be mistaken for the answer"
         );
 
-        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         assert_eq!(
-            events.recv().await.unwrap(),
+            next_event(&mut events).await,
             AppEvent::Push {
                 payload: vec![u8::from(Push::MsgWaiting)]
             },
@@ -712,9 +848,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(frames.len(), 2, "the push is not part of the answer");
-        assert_eq!(events.recv().await.unwrap(), AppEvent::NodeConnected);
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         assert_eq!(
-            events.recv().await.unwrap(),
+            next_event(&mut events).await,
             AppEvent::Push {
                 payload: vec![u8::from(Push::MsgWaiting)]
             }
@@ -781,6 +917,8 @@ mod tests {
         // Drops once, then serves again — as after replugging.
         let transport = MockTransport::new(idle_after(vec![
             Step::Drop("cable pulled".into()),
+            // Every connection starts a session, the second one included.
+            Step::Emit(session_answer()),
             emit(u8::from(Response::Ok)),
         ]));
         let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());

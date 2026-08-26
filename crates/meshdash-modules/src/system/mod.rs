@@ -25,16 +25,17 @@ use meshdash_core::{
     event::AppEvent,
     module::{AppContext, Module},
 };
-use meshdash_proto::device::{self, DeviceInfo};
+use meshdash_proto::device::{self, DeviceInfo, SelfInfo};
 use serde::{Deserialize, Serialize};
 
 use crate::query::{BadTimeRange, TimeRange, Window};
 
 /// Schema of this module. Versions count from 1, per module.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "connection history and node identity",
-    sql: "
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "connection history and node identity",
+        sql: "
         CREATE TABLE system_connection_events (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             at         TEXT    NOT NULL,
@@ -58,14 +59,159 @@ const MIGRATIONS: &[Migration] = &[Migration {
             repeater_enabled      INTEGER
         );
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        description: "what the node says about itself at the start of a session",
+        sql: "
+        -- Answered only by CMD_APP_START, which the link sends once per
+        -- connection. Kept apart from system_node_info because that describes
+        -- the hardware and firmware, while this describes the node's identity
+        -- in the mesh — its key, its name, where it says it is.
+        CREATE TABLE system_self (
+            id                 INTEGER PRIMARY KEY CHECK (id = 1),
+            seen_at            TEXT    NOT NULL,
+            public_key         TEXT    NOT NULL,
+            name               TEXT    NOT NULL,
+            latitude           REAL,
+            longitude          REAL,
+            transmit_power_dbm INTEGER NOT NULL,
+            max_power_dbm      INTEGER NOT NULL,
+            frequency_khz      INTEGER NOT NULL,
+            bandwidth_hz       INTEGER NOT NULL,
+            spreading_factor   INTEGER NOT NULL,
+            coding_rate        INTEGER NOT NULL
+        );
+    ",
+    },
+];
+
+/// What the node says about itself in the mesh.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct SelfDescription {
+    /// When the node last said it.
+    pub seen_at: DateTime<Utc>,
+    /// The node's own public key, lowercase hex.
+    pub public_key: String,
+    /// The name it advertises.
+    pub name: String,
+    /// Latitude in degrees, or `None` when the node has none set.
+    pub latitude: Option<f64>,
+    /// Longitude in degrees.
+    pub longitude: Option<f64>,
+    /// Transmit power in dBm.
+    pub transmit_power_dbm: u8,
+    /// The highest the board allows.
+    pub max_power_dbm: u8,
+    /// Frequency in kilohertz — 869618 means 869.618 MHz.
+    ///
+    /// Kilohertz here and hertz in `bandwidth_hz`: two neighbouring fields in
+    /// two units, exactly as the firmware sends them. Converting one silently
+    /// would make the pair look consistent and be wrong.
+    pub frequency_khz: u32,
+    /// Bandwidth in hertz — 62500 means 62.5 kHz.
+    pub bandwidth_hz: u32,
+    /// LoRa spreading factor.
+    pub spreading_factor: u8,
+    /// LoRa coding rate.
+    pub coding_rate: u8,
+}
+
+/// Stores what the node said about itself.
+async fn store_self(context: &AppContext, info: &SelfInfo) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO system_self
+            (id, seen_at, public_key, name, latitude, longitude, transmit_power_dbm,
+             max_power_dbm, frequency_khz, bandwidth_hz, spreading_factor, coding_rate)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET
+            seen_at = excluded.seen_at,
+            public_key = excluded.public_key,
+            name = excluded.name,
+            latitude = excluded.latitude,
+            longitude = excluded.longitude,
+            transmit_power_dbm = excluded.transmit_power_dbm,
+            max_power_dbm = excluded.max_power_dbm,
+            frequency_khz = excluded.frequency_khz,
+            bandwidth_hz = excluded.bandwidth_hz,
+            spreading_factor = excluded.spreading_factor,
+            coding_rate = excluded.coding_rate",
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(to_hex(&info.public_key))
+    .bind(&info.name)
+    // Micro-degrees on the wire, degrees here — the same conversion the
+    // contacts get, so a position means the same thing wherever it is read.
+    .bind(info.latitude.map(|value| f64::from(value) / 1e6))
+    .bind(info.longitude.map(|value| f64::from(value) / 1e6))
+    .bind(i64::from(info.transmit_power_dbm))
+    .bind(i64::from(info.max_transmit_power_dbm))
+    .bind(i64::from(info.frequency_khz))
+    .bind(i64::from(info.bandwidth_hz))
+    .bind(i64::from(info.spreading_factor))
+    .bind(i64::from(info.coding_rate))
+    .execute(context.db.pool())
+    .await?;
+
+    Ok(())
+}
+
+/// Reads back what the node last said about itself.
+pub async fn read_self(context: &AppContext) -> Result<Option<SelfDescription>, sqlx::Error> {
+    type Row = (
+        String,
+        String,
+        String,
+        Option<f64>,
+        Option<f64>,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    );
+
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT seen_at, public_key, name, latitude, longitude, transmit_power_dbm,
+                max_power_dbm, frequency_khz, bandwidth_hz, spreading_factor, coding_rate
+         FROM system_self WHERE id = 1",
+    )
+    .fetch_optional(context.db.pool())
+    .await?;
+
+    Ok(row.and_then(|row| {
+        Some(SelfDescription {
+            seen_at: parse_time(&row.0)?,
+            public_key: row.1,
+            name: row.2,
+            latitude: row.3,
+            longitude: row.4,
+            transmit_power_dbm: row.5 as u8,
+            max_power_dbm: row.6 as u8,
+            frequency_khz: row.7 as u32,
+            bandwidth_hz: row.8 as u32,
+            spreading_factor: row.9 as u8,
+            coding_rate: row.10 as u8,
+        })
+    }))
+}
+
+/// Turns bytes into lowercase hex, as the API spells binary data.
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes.iter().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    })
+}
 
 /// Reports whether the node is reachable, and what it says about itself.
 #[derive(Debug, Default)]
 pub struct SystemModule;
 
 /// What `/api/v1/system/status` answers.
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, PartialEq)]
 pub struct SystemStatus {
     /// Whether the link currently holds a connection.
     pub connected: bool,
@@ -75,6 +221,11 @@ pub struct SystemStatus {
     pub reason: Option<String>,
     /// What the node last reported about itself.
     pub node: Option<NodeIdentity>,
+    /// Who the node is in the mesh: key, name, position, radio settings.
+    ///
+    /// `None` until a session start was answered — an older firmware or a
+    /// node that stayed silent leaves this empty, and the rest still works.
+    pub node_self: Option<SelfDescription>,
 }
 
 /// The node's own description, as stored.
@@ -150,8 +301,25 @@ async fn handle(context: &AppContext, event: AppEvent) {
             if let Err(error) = record_connection(context, true, None).await {
                 tracing::error!(%error, "could not record that the node connected");
             }
-            refresh_identity(context).await;
+            // On its own task, because asking means waiting for the node.
+            // Awaited here, this module would read no further events until
+            // the answer came — and the session start that follows right
+            // behind would sit in the queue behind a five-second timeout.
+            let context = context.clone();
+            tokio::spawn(async move {
+                refresh_identity(&context).await;
+            });
         }
+        // The node's answer to the session start: its own key, name,
+        // position and radio settings. Nothing else returns them.
+        AppEvent::SessionStarted { payload } => match SelfInfo::parse(&payload) {
+            Ok(info) => {
+                if let Err(error) = store_self(context, &info).await {
+                    tracing::error!(%error, "could not store what the node says about itself");
+                }
+            }
+            Err(error) => tracing::warn!(%error, "could not read the node's self description"),
+        },
         AppEvent::NodeDisconnected { reason } => {
             if let Err(error) = record_connection(context, false, Some(&reason)).await {
                 tracing::error!(%error, "could not record that the node disconnected");
@@ -280,6 +448,7 @@ pub async fn read_status(context: &AppContext) -> Result<SystemStatus, sqlx::Err
         since,
         reason,
         node: read_identity(context).await?,
+        node_self: read_self(context).await?,
     })
 }
 

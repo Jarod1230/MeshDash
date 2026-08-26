@@ -17,12 +17,42 @@ use meshdash_transport::mock::{MockTransport, Step};
 
 use super::*;
 
+/// Prefixes a test script with the answer to the session start.
+///
+/// Since the link announces itself on every connection, frame 1 on the wire
+/// is always `CMD_APP_START`. A script written as if the test's own command
+/// came first would have its answers handed to the session start instead.
+/// The `AwaitSent` counts inside the script are shifted by one to match.
+fn after_session_start(script: Vec<Step>) -> Vec<Step> {
+    let mut full = vec![Step::Emit(session_answer())];
+    for step in script {
+        match step {
+            Step::AwaitSent(count) => full.push(Step::AwaitSent(count + 1)),
+            // A dropped link reconnects, and the new connection starts a
+            // session of its own before anything else goes out.
+            Step::Drop(reason) => {
+                full.push(Step::Drop(reason));
+                full.push(Step::Emit(session_answer()));
+            }
+            other => full.push(other),
+        }
+    }
+    full
+}
+
+/// A minimal `RESP_CODE_SELF_INFO`, enough to end the session start.
+fn session_answer() -> Vec<u8> {
+    let mut payload = vec![0u8; 58];
+    payload[0] = u8::from(Response::SelfInfo);
+    payload
+}
+
 /// Builds a context whose node replies with the given script.
 async fn context_with(script: Vec<Step>) -> AppContext {
     let db = Database::open_in_memory().await.unwrap();
     let events = EventBus::new();
     let (link, _task) = link::spawn(
-        MockTransport::new(script),
+        MockTransport::new(after_session_start(script)),
         LinkConfig::default(),
         events.clone(),
     );
@@ -162,6 +192,7 @@ async fn writes_down_what_the_link_reports() {
 async fn asks_the_node_who_it_is_once_connected() {
     // The node answers only once asked — otherwise the idle reader would
     // swallow the answer before the question was sent.
+    //
     let context = context_with(vec![
         Step::AwaitSent(1),
         Step::Emit(device_info_frame()),
@@ -266,4 +297,79 @@ fn caps_what_a_request_may_ask_for() {
         .effective_limit(),
         1
     );
+}
+
+/// The node's answer to a session start, as the firmware builds it.
+fn self_info_frame() -> Vec<u8> {
+    let mut payload = vec![0u8; 58];
+    payload[0] = u8::from(Response::SelfInfo);
+    payload[1] = 1; // ADV_TYPE_CHAT
+    payload[2] = 22; // transmit power
+    payload[3] = 30; // what the board allows
+    payload[4..36].copy_from_slice(&[0xEE; 32]);
+    payload[36..40].copy_from_slice(&52_520_008_i32.to_le_bytes());
+    payload[40..44].copy_from_slice(&13_404_954_i32.to_le_bytes());
+    payload[48..52].copy_from_slice(&869_618_u32.to_le_bytes());
+    payload[52..56].copy_from_slice(&62_500_u32.to_le_bytes());
+    payload[56] = 11;
+    payload[57] = 5;
+    payload.extend_from_slice(b"DB0MSH");
+    payload
+}
+
+#[tokio::test]
+async fn the_node_says_who_it_is_when_a_session_starts() {
+    let context = context_with(vec![]).await;
+
+    context.events.publish(AppEvent::SessionStarted {
+        payload: self_info_frame(),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let described = read_self(&context).await.unwrap().unwrap();
+    assert_eq!(described.name, "DB0MSH");
+    assert_eq!(described.public_key, "ee".repeat(32));
+    assert_eq!(described.latitude, Some(52.520008));
+    assert_eq!(described.transmit_power_dbm, 22);
+    // Kilohertz and hertz, side by side, exactly as the firmware sends them.
+    assert_eq!(described.frequency_khz, 869_618);
+    assert_eq!(described.bandwidth_hz, 62_500);
+}
+
+#[tokio::test]
+async fn a_node_without_a_position_leaves_it_empty() {
+    let context = context_with(vec![]).await;
+    let mut frame = self_info_frame();
+    // Zero is the firmware's "unset", not a spot in the Gulf of Guinea.
+    frame[36..44].fill(0);
+
+    context
+        .events
+        .publish(AppEvent::SessionStarted { payload: frame });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let described = read_self(&context).await.unwrap().unwrap();
+    assert_eq!(described.latitude, None);
+    assert_eq!(described.longitude, None);
+}
+
+#[tokio::test]
+async fn a_second_session_replaces_what_the_first_said() {
+    let context = context_with(vec![]).await;
+    context.events.publish(AppEvent::SessionStarted {
+        payload: self_info_frame(),
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let mut renamed = self_info_frame();
+    renamed.truncate(58);
+    renamed.extend_from_slice(b"DB0NEU");
+    context
+        .events
+        .publish(AppEvent::SessionStarted { payload: renamed });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // One node per instance, so one row — a rename must not leave two.
+    let described = read_self(&context).await.unwrap().unwrap();
+    assert_eq!(described.name, "DB0NEU");
 }

@@ -30,6 +30,18 @@ pub enum AppEvent {
     /// The link opened a connection to the node.
     NodeConnected,
 
+    /// The node answered the session start with its own description.
+    ///
+    /// Sent right after [`AppEvent::NodeConnected`] and only when the node
+    /// answered. The payload is `RESP_CODE_SELF_INFO`, untouched — the core
+    /// does not read it. It carries the node's own key, name, position and
+    /// radio settings, which no other command returns.
+    SessionStarted {
+        /// Raw payload of the frame, first byte included.
+        #[serde(serialize_with = "as_hex")]
+        payload: Vec<u8>,
+    },
+
     /// The connection to the node ended.
     NodeDisconnected {
         /// What ended it, for display and logging.

@@ -14,6 +14,41 @@ use meshdash_proto::opcode::Push;
 
 use super::*;
 
+/// How many commands a test sent, without the link's own session start.
+fn commands_sent(record: &SentFrames) -> usize {
+    record.len().saturating_sub(1)
+}
+
+/// Prefixes a test script with the answer to the session start.
+///
+/// Since the link announces itself on every connection, frame 1 on the wire
+/// is always `CMD_APP_START`. A script written as if the test's own command
+/// came first would have its answers handed to the session start instead.
+/// The `AwaitSent` counts inside the script are shifted by one to match.
+fn after_session_start(script: Vec<Step>) -> Vec<Step> {
+    let mut full = vec![Step::Emit(session_answer())];
+    for step in script {
+        match step {
+            Step::AwaitSent(count) => full.push(Step::AwaitSent(count + 1)),
+            // A dropped link reconnects, and the new connection starts a
+            // session of its own before anything else goes out.
+            Step::Drop(reason) => {
+                full.push(Step::Drop(reason));
+                full.push(Step::Emit(session_answer()));
+            }
+            other => full.push(other),
+        }
+    }
+    full
+}
+
+/// A minimal `RESP_CODE_SELF_INFO`, enough to end the session start.
+fn session_answer() -> Vec<u8> {
+    let mut payload = vec![0u8; 58];
+    payload[0] = u8::from(Response::SelfInfo);
+    payload
+}
+
 async fn context_with(script: Vec<Step>) -> AppContext {
     context_and_record_with(script).await.0
 }
@@ -22,7 +57,7 @@ async fn context_with(script: Vec<Step>) -> AppContext {
 async fn context_and_record_with(script: Vec<Step>) -> (AppContext, SentFrames) {
     let db = Database::open_in_memory().await.unwrap();
     let events = EventBus::new();
-    let transport = MockTransport::new(script);
+    let transport = MockTransport::new(after_session_start(script));
     let record = transport.sent_frames();
     let (link, _task) = link::spawn(transport, LinkConfig::default(), events.clone());
     let context = AppContext {
@@ -209,7 +244,7 @@ async fn stops_asking_when_the_node_answers_something_else() {
         context_and_record_with(answers_wrongly_forever(vec![u8::from(Response::Ok)])).await;
 
     assert_eq!(drain_messages(&context).await.unwrap(), 0);
-    assert_eq!(sent.len(), 1, "asked more than once");
+    assert_eq!(commands_sent(&sent), 1, "asked more than once");
 }
 
 #[tokio::test]
@@ -218,7 +253,7 @@ async fn stops_asking_when_the_node_reports_an_error() {
         context_and_record_with(answers_wrongly_forever(vec![u8::from(Response::Err), 2])).await;
 
     assert_eq!(drain_messages(&context).await.unwrap(), 0);
-    assert_eq!(sent.len(), 1, "asked more than once");
+    assert_eq!(commands_sent(&sent), 1, "asked more than once");
 }
 
 #[tokio::test]
@@ -239,7 +274,7 @@ async fn gives_up_on_a_node_that_never_runs_out_of_messages() {
         drain_messages(&context).await.unwrap(),
         MAX_MESSAGES_PER_DRAIN
     );
-    assert_eq!(sent.len(), MAX_MESSAGES_PER_DRAIN);
+    assert_eq!(commands_sent(&sent), MAX_MESSAGES_PER_DRAIN);
 }
 
 /// A V3 channel message as the firmware lays it out.

@@ -12,6 +12,19 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Der Node stellt sich vor.** MeshDash meldet sich beim Verbinden am Node an
+  (`CMD_APP_START`) und erfährt dadurch dessen eigenen Schlüssel, Namen,
+  Position, Sendeleistung und Funkparameter — Angaben, die kein anderes
+  Kommando liefert. Sie stehen auf der Übersichtsseite unter „Dieser Node im
+  Mesh"; die Position ist der erste sichere Punkt für die Karte.
+
+### Fixed
+
+- **`system` verarbeitete während einer Abfrage keine Ereignisse.** Solange die
+  Geräteabfrage lief, las das Modul nichts weiter vom Bus — bei einem Node, der
+  nicht antwortet, fünf Sekunden lang. Was in dieser Zeit eintraf, wurde erst
+  danach oder gar nicht verarbeitet.
+
 - **Weg messen.** Auf der Knotenseite lässt sich der bekannte Weg zu einem
   Knoten ablaufen — Station für Station, mit Empfangsqualität je Strecke.
   Das ist die belegte Quelle dafür, wie zwei *andere* Knoten einander hören;

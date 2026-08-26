@@ -13,6 +13,28 @@ interface SystemStatus {
   readonly since: string | null;
   readonly reason: string | null;
   readonly node: NodeIdentity | null;
+  readonly node_self: SelfDescription | null;
+}
+
+/**
+ * Who the node is in the mesh, as it says itself.
+ *
+ * Answered only at the start of a session, and by nothing else — this is the
+ * one place the node's own key, name and position come from.
+ */
+interface SelfDescription {
+  readonly seen_at: string;
+  readonly public_key: string;
+  readonly name: string;
+  readonly latitude: number | null;
+  readonly longitude: number | null;
+  readonly transmit_power_dbm: number;
+  readonly max_power_dbm: number;
+  /** Kilohertz. The neighbouring bandwidth is in hertz — the firmware's doing. */
+  readonly frequency_khz: number;
+  readonly bandwidth_hz: number;
+  readonly spreading_factor: number;
+  readonly coding_rate: number;
 }
 
 interface NodeIdentity {
@@ -150,6 +172,46 @@ export function SystemPage() {
           <More onClick={history.loadMore} loading={history.loadingMore} what="Verbindungswechsel" />
         )}
       </section>
+
+      {status.data.node_self !== null && (
+        <section className="rounded-lg border border-mesh-border bg-mesh-surface p-5">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h2 className="text-sm text-mesh-text">Dieser Node im Mesh</h2>
+            <span className="text-xs text-mesh-faint">wie er sich selbst vorstellt</span>
+          </div>
+          <p className="mt-1 text-lg text-mesh-text">{status.data.node_self.name}</p>
+          <p className="tabular mt-0.5 text-xs break-all text-mesh-faint">
+            {status.data.node_self.public_key}
+          </p>
+
+          <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            <Fact
+              term="Position"
+              value={
+                status.data.node_self.latitude === null || status.data.node_self.longitude === null
+                  ? 'meldet keine'
+                  : `${status.data.node_self.latitude.toFixed(5)}, ${status.data.node_self.longitude.toFixed(5)}`
+              }
+            />
+            <Fact
+              term="Sendeleistung"
+              value={`${status.data.node_self.transmit_power_dbm} von ${status.data.node_self.max_power_dbm} dBm`}
+            />
+            {/* Kilohertz and hertz side by side, as the firmware sends them.
+                Both are shown in the unit an operator reads on the radio. */}
+            <Fact
+              term="Frequenz"
+              value={`${(status.data.node_self.frequency_khz / 1000).toFixed(3)} MHz`}
+            />
+            <Fact
+              term="Bandbreite"
+              value={`${(status.data.node_self.bandwidth_hz / 1000).toFixed(1)} kHz`}
+            />
+            <Fact term="Spreizfaktor" value={String(status.data.node_self.spreading_factor)} />
+            <Fact term="Coderate" value={`4/${status.data.node_self.coding_rate}`} />
+          </dl>
+        </section>
+      )}
 
       {node === null && (
         <section className="rounded-lg border border-mesh-border bg-mesh-surface">

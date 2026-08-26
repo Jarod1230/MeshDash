@@ -297,9 +297,12 @@ selbst hat.
   als „Weg messen", nicht auf einem Timer. Die Kartenebene daraus folgt in
   Stufe C; die Messungen sind zugleich die Datengrundlage, auf der die
   Triangulation aus Stufe D später aufsetzt.
+- [x] **Den eigenen Node kennen.** `CMD_APP_START` beim Verbinden bringt
+  dessen Schlüssel, Namen, Position und Funkparameter — anders nicht zu
+  bekommen. Damit steht der erste sichere Punkt für die Karte fest.
 - **Ein eigenes Advert mit Position senden.** `set_advert_position` gibt es im
-  Protokoll längst; wer den eigenen Node verortet, bringt den ersten sicheren
-  Punkt auf die Karte — und den Anker, ohne den jede Schätzung frei schwebt.
+  Protokoll längst; wer den eigenen Node verortet, bringt seine Position auch
+  ins Mesh — und den Anker, ohne den jede Schätzung frei schwebt.
 
 ### Stufe C — die Karte als Leitansicht
 
@@ -392,12 +395,6 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   MeshDash fragt deshalb niemanden, obwohl der Node schon 25 Kontakte kennt —
   am echten Gerät beobachtet. Der saubere Weg wäre, dass `nodes` seine Kontakte
   als Ereignis veröffentlicht ([ADR-0007](decisions/0007-modul-ereignisse.md)).
-- **MeshDash meldet sich nie beim Node an.** `CMD_APP_START` wird nirgends
-  gesendet — es gibt es bisher nur in Tests. Damit erfährt der Dienst nie den
-  **eigenen** Schlüssel, die eigene Position und die Sendeleistung, denn die
-  stehen ausschließlich in der Antwort darauf (`RESP_CODE_SELF_INFO`). Die
-  Baufunktion existiert jetzt; angeschlossen wird sie, sobald die Antwort
-  gelesen werden kann.
 - Import bestehender Verläufe aus anderen MeshCore-Clients
 - Export als CSV oder für Grafana/Prometheus
 - Pfadwechsel über die Zeit sichtbar machen — vermutlich das nützlichste

@@ -19,6 +19,19 @@ const STATUS = {
     group_channels: 8,
     repeater_enabled: false,
   },
+  node_self: {
+    seen_at: new Date(Date.now() - 120 * 1000).toISOString(),
+    public_key: 'ee'.repeat(32),
+    name: 'DB0MSH',
+    latitude: 52.520008,
+    longitude: 13.404954,
+    transmit_power_dbm: 22,
+    max_power_dbm: 30,
+    frequency_khz: 869_618,
+    bandwidth_hz: 62_500,
+    spreading_factor: 11,
+    coding_rate: 5,
+  },
 };
 
 /** Two seconds offline, six hours ago — enough for the band to have a notch. */
@@ -172,5 +185,23 @@ describe('App', () => {
     expect(await screen.findByText('Verbindung abgerissen')).toBeInTheDocument();
     expect(screen.getByText('Kabel gezogen')).toBeInTheDocument();
     expect(screen.getByText('1 im geladenen Zeitraum')).toBeInTheDocument();
+  });
+});
+
+describe('Dieser Node im Mesh', () => {
+  it('shows what the node says about itself, in the units an operator reads', async () => {
+    vi.stubGlobal('fetch', answerWith(200, STATUS));
+
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('DB0MSH')).toBeInTheDocument();
+    // Kilohertz on the wire, megahertz on the dial.
+    expect(screen.getByText('869.618 MHz')).toBeInTheDocument();
+    expect(screen.getByText('62.5 kHz')).toBeInTheDocument();
+    expect(screen.getByText('22 von 30 dBm')).toBeInTheDocument();
   });
 });

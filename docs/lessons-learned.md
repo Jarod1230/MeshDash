@@ -772,3 +772,31 @@ Datenbanken getroffen — deshalb steht in
 [`conventions.md`](conventions.md), dass Migrationen nach dem Merge nicht mehr
 geändert werden. Vor dem Merge dürfen sie es, und genau dann entsteht diese
 Falle.
+
+## 2026-08-26 — Zum zweiten Mal: eine Ereignisschleife, die auf den Node wartet
+
+**Was passierte.** Der Node beantwortete den Sitzungsstart — am Mitschnitt des
+Gegenübers nachweisbar —, und in der Datenbank stand trotzdem nichts. Keine
+Fehlermeldung, keine Warnung.
+
+Die Ursache war dieselbe wie eine Woche zuvor im Modul `nodes`: Die
+Ereignisschleife von `system` wartete `refresh_identity` direkt ab. Solange
+der Node nicht antwortete — hier fünf Sekunden bis zum Zeitüberlauf —, las das
+Modul **kein weiteres Ereignis**. Der Sitzungsstart stand hinter dem Zeitüberlauf
+in der Warteschlange, und der Link warf die Verbindung inzwischen weg.
+
+**Warum es zweimal passiert ist.** Beim ersten Mal wurde die eine Stelle
+behoben, an der es auffiel. Die zweite Stelle sah harmlos aus: „nur eine
+Abfrage beim Verbinden". Beide Male ist der Fehler derselbe — in einer Schleife,
+die Ereignisse liest, darf nichts stehen, das auf das Netz wartet.
+
+**Was daraus folgt.** Wer in einem Modul auf ein Ereignis hin etwas über den
+Link schickt, tut das in einer eigenen Task. Es gibt keinen Fall, in dem die
+Ereignisschleife auf eine Antwort warten sollte: Was sie währenddessen verpasst,
+kommt nicht wieder.
+
+**Woran es auffiel — und woran nicht.** Kein Test hat es gezeigt. Beide Male
+war es ein Lauf gegen ein echtes Gegenüber; beim zweiten Mal ein selbstgebauter
+Node aus dreißig Zeilen Python, der genau ein Kommando beantwortet. Ein
+Testtransport, der Antworten in Millisekunden liefert, kann diesen Fehler nicht
+sichtbar machen — die Wartezeit ist die Bedingung dafür.

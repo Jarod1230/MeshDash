@@ -40,7 +40,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Query, State},
-    routing::get,
+    routing::{get, post},
 };
 use chrono::{DateTime, Utc};
 use meshdash_core::{
@@ -274,7 +274,8 @@ impl Module for NodesModule {
                 .route("/adverts", get(list_adverts))
                 .route("/route-changes", get(list_route_changes))
                 .route("/presence", get(node_presence))
-                .route("/traces", get(list_traces).post(post_trace)),
+                .route("/traces", get(list_traces).post(post_trace))
+                .route("/advert", post(post_advert)),
         )
     }
 
@@ -914,6 +915,80 @@ type ContactRow = (
 );
 
 type TraceRow = (i64, String, String, Option<String>, Option<f64>);
+
+/// Why the node would not announce this node to the mesh.
+#[derive(Debug)]
+pub enum AdvertError {
+    /// The node answered with something other than "done".
+    Refused {
+        /// What it answered with, first byte included.
+        answer: Vec<u8>,
+    },
+    /// The node could not be reached.
+    Link(String),
+}
+
+impl axum::response::IntoResponse for AdvertError {
+    fn into_response(self) -> axum::response::Response {
+        let message = match self {
+            Self::Refused { answer } => {
+                tracing::warn!(opcode = answer.first(), "the node refused to advertise");
+                "the node refused to announce itself"
+            }
+            Self::Link(error) => {
+                tracing::warn!(%error, "could not ask the node to advertise");
+                "the node could not be reached"
+            }
+        };
+
+        (
+            axum::http::StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({
+                "error": { "code": "node_refused", "message": message }
+            })),
+        )
+            .into_response()
+    }
+}
+
+/// How far an advert should travel.
+#[derive(Debug, Deserialize, Default)]
+pub struct AdvertRequest {
+    /// Through the whole mesh, or to direct neighbours only.
+    ///
+    /// Flooded is what makes a node known beyond earshot, and it is what
+    /// every repeater in range will retransmit — the more expensive of the
+    /// two, in a band everybody shares.
+    #[serde(default)]
+    flood: bool,
+}
+
+async fn post_advert(
+    State(context): State<AppContext>,
+    Json(request): Json<AdvertRequest>,
+) -> Result<axum::http::StatusCode, AdvertError> {
+    send_advert(&context, request.flood).await?;
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Asks the node to announce itself to the mesh.
+///
+/// This transmits. It happens because somebody asked for it — there is no
+/// timer behind it, and there should not be: a node that advertises itself
+/// every few minutes fills the band without telling anyone anything new.
+pub async fn send_advert(context: &AppContext, flood: bool) -> Result<(), AdvertError> {
+    let answer = context
+        .link
+        .request(command::send_self_advert(flood))
+        .await
+        .map_err(|error| AdvertError::Link(error.to_string()))?;
+
+    match answer.first().map(|&byte| Response::from(byte)) {
+        Some(Response::Ok) => Ok(()),
+        _ => Err(AdvertError::Refused { answer }),
+    }
+}
 
 /// One traced route and how well each station heard the one before it.
 #[derive(Debug, Serialize, PartialEq)]

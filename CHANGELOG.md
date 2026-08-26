@@ -12,6 +12,18 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Sich dem Mesh vorstellen.** `POST /api/v1/nodes/advert` lässt den Node ein
+  eigenes Advert senden — geflutet oder nur an die direkten Nachbarn. Das ist
+  der Weg, von dem Mesh gefunden zu werden; es kostet Sendezeit und geschieht
+  deshalb nur auf Anforderung.
+
+### Fixed
+
+- **„Weg unbekannt" hieß auf der Knotenseite „direkt erreichbar".** Ein Knoten,
+  zu dem der Node keine Route kennt, wurde beschrieben, als läge nichts
+  dazwischen. Das sind zwei verschiedene Aussagen — eine über das Mesh, die
+  andere über eine Lücke im eigenen Wissen.
+
 - **Der Node stellt sich vor.** MeshDash meldet sich beim Verbinden am Node an
   (`CMD_APP_START`) und erfährt dadurch dessen eigenen Schlüssel, Namen,
   Position, Sendeleistung und Funkparameter — Angaben, die kein anderes

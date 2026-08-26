@@ -878,11 +878,32 @@ self_id.copyHashTo(&packet->path[n * packet->getPathHashSize()], packet->getPath
 packet->setPathHashCount(n + 1);
 ```
 
-**Ein Byte ist wenig.** Bei 256 möglichen Werten teilen sich in einem Mesh mit
-einigen Dutzend Knoten mit hoher Wahrscheinlichkeit zwei dasselbe Präfix — das
-Geburtstagsproblem, dasselbe wie beim Sechs-Byte-Absenderpräfix einer Nachricht.
-Wer aus einem Hash einen Knoten macht, muss den Fall „mehrere passen" behandeln
-und darf nicht raten.
+**Wie breit, entscheidet der Absender.** Ein bis drei Byte, und das Paket sagt
+es selbst — die Breite steht in den oberen zwei Bits des Pfadlängenbytes. Gesetzt
+wird sie beim Fluten:
+
+```cpp
+sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);   // MyMesh.cpp
+```
+
+`path_hash_mode` kommt von `CMD_SET_PATH_HASH_MODE` (0 bis 2, größere Werte
+weist die Firmware ab). Eine weiterleitende Station übernimmt die Breite des
+Pakets, nicht ihre eigene Einstellung — `packet->getPathHashSize()` in
+`Mesh::routeRecvPacket()`. Ein Paket bleibt darin also durchgehend
+gleichförmig.
+
+`PATH_HASH_SIZE` (1) ist **nur** die Vorgabe der einargumentigen
+`copyHashTo()`, nicht das, was ankommt. Stufe `HARDWARE`, am 2026-08-26 an
+einem echten Mesh gemessen: **zwei Byte je Station** in jedem gehörten Paket,
+also `path_hash_mode = 1` beim Absender.
+
+**Ein Präfix ist keine Identität.** Wie schwach der Treffer ist, hängt an der
+Breite: Bei einem Byte, 256 Werten, teilen sich in einem Mesh mit einigen
+Dutzend Knoten mit hoher Wahrscheinlichkeit zwei dasselbe Präfix — das
+Geburtstagsproblem, dasselbe wie beim Sechs-Byte-Absenderpräfix einer
+Nachricht. Bei drei Byte ist eine Kollision entlegen. In beiden Fällen gilt:
+Wer aus einem Präfix einen Knoten macht, muss den Fall „mehrere passen"
+behandeln und darf nicht raten.
 
 Weitere Konstanten aus `src/MeshCore.h`: `MAX_PATH_SIZE` 64, `PUB_KEY_SIZE` 32,
 `MAX_PACKET_PAYLOAD` 184, `MAX_HASH_SIZE` 8.

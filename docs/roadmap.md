@@ -300,9 +300,11 @@ selbst hat.
 - [x] **Den eigenen Node kennen.** `CMD_APP_START` beim Verbinden bringt
   dessen Schlüssel, Namen, Position und Funkparameter — anders nicht zu
   bekommen. Damit steht der erste sichere Punkt für die Karte fest.
-- **Ein eigenes Advert mit Position senden.** `set_advert_position` gibt es im
-  Protokoll längst; wer den eigenen Node verortet, bringt seine Position auch
-  ins Mesh — und den Anker, ohne den jede Schätzung frei schwebt.
+- [x] **Ein eigenes Advert senden.** `POST /api/v1/nodes/advert`, geflutet oder
+  nur an die Nachbarn. Am 2026-08-26 am echten Mesh ausprobiert.
+- **Die eigene Position setzen.** `set_advert_position` gibt es im Protokoll
+  längst; wer den eigenen Node verortet, bringt seine Position ins Mesh — und
+  den Anker, ohne den jede Schätzung frei schwebt.
 
 ### Stufe C — die Karte als Leitansicht
 
@@ -373,6 +375,17 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   beobachtet: beide Aufrufe antworten nach zehn Sekunden noch immer nicht. Der
   saubere Weg wäre, eine Anfrage ohne Verbindung sofort abzulehnen, statt sie
   in die Warteschlange zu legen.
+- **Beschriftungen auf der Karte überlagern sich.** Zwei Knoten fünfzig Meter
+  auseinander tragen zwei Namen übereinander, die keiner mehr lesen kann — am
+  2026-08-26 an einem echten Mesh gesehen, wo genau das der Normalfall war.
+  Beschriftungen müssen einander ausweichen, sich bei Enge zu einer Gruppe
+  zusammenfassen oder erst beim Hineinzoomen erscheinen. Gehört zu Stufe C.
+- **Einstellungen gehören in die Oberfläche.** Nachbarabfrage, Intervalle,
+  später der Kartendienst und was sonst noch dazukommt, stehen heute in der
+  Konfigurationsdatei; wer sie ändern will, braucht Dateizugriff und einen
+  Neustart. Ein Einstellungsbereich, der alles an einem Ort sammelt, ist
+  vorgesehen — dann auch mit dem, was der Node selbst kann (Name,
+  Sendeleistung, Funkparameter).
 - **Achsenbeschriftung bei winzigem Wertebereich.** Zeigt eine Kurve nur
   wenige Millivolt Unterschied, rundet die Y-Achse alle Marken auf denselben
   Text — beim Ausprobieren stand dreimal `4.10` untereinander. Die Zahl der

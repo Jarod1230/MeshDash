@@ -178,13 +178,25 @@ pub struct Packet<'a> {
 /// "hash is just prefix of pub_key". A station can therefore be matched
 /// against known contacts by comparing the start of their keys.
 ///
-/// # One byte is not an identity
+/// # How wide, decides the sender
 ///
-/// `PATH_HASH_SIZE` is 1, so a station is usually a single byte. In a mesh of
-/// a few dozen nodes, two of them sharing a first byte is likelier than not.
-/// Matching must handle "several fit" — the same problem as the six-byte
-/// sender prefix on a message, and the same answer: name nobody rather than
-/// name the wrong one.
+/// One to three bytes, and the packet says which: the width sits in the top
+/// two bits of the path-length byte. The sender picks it when flooding —
+/// `sendFlood(pkt, delay, _prefs.path_hash_mode + 1)` in `MyMesh.cpp`, set
+/// with `CMD_SET_PATH_HASH_MODE` — and every station that forwards the packet
+/// keeps that width (`packet->getPathHashSize()` in `Mesh::routeRecvPacket`).
+///
+/// `PATH_HASH_SIZE` (1) is only the default of the one-argument
+/// `Identity::copyHashTo`. It is **not** what arrives: a mesh observed on
+/// 2026-08-26 sent two bytes per station throughout.
+///
+/// # A prefix is not an identity
+///
+/// How weak the match is depends on that width. At one byte, 256 values, two
+/// of a few dozen nodes sharing a first byte is likelier than not; at three,
+/// a collision is remote. Either way matching must handle "several fit" — the
+/// same problem as the six-byte sender prefix on a message, and the same
+/// answer: name nobody rather than name the wrong one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Station<'a> {
     /// The leading bytes of that node's public key.

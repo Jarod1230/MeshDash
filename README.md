@@ -6,16 +6,18 @@ MeshDash verbindet sich mit einem MeshCore-Companion-Node und macht daraus eine
 Web-App: Nodes und Nachbarn im Blick, Nachrichtenverlauf, Telemetrie über die Zeit,
 Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 
-> **Status: Dienst und Oberfläche laufen.**
-> MeshDash spricht über Serial oder TCP mit einem Companion-Node, verbindet
-> sich nach einem Abriss selbsttätig neu, speichert nach SQLite und zeigt
-> Verbindung, Knoten mit Liste, Netz- und Kartenansicht, Gespräche je Kontakt
-> und Kanal sowie Telemetrie über die Zeit. Nachrichten lassen sich senden,
-> Listen durchblättern, durchsuchen und auf einen Zeitraum eingrenzen.
-> Live-Ereignisse laufen über WebSocket.
+> **Status: MeshDash öffnet auf der Karte.**
+> Der Dienst spricht über Serial oder TCP mit einem Companion-Node, verbindet
+> sich nach einem Abriss selbsttätig neu und speichert nach SQLite. Die
+> Oberfläche liegt auf der Fläche mit den Knoten darauf; Verbindung, Knoten,
+> Gespräche je Kontakt und Kanal sowie Telemetrie über die Zeit öffnen sich
+> als Blende darüber. Nachrichten lassen sich senden, Wege messen, der eigene
+> Node verorten und dem Mesh vorstellen; Listen lassen sich durchblättern,
+> durchsuchen und auf einen Zeitraum eingrenzen. Live-Ereignisse laufen über
+> WebSocket.
 >
-> **Wohin es geht:** Die Karte wird die Leitansicht — eine Region mit den
-> Knoten darin, auf der Empfang und Verkehr sichtbar werden
+> **Wohin es geht:** Kartenkacheln über den Dienst, dazu die Ebenen für
+> Verbindungen und Verkehr
 > ([ADR-0011](docs/decisions/0011-karte-als-leitansicht.md)). Der Stand und
 > der Weg dorthin: [`docs/roadmap.md`](docs/roadmap.md).
 

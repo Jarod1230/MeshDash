@@ -800,3 +800,26 @@ war es ein Lauf gegen ein echtes Gegenüber; beim zweiten Mal ein selbstgebauter
 Node aus dreißig Zeilen Python, der genau ein Kommando beantwortet. Ein
 Testtransport, der Antworten in Millisekunden liefert, kann diesen Fehler nicht
 sichtbar machen — die Wartezeit ist die Bedingung dafür.
+
+## 2026-08-26 — `setPointerCapture` verschluckt den Klick
+
+**Was passierte.** Auf der neuen Kartenfläche ließ sich die Karte ziehen, aber
+ein Klick auf einen Knoten öffnete nichts. Der Knoten bekam sichtbar den
+Fokusrahmen — der Klick kam also an —, nur nicht bei ihm.
+
+**Die Ursache.** Zum Ziehen rief die Fläche `setPointerCapture` auf ihrem
+eigenen SVG auf. Damit ist das SVG das Ziel aller folgenden Zeigerereignisse
+**einschließlich des `click`**. Der Klick landete beim Hintergrund statt beim
+Knoten darauf. Nichts daran ist ein Fehler: Es ist genau das, was Pointer
+Capture tut. Nur bedeutet es, dass Ziehen und Anklicken auf derselben Fläche
+sich gegenseitig ausschließen, sobald man es einsetzt.
+
+**Was daraus folgt.** Wer eine Fläche zieh- *und* klickbar braucht, verzichtet
+auf Pointer Capture und merkt sich stattdessen selbst, ob zwischen Drücken und
+Loslassen etwas passiert ist. Das braucht es ohnehin: Ein Klick am Ende einer
+Ziehbewegung ist kein Klick, und ohne diese Unterscheidung öffnet jedes
+Loslassen über einem Knoten dessen Seite.
+
+**Woran es auffiel.** Nicht am Test — jsdom hat kein Layout und keine echten
+Zeigerereignisse. Am Blick in den Browser, beim ersten Versuch, einen der zwei
+echten Knoten anzuklicken.

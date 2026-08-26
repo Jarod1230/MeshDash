@@ -3,8 +3,8 @@ import { SystemPage } from './SystemPage';
 
 export const systemModule: UiModule = {
   id: 'system',
-  title: 'Übersicht',
+  title: 'Verbindung',
   summary: 'Verbindung zum Node und was er über sich sagt',
-  path: '/',
+  path: '/verbindung',
   component: SystemPage,
 };

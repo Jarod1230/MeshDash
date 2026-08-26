@@ -44,13 +44,31 @@ const HISTORY = [
 /** Answers each API path with what that path actually returns. */
 function answerWith(status: number, body: unknown) {
   return vi.fn().mockImplementation((url: string) => {
-    const isHistory = String(url).includes('/system/connections');
+    const path = String(url);
+    const answer =
+      status !== 200
+        ? body
+        : path.includes('/system/connections')
+          ? HISTORY
+          : // The ground surface asks for these on every render of the shell.
+            path.includes('/nodes/contacts')
+            ? []
+            : body;
     return Promise.resolve({
       ok: status >= 200 && status < 300,
       status,
-      json: async () => (isHistory && status === 200 ? HISTORY : body),
+      json: async () => answer,
     } as Response);
   });
+}
+
+/** Renders the shell at a path, since `/` is the map and shows no page. */
+function show(path = '/verbindung') {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <App />
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => {
@@ -70,11 +88,7 @@ describe('App', () => {
   it('shows the link state and the node behind it', async () => {
     vi.stubGlobal('fetch', answerWith(200, STATUS));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     expect(await screen.findByText('Verbunden')).toBeInTheDocument();
     expect(screen.getByText('4 Std 12 Min')).toBeInTheDocument();
@@ -87,11 +101,7 @@ describe('App', () => {
     const fetchMock = answerWith(200, STATUS);
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     await screen.findByText('Verbunden');
     const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers;
@@ -101,11 +111,7 @@ describe('App', () => {
   it('asks for a token only when the service rejects the request', async () => {
     vi.stubGlobal('fetch', answerWith(401, {}));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     expect(await screen.findByText('Token erforderlich')).toBeInTheDocument();
   });
@@ -115,11 +121,7 @@ describe('App', () => {
     // Showing a sign-in form there would invent a lock for an open door.
     vi.stubGlobal('fetch', answerWith(200, STATUS));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     await screen.findByText('Verbunden');
     expect(screen.queryByText('Token erforderlich')).not.toBeInTheDocument();
@@ -128,11 +130,7 @@ describe('App', () => {
   it('reports an unreachable service as such, not as a login problem', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('antwortet nicht');
     expect(screen.queryByText('Token erforderlich')).not.toBeInTheDocument();
@@ -141,25 +139,17 @@ describe('App', () => {
   it('builds its navigation from the module registry', async () => {
     vi.stubGlobal('fetch', answerWith(200, STATUS));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
     expect(nav).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Übersicht' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Verbindung' })).toBeInTheDocument();
   });
 
   it('remembers the chosen theme', async () => {
     vi.stubGlobal('fetch', answerWith(200, STATUS));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     await userEvent.click(await screen.findByRole('button', { name: /hellen Ansicht/ }));
 
@@ -174,11 +164,7 @@ describe('App', () => {
     // thing an operator is actually after.
     vi.stubGlobal('fetch', answerWith(200, STATUS));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     // The German framing is the interface's; the reason itself is a quoted
     // technical detail from the transport layer.
@@ -192,11 +178,7 @@ describe('Dieser Node im Mesh', () => {
   it('shows what the node says about itself, in the units an operator reads', async () => {
     vi.stubGlobal('fetch', answerWith(200, STATUS));
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    show();
 
     expect(await screen.findByText('DB0MSH')).toBeInTheDocument();
     // Kilohertz on the wire, megahertz on the dial.
@@ -205,3 +187,72 @@ describe('Dieser Node im Mesh', () => {
     expect(screen.getByText('22 von 30 dBm')).toBeInTheDocument();
   });
 });
+
+describe('Die Karte als Grundfläche', () => {
+  it('opens on the surface, with no page in front of it', async () => {
+    vi.stubGlobal('fetch', answerWith(200, STATUS));
+    show('/');
+
+    // No positions in this fixture, so the honest arrangement is the rings.
+    expect(await screen.findByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Verbindung' })).not.toBeInTheDocument();
+  });
+
+  it('draws a geography as soon as two nodes report where they are', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        const body = String(url).includes('/nodes/contacts')
+          ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
+          : String(url).includes('/system/connections')
+            ? HISTORY
+            : STATUS;
+        return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+      }),
+    );
+    show('/');
+
+    expect(await screen.findByRole('img', { name: /Karte mit/ })).toBeInTheDocument();
+  });
+
+  it('keeps the surface mounted while a page is open', async () => {
+    vi.stubGlobal('fetch', answerWith(200, STATUS));
+    show('/verbindung');
+
+    // The point of the shutter: the drawing underneath is not thrown away,
+    // so the section an operator was looking at survives the detour.
+    expect(await screen.findByRole('heading', { name: 'Verbindung' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
+  });
+
+  it('closes the page on Escape and leaves the surface standing', async () => {
+    vi.stubGlobal('fetch', answerWith(200, STATUS));
+    show('/verbindung');
+
+    await screen.findByRole('heading', { name: 'Verbindung' });
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Verbindung' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
+  });
+});
+
+/** A contact that reports where it is. */
+function contact(key: string, latitude: number, longitude: number) {
+  return {
+    public_key: key,
+    name: `Knoten ${key}`,
+    contact_type: 2,
+    flags: 0,
+    position_source: 'advert',
+    path: '',
+    stations: 0,
+    latitude,
+    longitude,
+    last_advert: 1_700_000_000,
+    first_seen: new Date().toISOString(),
+    last_seen: new Date().toISOString(),
+  };
+}

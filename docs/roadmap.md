@@ -313,15 +313,16 @@ selbst hat.
 
 ### Stufe C — die Karte als Leitansicht
 
-- **Die Hülle umbauen.** Die Karte wird die Grundfläche der Anwendung, die
-  Bedienung wandert als Overlay in die Ecken, die bisherigen Seiten werden zur
-  Blende darüber. Der Ausschnitt überlebt jeden Ausflug in die Tiefe, und der
-  Zustand steht in der Adresse, damit ein Link dieselbe Karte öffnet wie ein
-  Klick. Drei Schichten, siehe
-  [ADR-0011](decisions/0011-karte-als-leitansicht.md).
-- **Grundfläche nach Datenlage.** Solange zu wenige Knoten eine Position
-  melden, zeigt sie die topologische Anordnung statt einer Geografie mit zwei
-  Punkten darin — und sagt, wie viele sie nicht verorten kann.
+- [x] **Die Hülle umbauen.** MeshDash öffnet auf der Fläche; die Bedienung
+  schwebt in den Ecken, die Seiten liegen als Blende darüber und Escape
+  schließt sie. Die Fläche liegt außerhalb der Routen und wird nie
+  ausgehängt — der Ausschnitt überlebt damit jeden Ausflug in die Tiefe. Die
+  Adresse bleibt ein Pfad, begründet in
+  [ADR-0014](decisions/0014-die-adresse-bleibt-ein-pfad.md).
+- [x] **Grundfläche nach Datenlage.** Ab zwei gemeldeten Positionen eine
+  Geografie mit Maßstab, darunter die Ringe nach Zwischenstationen. Beide
+  sagen, wie viele Knoten sie nicht verorten können. Ein Punkt ist noch keine
+  Geografie — er hat keine Ausdehnung, keinen Maßstab und keine Nachbarn.
 - **Kartenfläche mit Kacheln über MeshDash** — Endpunkt, Plattencache,
   Konfigurationsoption; ohne Quelle bleibt es bei der eigenen Zeichnung.
 - **Knotenebene** — jeder Knoten an seinem Ort, Zustand an der Farbe:
@@ -380,11 +381,11 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   beobachtet: beide Aufrufe antworten nach zehn Sekunden noch immer nicht. Der
   saubere Weg wäre, eine Anfrage ohne Verbindung sofort abzulehnen, statt sie
   in die Warteschlange zu legen.
-- **Beschriftungen auf der Karte überlagern sich.** Zwei Knoten fünfzig Meter
-  auseinander tragen zwei Namen übereinander, die keiner mehr lesen kann — am
-  2026-08-26 an einem echten Mesh gesehen, wo genau das der Normalfall war.
-  Beschriftungen müssen einander ausweichen, sich bei Enge zu einer Gruppe
-  zusammenfassen oder erst beim Hineinzoomen erscheinen. Gehört zu Stufe C.
+- **Beschriftungen auf der Karte überlagern sich** — vorerst gelöst, indem die
+  Fläche einen Namen weglässt, sobald er auf einem schon gezeichneten läge, und
+  darunter schreibt, wie viele sie weggelassen hat. Offen bleibt das Bessere:
+  bei Enge zu einer Gruppe zusammenfassen, statt einen der beiden Namen
+  auszulassen.
 - **Einstellungen gehören in die Oberfläche.** Nachbarabfrage, Intervalle,
   später der Kartendienst und was sonst noch dazukommt, stehen heute in der
   Konfigurationsdatei; wer sie ändern will, braucht Dateizugriff und einen

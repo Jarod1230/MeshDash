@@ -44,5 +44,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0011](0011-karte-als-leitansicht.md) | Die Karte ist die Leitansicht, Kacheln über MeshDash | Angenommen |
 | [0012](0012-positionen-nur-aus-dem-mesh.md) | Positionen stammen nur aus dem Mesh, kein Handeintrag | Angenommen |
 | [0013](0013-den-eigenen-node-verorten.md) | Den eigenen Node verortet der Betreiber, alle anderen das Mesh | Angenommen |
+| [0014](0014-die-adresse-bleibt-ein-pfad.md) | Die Karte liegt außerhalb der Routen, die Adresse bleibt ein Pfad | Angenommen |
 
 Vorlage: [`template.md`](template.md).

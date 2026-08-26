@@ -16,12 +16,14 @@ HTTP-Server mit Authentifizierung und WebSocket sowie vier Module — `system`,
 `nodes`, `messages`, `telemetry`. Der Dienst läuft und liefert Daten unter
 `/api/v1/`.
 
-**Wohin es geht: die Karte wird die Leitansicht.** Eine Region mit den Knoten
-darin, auf der Empfang und Verkehr sichtbar werden; die Listen bleiben daneben.
-Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`, der Weg dorthin
-steht als Stufen A bis D in `docs/roadmap.md`. Wer an der Oberfläche baut,
-liest das Zielbild zuerst — sonst entsteht eine weitere Seite neben der Karte
-statt einer Ebene auf ihr.
+**Die Karte ist die Leitansicht.** MeshDash öffnet auf der Fläche mit den
+Knoten darauf; die Seiten liegen als Blende darüber und die Fläche wird nie
+neu aufgebaut. Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`,
+die Adresse dazu in `0014-die-adresse-bleibt-ein-pfad.md`; der Weg steht als
+Stufen A bis D in `docs/roadmap.md`. Stufen A und B sind erledigt, C hat mit
+Hülle und Grundfläche begonnen. Wer an der Oberfläche baut, liest das Zielbild
+zuerst — sonst entsteht eine weitere Seite neben der Karte statt einer Ebene
+auf ihr.
 
 **Zum Protokoll:** Framing, sämtliche Opcodes und die bisher benötigten
 Nutzlasten sind am Firmware-Quellcode verifiziert (Commit `d929643`) —

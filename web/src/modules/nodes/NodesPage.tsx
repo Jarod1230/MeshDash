@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { Link, Route, Routes } from 'react-router-dom';
 import { Empty, Failed, Loading } from '../../ui/States';
-import { Map } from './Map';
 import { NodePage } from './NodePage';
-import { Topology } from './Topology';
 import { describeRoute, shortKey, type KnownContact, type Sighting } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
@@ -28,13 +26,18 @@ export function NodesPage() {
   );
 }
 
-/** The list, the ring chart and the map — three views of the same set. */
+/**
+ * Everything the node knows about who is out there, as a table.
+ *
+ * The ring chart and the map used to sit beside this list as two more tabs.
+ * They are the ground surface now — the thing MeshDash opens on — so a second
+ * copy here would be a second answer to the same question. See ADR-0011.
+ */
 function NodeList() {
   const now = useNow();
   const [search, setSearch] = useState('');
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const sightings = useResource<Sighting[]>('/nodes/adverts?limit=50');
-  const [view, setView] = useState<'liste' | 'netz' | 'karte'>('liste');
 
   // An advert means someone was heard; both listings change.
   useLiveReload(
@@ -88,33 +91,11 @@ function NodeList() {
             placeholder="Name oder Schlüssel"
           />
 
-          <div className="flex gap-1" role="tablist" aria-label="Darstellung">
-          {(['liste', 'netz', 'karte'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="tab"
-              aria-selected={view === option}
-              onClick={() => setView(option)}
-              className={`rounded-md border px-3 py-1 text-sm capitalize focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
-                view === option
-                  ? 'border-mesh-accent text-mesh-text'
-                  : 'border-mesh-border text-mesh-muted hover:text-mesh-text'
-              }`}
-            >
-              {option}
-            </button>
-            ))}
-          </div>
         </div>
       </div>
 
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">
-        {view === 'netz' ? (
-          <Topology contacts={shown} now={now} />
-        ) : view === 'karte' ? (
-          <Map contacts={shown} now={now} />
-        ) : contacts.data.length === 0 ? (
+        {contacts.data.length === 0 ? (
           <Empty>
             Der Node kennt noch keine Kontakte. Sie erscheinen, sobald er welche meldet oder ein
             Advert eintrifft.

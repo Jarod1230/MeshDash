@@ -10,6 +10,22 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Changed
+
+- **MeshDash öffnet auf der Karte.** Die Fläche mit den Knoten darauf ist jetzt
+  der Grund der Anwendung statt einer Ansicht unter „Knoten": Die Bedienung
+  schwebt in den Ecken, die Seiten liegen als Blende darüber, Escape schließt
+  sie wieder. Die Fläche selbst wird dabei nie neu aufgebaut — der Ausschnitt,
+  auf den man gerade schaut, überlebt jeden Ausflug in eine Liste. Siehe
+  [ADR-0011](docs/decisions/0011-karte-als-leitansicht.md) und
+  [ADR-0014](docs/decisions/0014-die-adresse-bleibt-ein-pfad.md).
+
+  Die Fläche richtet sich nach der Datenlage: Ab zwei gemeldeten Positionen
+  zeigt sie die Geografie mit Maßstab, Ziehen und Zoomen; darunter die Ringe
+  nach Zwischenstationen. Beide sagen, wie viele Knoten sie nicht verorten
+  können. Die Übersichtsseite heißt jetzt „Verbindung" und liegt auf
+  `/verbindung`; `/` gehört der Karte.
+
 ### Added
 
 - **Den eigenen Node verorten.** `PUT /api/v1/system/position` sagt dem Node in

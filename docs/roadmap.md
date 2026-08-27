@@ -333,8 +333,18 @@ selbst hat.
   gefüllt heißt in der letzten Stunde gehört, gedämpft heute, hohl seit über
   einem Tag nicht. Eine Form und nicht nur ein Farbton, weil ein heller
   Kartengrund Farbtöne als Erstes frisst.
-- **Verbindungsebene** — Linien für belegte Wege, Stärke nach
-  Empfangsqualität. Was nur vermutet ist, wird nicht gezeichnet.
+- [x] **Verbindungsebene** — Linien für belegte Wege, Stärke nach
+  Empfangsqualität, abschaltbar über den Ebenenschalter. Zwei Quellen, beide
+  beobachtet: direkte Nachbarn aus der Kontaktliste und die Abschnitte einer
+  Wegmessung. **Nicht** gezeichnet wird der Weg aus dem `path` eines Kontakts —
+  das sind Ein-Byte-Präfixe, und in einem Mesh nennenswerter Größe teilen sich
+  zwei Knoten das erste Byte.
+
+  Am echten Mesh blieb die Ebene vorerst leer: Der Node kennt zu keinem seiner
+  drei Kontakte eine Route, und gemessen wurde noch nichts. Die Fläche sagt
+  das statt zu schweigen. Was sie füllen würde, ist die Verkehrsebene — jedes
+  gehörte Paket trägt seinen Pfad, und daraus wird ablesbar, wer wen direkt
+  hört.
 - **Verkehrsebene** — was gerade läuft, live über den vorhandenen
   Ereignisstrom. Wie weit sie geht, entscheidet Stufe A: von „ein Paket kam
   an, so gut war es" bis zur verfolgten Bahn über die Stationen.

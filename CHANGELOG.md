@@ -12,6 +12,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Verbindungen auf der Karte.** Linien für Wege, die tatsächlich beobachtet
+  wurden: direkte Nachbarn und die Abschnitte einer Wegmessung, letztere mit
+  der Empfangsqualität als Strichstärke. Was nur aus dem gespeicherten Pfad
+  eines Kontakts folgen würde, wird nicht gezeichnet — dessen Stationen sind
+  Ein-Byte-Präfixe, und mehr als ein Knoten kann gemeint sein. Abschaltbar über
+  den Ebenenschalter unten links; die Einstellung steht in der Adresse.
+
 - **Einen Knoten antippen, ohne die Karte zu verlassen.** Ein Klick auf einen
   Punkt öffnet eine Tafel daneben — Name, wann zuletzt gehört, Weg, Position —
   und einen Schritt weiter geht es zur vollen Knotenseite. Die Auswahl steht in

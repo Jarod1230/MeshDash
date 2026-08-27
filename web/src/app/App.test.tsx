@@ -51,7 +51,7 @@ function answerWith(status: number, body: unknown) {
         : path.includes('/system/connections')
           ? HISTORY
           : // The ground surface asks for these on every render of the shell.
-            path.includes('/nodes/contacts')
+            path.includes('/nodes/contacts') || path.includes('/nodes/traces')
             ? []
             : body;
     return Promise.resolve({
@@ -202,11 +202,14 @@ describe('Die Karte als Grundfläche', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((url: string) => {
-        const body = String(url).includes('/nodes/contacts')
+        const path = String(url);
+        const body = path.includes('/nodes/contacts')
           ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
-          : String(url).includes('/system/connections')
-            ? HISTORY
-            : STATUS;
+          : path.includes('/nodes/traces')
+            ? []
+            : path.includes('/system/connections')
+              ? HISTORY
+              : STATUS;
         return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
       }),
     );
@@ -261,13 +264,16 @@ describe('Einen Knoten antippen', () => {
   /** Answers with two placed nodes, so the surface draws a geography. */
   function withNodes() {
     return vi.fn().mockImplementation((url: string) => {
-      const body = String(url).includes('/nodes/contacts')
+      const path = String(url);
+      const body = path.includes('/nodes/contacts')
         ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
-        : String(url).includes('/system/connections')
-          ? HISTORY
-          : String(url).includes('/tiles')
-            ? { available: false, attribution: '', max_zoom: 0 }
-            : STATUS;
+        : path.includes('/nodes/traces')
+          ? []
+          : path.includes('/system/connections')
+            ? HISTORY
+            : path.includes('/tiles')
+              ? { available: false, attribution: '', max_zoom: 0 }
+              : STATUS;
       return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
     });
   }
@@ -318,5 +324,89 @@ describe('Einen Knoten antippen', () => {
       expect(screen.queryByRole('complementary')).not.toBeInTheDocument(),
     );
     expect(screen.getByRole('img', { name: /Karte mit/ })).toBeInTheDocument();
+  });
+});
+
+describe('Die Verbindungsebene', () => {
+  function withNeighbours() {
+    return vi.fn().mockImplementation((url: string) => {
+      const path = String(url);
+      const body = path.includes('/nodes/contacts')
+        ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
+        : path.includes('/nodes/traces')
+          ? []
+          : path.includes('/system/connections')
+            ? HISTORY
+            : path.includes('/tiles')
+              ? { available: false, attribution: '', max_zoom: 0 }
+              : STATUS;
+      return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+    });
+  }
+
+  /** Lines live in the SVG, where the accessibility tree does not go. */
+  function drawnLines(container: HTMLElement) {
+    return [...container.querySelectorAll('line')];
+  }
+
+  it('draws a line to a direct neighbour and says the quality is unmeasured', async () => {
+    vi.stubGlobal('fetch', withNeighbours());
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('img', { name: /Karte mit/ });
+    await waitFor(() => expect(drawnLines(container)).toHaveLength(2));
+
+    // Certain that the link exists, unmeasured how well it carries.
+    expect(drawnLines(container)[0]?.textContent).toContain('Güte nicht gemessen');
+    expect(drawnLines(container)[0]?.textContent).toContain('direkt erreichbar');
+  });
+
+  it('can be switched off, and the address remembers', async () => {
+    vi.stubGlobal('fetch', withNeighbours());
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(drawnLines(container)).toHaveLength(2));
+    await userEvent.click(screen.getByRole('button', { name: 'Verbindungen' }));
+
+    await waitFor(() => expect(drawnLines(container)).toHaveLength(0));
+  });
+
+  it('says why it is empty instead of letting that read as "no connections"', async () => {
+    // An empty layer without a reason is a claim about the mesh. The claim
+    // here is about what has been observed.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        const path = String(url);
+        const body = path.includes('/nodes/contacts')
+          ? [
+              { ...contact('a', 54.0, 13.0), stations: null, path: null },
+              { ...contact('b', 54.02, 13.04), stations: null, path: null },
+            ]
+          : path.includes('/nodes/traces')
+            ? []
+            : path.includes('/system/connections')
+              ? HISTORY
+              : path.includes('/tiles')
+                ? { available: false, attribution: '', max_zoom: 0 }
+                : STATUS;
+        return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Noch kein Weg belegt/)).toBeInTheDocument();
   });
 });

@@ -18,3 +18,4 @@ pub mod nodes;
 pub mod query;
 pub mod system;
 pub mod telemetry;
+pub mod tiles;

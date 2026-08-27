@@ -41,6 +41,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+meshdash-modules.workspace = true
 futures.workspace = true
 serde_json.workspace = true
 # A real WebSocket client, so the endpoint is exercised the way a browser

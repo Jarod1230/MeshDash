@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
+  TILE_SIZE,
   fit,
   formatDistance,
   geography,
   isPlaceable,
+  metresPerPixel,
   onScreen,
+  panBy,
   rings,
   scaleStep,
+  toLatitude,
+  toWorld,
+  visibleTiles,
   zoomAt,
   type GroundNode,
 } from './projection';
 
-const NOW = Date.parse('2026-08-26T12:00:00Z');
+const NOW = Date.parse('2026-08-27T12:00:00Z');
 
 function node(overrides: Partial<GroundNode> = {}): GroundNode {
   return {
@@ -35,12 +41,34 @@ describe('isPlaceable', () => {
   });
 });
 
+describe('toWorld', () => {
+  it('puts the origin where every tile scheme puts it', () => {
+    // Null Island sits in the middle of the square; the north-west corner is
+    // the origin, which is what tile numbering counts from.
+    expect(toWorld(0, 0)).toEqual({ x: 0.5, y: 0.5 });
+    expect(toWorld(0, -180).x).toBeCloseTo(0, 12);
+    expect(toWorld(85.05112878, 0).y).toBeCloseTo(0, 6);
+  });
+
+  it('agrees with a tile number anyone can look up', () => {
+    // Berlin at zoom 10 is tile 550/335 in every raster scheme there is.
+    const world = toWorld(52.520008, 13.404954);
+
+    expect(Math.floor(world.x * 2 ** 10)).toBe(550);
+    expect(Math.floor(world.y * 2 ** 10)).toBe(335);
+  });
+
+  it('comes back to the latitude it started from', () => {
+    expect(toLatitude(toWorld(54.331026, 13.070254).y)).toBeCloseTo(54.331026, 9);
+  });
+});
+
 describe('geography', () => {
   it('refuses to call one point a geography', () => {
     expect(geography([node({ latitude: 54.33, longitude: 13.07 })], NOW)).toBeNull();
   });
 
-  it('places nodes in metres around their common centre', () => {
+  it('reports the latitude in the middle, where the scale bar is true', () => {
     const geo = geography(
       [
         node({ key: 'a', latitude: 54.0, longitude: 13.0 }),
@@ -49,27 +77,7 @@ describe('geography', () => {
       NOW,
     );
 
-    expect(geo).not.toBeNull();
-    expect(geo?.anchor.latitude).toBeCloseTo(54.01, 6);
-    // Two hundredths of a degree of latitude is a bit over two kilometres.
-    expect(geo?.spanMetres).toBeGreaterThan(2_000);
-    expect(geo?.spanMetres).toBeLessThan(2_500);
-    // Symmetric about the centre: one north of it, one south.
-    const norths = (geo?.placed ?? []).map((placed) => placed.north);
-    expect((norths[0] ?? 0) + (norths[1] ?? 0)).toBeCloseTo(0, 6);
-  });
-
-  it('keeps a scale even when every node sits on the same spot', () => {
-    const geo = geography(
-      [
-        node({ key: 'a', latitude: 54.0, longitude: 13.0 }),
-        node({ key: 'b', latitude: 54.0, longitude: 13.0 }),
-      ],
-      NOW,
-    );
-
-    // Not zero, which would divide the scale bar by nothing.
-    expect(geo?.spanMetres).toBe(1_000);
+    expect(geo?.centreLatitude).toBeCloseTo(54.01, 4);
   });
 
   it('fades what has not been heard for a day instead of dropping it', () => {
@@ -87,58 +95,148 @@ describe('geography', () => {
   });
 });
 
+const geo = geography(
+  [
+    node({ key: 'a', latitude: 54.0, longitude: 13.0 }),
+    node({ key: 'b', latitude: 54.02, longitude: 13.04 }),
+  ],
+  NOW,
+)!;
+
 describe('fit and onScreen', () => {
-  const geo = geography(
-    [
-      node({ key: 'a', latitude: 54.0, longitude: 13.0 }),
-      node({ key: 'b', latitude: 54.02, longitude: 13.04 }),
-    ],
-    NOW,
-  );
-
   it('brings everything inside the padding', () => {
-    const view = fit(geo!, 800, 600, 60);
+    const view = fit(geo, 800, 600, 60);
 
-    for (const placed of geo!.placed) {
-      const { x, y } = onScreen(placed, view, 800, 600);
-      expect(x).toBeGreaterThanOrEqual(60 - 1);
-      expect(x).toBeLessThanOrEqual(800 - 60 + 1);
-      expect(y).toBeGreaterThanOrEqual(60 - 1);
-      expect(y).toBeLessThanOrEqual(600 - 60 + 1);
+    for (const placed of geo.placed) {
+      const { x, y } = onScreen(placed.world, view, 800, 600);
+      expect(x).toBeGreaterThanOrEqual(59);
+      expect(x).toBeLessThanOrEqual(741);
+      expect(y).toBeGreaterThanOrEqual(59);
+      expect(y).toBeLessThanOrEqual(541);
     }
   });
 
   it('puts north up', () => {
-    const view = fit(geo!, 800, 600, 60);
-    const northern = geo!.placed.find((placed) => placed.node.key === 'b')!;
-    const southern = geo!.placed.find((placed) => placed.node.key === 'a')!;
+    const view = fit(geo, 800, 600, 60);
+    const northern = geo.placed.find((one) => one.node.key === 'b')!;
+    const southern = geo.placed.find((one) => one.node.key === 'a')!;
 
-    expect(onScreen(northern, view, 800, 600).y).toBeLessThan(
-      onScreen(southern, view, 800, 600).y,
+    expect(onScreen(northern.world, view, 800, 600).y).toBeLessThan(
+      onScreen(southern.world, view, 800, 600).y,
     );
+  });
+
+  it('goes as close as the nodes are, not to some fixed level', () => {
+    // Two nodes a hundred metres apart deserve a hundred-metre view. An
+    // earlier cap meant for the degenerate case applied to every fit and
+    // left them huddled in the middle of an empty screen.
+    const close = geography(
+      [
+        node({ key: 'a', latitude: 54.331026, longitude: 13.070254 }),
+        node({ key: 'b', latitude: 54.33093, longitude: 13.06954 }),
+      ],
+      NOW,
+    )!;
+
+    expect(fit(close, 800, 600, 60).zoom).toBeGreaterThan(17);
+  });
+
+  it('looks closely rather than dividing by zero when everything is on one spot', () => {
+    const stacked = geography(
+      [
+        node({ key: 'a', latitude: 54.0, longitude: 13.0 }),
+        node({ key: 'b', latitude: 54.0, longitude: 13.0 }),
+      ],
+      NOW,
+    )!;
+
+    expect(fit(stacked, 800, 600, 60).zoom).toBe(16);
   });
 });
 
 describe('zoomAt', () => {
   it('keeps what is under the cursor under the cursor', () => {
-    const view = { east: 0, north: 0, metresPerPixel: 10 };
-    const placed = { node: node(), east: 1_000, north: 500, stale: false };
-    const before = onScreen(placed, view, 800, 600);
+    const view = fit(geo, 800, 600, 60);
+    const one = geo.placed[0]!;
+    const before = onScreen(one.world, view, 800, 600);
 
-    const zoomed = zoomAt(view, 0.5, before.x, before.y, 800, 600);
-    const after = onScreen(placed, zoomed, 800, 600);
+    const zoomed = zoomAt(view, 1.7, before.x, before.y, 800, 600);
+    const after = onScreen(one.world, zoomed, 800, 600);
 
     expect(after.x).toBeCloseTo(before.x, 6);
     expect(after.y).toBeCloseTo(before.y, 6);
   });
 
   it('stops before a pixel means less than a reported coordinate does', () => {
-    const view = { east: 0, north: 0, metresPerPixel: 0.02 };
+    const view = { centre: { x: 0.5, y: 0.5 }, zoom: 21 };
 
-    expect(zoomAt(view, 0.1, 400, 300, 800, 600).metresPerPixel).toBe(0.01);
-    expect(zoomAt({ ...view, metresPerPixel: 900 }, 10, 400, 300, 800, 600).metresPerPixel).toBe(
-      1_000,
-    );
+    expect(zoomAt(view, 5, 400, 300, 800, 600).zoom).toBe(22);
+    expect(zoomAt({ ...view, zoom: 1 }, -5, 400, 300, 800, 600).zoom).toBe(0);
+  });
+});
+
+describe('panBy', () => {
+  it('moves the map with the hand, not against it', () => {
+    const view = fit(geo, 800, 600, 60);
+    const one = geo.placed[0]!;
+    const before = onScreen(one.world, view, 800, 600);
+
+    const after = onScreen(one.world, panBy(view, 40, -25), 800, 600);
+
+    expect(after.x).toBeCloseTo(before.x + 40, 6);
+    expect(after.y).toBeCloseTo(before.y - 25, 6);
+  });
+});
+
+describe('visibleTiles', () => {
+  const view = { centre: toWorld(52.520008, 13.404954), zoom: 10 };
+
+  it('covers the screen and no more than it has to', () => {
+    const tiles = visibleTiles(view, 800, 600, 19);
+
+    // The middle of the screen is the tile the centre falls in.
+    expect(tiles.some((tile) => tile.x === 550 && tile.y === 335)).toBe(true);
+    // 800×600 at 256-pixel tiles: at most 5×4 with the offsets at their worst.
+    expect(tiles.length).toBeLessThanOrEqual(20);
+    for (const tile of tiles) {
+      expect(tile.left).toBeLessThan(800);
+      expect(tile.top).toBeLessThan(600);
+      expect(tile.left + tile.size).toBeGreaterThan(0);
+      expect(tile.top + tile.size).toBeGreaterThan(0);
+    }
+  });
+
+  it('scales the tiles instead of snapping the view to them', () => {
+    // A fitted view lands on a fractional zoom. Snapping it would make the
+    // map jump the moment it was drawn.
+    const [tile] = visibleTiles({ ...view, zoom: 10.5 }, 800, 600, 19);
+
+    expect(tile?.z).toBe(11);
+    expect(tile?.size).toBeCloseTo(TILE_SIZE * 2 ** -0.5, 6);
+  });
+
+  it('never asks for a level the source does not have', () => {
+    const tiles = visibleTiles({ ...view, zoom: 19.4 }, 800, 600, 17);
+
+    expect(tiles.every((tile) => tile.z === 17)).toBe(true);
+  });
+
+  it('leaves the edge of the world empty rather than repeating it', () => {
+    // Far enough west that half the screen is off the map.
+    const edge = { centre: { x: 0.001, y: 0.5 }, zoom: 2 };
+    const tiles = visibleTiles(edge, 800, 600, 19);
+
+    expect(tiles.every((tile) => tile.x >= 0 && tile.y >= 0)).toBe(true);
+    expect(tiles.every((tile) => tile.x < 4 && tile.y < 4)).toBe(true);
+  });
+});
+
+describe('metresPerPixel', () => {
+  it('shrinks with latitude, as Mercator does', () => {
+    // The classic figure: about 156 km per pixel at zoom 0 on the equator.
+    expect(metresPerPixel(0, 0)).toBeCloseTo(156_543, 0);
+    expect(metresPerPixel(10, 0)).toBeCloseTo(152.87, 2);
+    expect(metresPerPixel(10, 54.33)).toBeLessThan(metresPerPixel(10, 0));
   });
 });
 

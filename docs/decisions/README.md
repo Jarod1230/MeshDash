@@ -45,5 +45,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0012](0012-positionen-nur-aus-dem-mesh.md) | Positionen stammen nur aus dem Mesh, kein Handeintrag | Angenommen |
 | [0013](0013-den-eigenen-node-verorten.md) | Den eigenen Node verortet der Betreiber, alle anderen das Mesh | Angenommen |
 | [0014](0014-die-adresse-bleibt-ein-pfad.md) | Die Karte liegt außerhalb der Routen, die Adresse bleibt ein Pfad | Angenommen |
+| [0015](0015-eigene-zeichnung-statt-leaflet.md) | Die Karte zeichnet MeshDash selbst, in Web-Mercator, ohne Leaflet | Angenommen |
 
 Vorlage: [`template.md`](template.md).

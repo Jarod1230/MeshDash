@@ -94,6 +94,9 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     registry
         .register(Box::new(meshdash_modules::telemetry::TelemetryModule))
         .context("registering the telemetry module")?;
+    registry
+        .register(Box::new(meshdash_modules::tiles::TilesModule::default()))
+        .context("registering the tiles module")?;
 
     registry
         .start_all(&context)

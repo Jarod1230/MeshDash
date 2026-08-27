@@ -54,7 +54,36 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T | null> 
   });
 }
 
+/**
+ * Fetches something that is not JSON, as a URL a browser can display.
+ *
+ * Map tiles need this: an `<img>` cannot set an `Authorization` header, and
+ * the API is guarded as a whole (ADR-0006). So the tile is fetched with the
+ * token like everything else and handed on as an object URL.
+ *
+ * The browser's own HTTP cache still applies to the fetch, so a tile that was
+ * seen before costs nothing on the wire — the object URL is only how it
+ * reaches the element. **Whoever calls this owns the URL** and has to revoke
+ * it, or the image stays in memory for the life of the page.
+ */
+export async function apiObjectUrl(path: string): Promise<string> {
+  const response = await send(path, { method: 'GET' });
+
+  return URL.createObjectURL(await response.blob());
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await send(path, init);
+
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+/** Makes one request with the token attached, and turns a refusal into an error. */
+async function send(path: string, init: RequestInit): Promise<Response> {
   const token = readToken();
   const headers = new Headers(init.headers);
   if (token !== null) {
@@ -81,11 +110,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     } satisfies ApiError;
   }
 
-  if (response.status === 204) {
-    return null as T;
-  }
-
-  return (await response.json()) as T;
+  return response;
 }
 
 /** Prefers the backend's own message over a bare status code. */

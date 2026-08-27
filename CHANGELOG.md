@@ -10,6 +10,30 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Added
+
+- **Die Karte liegt jetzt auf Kacheln.** Ist eine Quelle konfiguriert, zeichnet
+  die Grundfläche eine echte Karte unter den Knoten — in Web-Mercator, mit
+  Ziehen, Zoomen und einem Maßstab, der für die Bildschirmmitte gilt. Ohne
+  Quelle bleibt alles wie zuvor. Gezeichnet wird weiter selbst, ohne
+  Kartenbibliothek, begründet in
+  [ADR-0015](docs/decisions/0015-eigene-zeichnung-statt-leaflet.md).
+
+  Der Ausschnitt beim Öffnen richtet sich jetzt nach den Knoten statt nach
+  einer festen Zoomstufe — zwei Knoten hundert Meter auseinander bekommen eine
+  Hundert-Meter-Ansicht statt einer Handvoll Pixel in der Bildmitte.
+
+- **Kartenkacheln über MeshDash.** `GET /api/v1/tiles/{z}/{x}/{y}` holt eine
+  Kachel von der konfigurierten Quelle und legt sie als Datei ab; beim zweiten
+  Mal geht nichts mehr hinaus. `GET /api/v1/tiles` sagt, ob es überhaupt eine
+  Quelle gibt und wem die Karte gehört.
+
+  **Ohne `[modules.tiles] source` passiert nichts** — das ist der
+  Auslieferungszustand. Wer eine Quelle nennt, muss auch die Nennung des
+  Urhebers angeben, sonst startet der Dienst nicht: Die Bedingungen jedes
+  Kacheldienstes verlangen sie, und eine Karte, die verschweigt, wessen sie
+  ist, bringt ihren Betreiber ins Unrecht.
+
 ### Changed
 
 - **MeshDash öffnet auf der Karte.** Die Fläche mit den Knoten darauf ist jetzt

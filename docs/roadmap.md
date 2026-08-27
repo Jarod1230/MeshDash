@@ -329,17 +329,20 @@ selbst hat.
   dafür in Web-Mercator und legt die Kacheln selbst; **Leaflet kommt nicht**,
   begründet in
   [ADR-0015](decisions/0015-eigene-zeichnung-statt-leaflet.md).
-- **Knotenebene** — jeder Knoten an seinem Ort, Zustand an der Farbe:
-  gerade gehört, still, ausgefallen.
+- [x] **Knotenebene** — jeder Knoten an seinem Ort, Zustand an Form und Farbe:
+  gefüllt heißt in der letzten Stunde gehört, gedämpft heute, hohl seit über
+  einem Tag nicht. Eine Form und nicht nur ein Farbton, weil ein heller
+  Kartengrund Farbtöne als Erstes frisst.
 - **Verbindungsebene** — Linien für belegte Wege, Stärke nach
   Empfangsqualität. Was nur vermutet ist, wird nicht gezeichnet.
 - **Verkehrsebene** — was gerade läuft, live über den vorhandenen
   Ereignisstrom. Wie weit sie geht, entscheidet Stufe A: von „ein Paket kam
   an, so gut war es" bis zur verfolgten Bahn über die Stationen.
-- **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel; von
-  dort führt ein Schritt zur vollen Knotenseite. Klick auf eine Verbindung
-  zeigt ihre Geschichte, Klick auf ein Paket seinen Weg. Wer weiß, was er
-  sucht, geht über die Reiter direkt hinein, ohne den Umweg über die Fläche.
+- **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel, und
+  von dort führt ein Schritt zur vollen Knotenseite: **erledigt**, die Auswahl
+  steht als `?knoten=` in der Adresse. Offen bleibt dasselbe für die anderen
+  Gegenstände: Klick auf eine Verbindung zeigt ihre Geschichte, Klick auf ein
+  Paket seinen Weg. Beides wartet auf die Ebenen darüber.
 - **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
   Abspielen: dieselbe Region vor einer Woche.
 

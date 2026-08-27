@@ -40,6 +40,31 @@ const EQUATOR_METRES_PER_PIXEL = 156_543.033_928_040_97;
 /** Anything not heard for this long is drawn as faded, not as gone. */
 export const STALE_SECONDS = 86_400;
 
+/** Within this long, a node counts as currently answering. */
+const FRESH_SECONDS = 3_600;
+
+/**
+ * How a node is doing, as far as anything was heard from it.
+ *
+ * Three states rather than two, because the middle one is the interesting
+ * one: a repeater that was there an hour ago and is quiet now is neither
+ * fine nor gone, and that is precisely the moment an operator wants to see.
+ *
+ * All three are statements about **being heard**, not about being up. A node
+ * whose only path here broke is silent from here and busy elsewhere.
+ */
+export type Heard = 'jetzt' | 'still' | 'lange';
+
+/** Which of the three a node is in. */
+export function heard(lastSeen: number, now: number): Heard {
+  const ago = (now - lastSeen) / 1000;
+
+  if (ago < FRESH_SECONDS) return 'jetzt';
+  if (ago < STALE_SECONDS) return 'still';
+
+  return 'lange';
+}
+
 /** One node, as the ground surface needs it — whichever module it came from. */
 export interface GroundNode {
   readonly key: string;

@@ -4,6 +4,7 @@ import {
   fit,
   formatDistance,
   geography,
+  heard,
   isPlaceable,
   metresPerPixel,
   onScreen,
@@ -60,6 +61,23 @@ describe('toWorld', () => {
 
   it('comes back to the latitude it started from', () => {
     expect(toLatitude(toWorld(54.331026, 13.070254).y)).toBeCloseTo(54.331026, 9);
+  });
+});
+
+describe('heard', () => {
+  it('keeps the middle state, which is the interesting one', () => {
+    // "Was answering an hour ago and is quiet now" is neither fine nor gone,
+    // and it is exactly the moment somebody wants to see.
+    expect(heard(NOW - 60_000, NOW)).toBe('jetzt');
+    expect(heard(NOW - 3 * 3_600_000, NOW)).toBe('still');
+    expect(heard(NOW - 3 * 86_400_000, NOW)).toBe('lange');
+  });
+
+  it('draws the line at the hour and at the day', () => {
+    expect(heard(NOW - 3_599_000, NOW)).toBe('jetzt');
+    expect(heard(NOW - 3_601_000, NOW)).toBe('still');
+    expect(heard(NOW - 86_399_000, NOW)).toBe('still');
+    expect(heard(NOW - 86_401_000, NOW)).toBe('lange');
   });
 });
 

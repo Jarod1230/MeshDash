@@ -12,6 +12,18 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Einen Knoten antippen, ohne die Karte zu verlassen.** Ein Klick auf einen
+  Punkt öffnet eine Tafel daneben — Name, wann zuletzt gehört, Weg, Position —
+  und einen Schritt weiter geht es zur vollen Knotenseite. Die Auswahl steht in
+  der Adresse (`/?knoten=<schlüssel>`), ein Link öffnet also dieselbe Ansicht
+  wie ein Klick. Escape schließt. Auf schmalem Schirm kommt die Tafel als
+  Schublade von unten.
+
+- **Knoten zeigen ihren Zustand.** Gefüllt heißt in der letzten Stunde gehört,
+  gedämpft heute, hohl seit über einem Tag nicht mehr. Drei Zustände statt
+  zwei, weil der mittlere der interessante ist: Ein Repeater, der vor einer
+  Stunde noch antwortete und jetzt schweigt, ist weder in Ordnung noch weg.
+
 - **Die Karte liegt jetzt auf Kacheln.** Ist eine Quelle konfiguriert, zeichnet
   die Grundfläche eine echte Karte unter den Knoten — in Web-Mercator, mit
   Ziehen, Zoomen und einem Maßstab, der für die Bildschirmmitte gilt. Ohne

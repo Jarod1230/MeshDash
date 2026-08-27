@@ -113,6 +113,18 @@ user_agent = "MeshDash/<version> (+https://github.com/Jarod1230/MeshDash)"
 # Wie viele Abrufe gleichzeitig hinausgehen dürfen. Eine gezogene Karte fragt
 # schneller nach Kacheln, als eine Quelle beantworten möchte; der Rest wartet.
 max_concurrent_fetches = 4
+
+[modules.traffic]
+# Den Paketverlauf mitschreiben. Der Node meldet jedes gehörte Paket von
+# selbst; ob MeshDash es behält, ist diese Entscheidung. Aus heißt: Die
+# Verdichtung „wer hört wen" entsteht weiter, der Verlauf nicht.
+record = true
+# Wie viele Tage Paketverlauf aufbewahrt werden. Großzügig, weil MeshDash ein
+# Analysewerkzeug ist — wer eine Störung von vorletzter Woche nachvollziehen
+# will, braucht die Pakete und nicht ihre Zusammenfassung. Siehe ADR-0016.
+# Die Verdichtung unterliegt keiner Frist; sie wächst mit dem Mesh, nicht mit
+# dem Verkehr.
+keep_days = 30
 ```
 
 ## Was noch fehlt

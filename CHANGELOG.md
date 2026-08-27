@@ -12,6 +12,21 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Modul `traffic`: jedes gehörte Paket, und wer wen direkt hört.** Der Node
+  meldet jedes Paket, das er empfängt — auch fremdes und verworfenes. MeshDash
+  schreibt das jetzt mit: `GET /api/v1/traffic/packets` liefert den Verlauf,
+  `GET /api/v1/traffic/links` die Verdichtung daraus.
+
+  Aus dem Pfad eines Pakets folgt, wer wen direkt gehört hat: Jede Station hat
+  die vorige gehört, und die letzte wurde von diesem Node gehört. Das ist eine
+  Messung, für die niemand etwas senden muss.
+
+  Der Verlauf hat eine Frist (`[modules.traffic] keep_days`, 30 Tage), die
+  Verdichtung nicht — sie wächst mit dem Mesh, nicht mit dem Verkehr. **Die
+  Nutzlast wird nicht gespeichert**: Sie ist verschlüsselt und geht MeshDash
+  nichts an. Begründung in
+  [ADR-0016](docs/decisions/0016-verkehr-aufbewahren.md).
+
 - **Verbindungen auf der Karte.** Linien für Wege, die tatsächlich beobachtet
   wurden: direkte Nachbarn und die Abschnitte einer Wegmessung, letztere mit
   der Empfangsqualität als Strichstärke. Was nur aus dem gespeicherten Pfad

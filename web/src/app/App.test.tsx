@@ -256,3 +256,67 @@ function contact(key: string, latitude: number, longitude: number) {
     last_seen: new Date().toISOString(),
   };
 }
+
+describe('Einen Knoten antippen', () => {
+  /** Answers with two placed nodes, so the surface draws a geography. */
+  function withNodes() {
+    return vi.fn().mockImplementation((url: string) => {
+      const body = String(url).includes('/nodes/contacts')
+        ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
+        : String(url).includes('/system/connections')
+          ? HISTORY
+          : String(url).includes('/tiles')
+            ? { available: false, attribution: '', max_zoom: 0 }
+            : STATUS;
+      return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+    });
+  }
+
+  it('opens the panel without leaving the map, and says so in the address', async () => {
+    vi.stubGlobal('fetch', withNodes());
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Knoten a/ }));
+
+    // The panel, not the full page: the surface is still there behind it.
+    expect(await screen.findByRole('complementary', { name: /Knoten a/ })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Karte mit/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Alles zu diesem Knoten' })).toHaveAttribute(
+      'href',
+      '/knoten/a',
+    );
+  });
+
+  it('opens the same thing from a link as from a click', async () => {
+    // Without this the map is a session rather than a shared reference.
+    vi.stubGlobal('fetch', withNodes());
+    render(
+      <MemoryRouter initialEntries={['/?knoten=b']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('complementary', { name: /Knoten b/ })).toBeInTheDocument();
+  });
+
+  it('closes on Escape and leaves the surface where it was', async () => {
+    vi.stubGlobal('fetch', withNodes());
+    render(
+      <MemoryRouter initialEntries={['/?knoten=b']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('complementary', { name: /Knoten b/ });
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('complementary')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('img', { name: /Karte mit/ })).toBeInTheDocument();
+  });
+});

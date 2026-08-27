@@ -1,16 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useLiveReload, type AppEvent } from '../lib/events';
 import { isAdvert } from '../lib/pushes';
 import { useNow } from '../lib/useNow';
 import { useResource } from '../lib/useResource';
 import type { KnownContact } from '../modules/nodes/types';
+import { NodePanel } from './NodePanel';
 import { useSize } from './useSize';
 import { useTiles, tileKey } from './useTiles';
 import {
   fit,
   formatDistance,
   geography,
+  heard,
   isPlaceable,
   metresPerPixel,
   onScreen,
@@ -22,6 +24,7 @@ import {
   zoomAt,
   type Geography as GeographyOf,
   type GroundNode,
+  type Heard,
   type Placed,
   type View,
 } from './projection';
@@ -84,14 +87,40 @@ export function Ground() {
   );
   const geo = useMemo(() => geography(nodes, now), [nodes, now]);
 
+  // The selection lives in the address, so a link to a dot opens the same
+  // thing a click on it does. A path would say "another view"; this is the
+  // same view with something picked out — see ADR-0014.
+  const [params, setParams] = useSearchParams();
+  const chosen = params.get('knoten');
+  const selected = nodes.find((node) => node.key === chosen) ?? null;
+
+  const select = (key: string | null) => {
+    const next = new URLSearchParams(params);
+    if (key === null) next.delete('knoten');
+    else next.set('knoten', key);
+    setParams(next, { replace: true });
+  };
+
   return (
     <div ref={attach} className="absolute inset-0 overflow-hidden bg-mesh-bg">
       {size.width > 0 &&
         (geo === null ? (
-          <Rings nodes={nodes} now={now} size={size} />
+          <Rings nodes={nodes} now={now} size={size} selected={chosen} onSelect={select} />
         ) : (
-          <Geography geo={geo} nodes={nodes} size={size} tiles={tiles.data ?? null} />
+          <Geography
+            geo={geo}
+            nodes={nodes}
+            now={now}
+            size={size}
+            tiles={tiles.data ?? null}
+            selected={chosen}
+            onSelect={select}
+          />
         ))}
+
+      {selected !== null && (
+        <NodePanel node={selected} now={now} onClose={() => select(null)} />
+      )}
     </div>
   );
 }
@@ -132,15 +161,20 @@ function assemble(contacts: readonly KnownContact[], own: SelfNode | null): Grou
 function Geography({
   geo,
   nodes,
+  now,
   size,
   tiles,
+  selected,
+  onSelect,
 }: {
   readonly geo: GeographyOf;
   readonly nodes: readonly GroundNode[];
+  readonly now: number;
   readonly size: { readonly width: number; readonly height: number };
   readonly tiles: TileInfo | null;
+  readonly selected: string | null;
+  readonly onSelect: (key: string | null) => void;
 }) {
-  const navigate = useNavigate();
   // Null means "whatever fits". Once the reader has moved, their view is kept
   // as it is — including across a resize, which is what a map does.
   const [moved, setMoved] = useState<View | null>(null);
@@ -153,7 +187,7 @@ function Geography({
   const view = moved ?? fit(geo, size.width, size.height, PADDING);
   const open = (key: string) => {
     if (drag.current.moved) return;
-    navigate(`/knoten/${key}`);
+    onSelect(key === selected ? null : key);
   };
 
   const covering = tiles?.available === true ? visibleTiles(view, size.width, size.height, tiles.max_zoom) : [];
@@ -241,7 +275,9 @@ function Geography({
             placed={one}
             x={at.x}
             y={at.y}
-            label={labelled.has(index)}
+            state={heard(one.node.lastSeen, now)}
+            label={labelled.has(index) || one.node.key === selected}
+            chosen={one.node.key === selected}
             onOpen={() => open(one.node.key)}
           />
         ))}
@@ -264,7 +300,11 @@ function Geography({
           one: over a light basemap, faint text on nothing is unreadable, and
           a single box around them all would be a grey slab across the map. */}
       <div className="pointer-events-none absolute right-4 bottom-14 flex flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
-        <span>Norden ist oben · blass heißt: seit über einem Tag nicht gehört</span>
+        <span>
+          Norden ist oben · <Dot className="fill-mesh-accent" /> in der letzten Stunde gehört ·{' '}
+          <Dot className="fill-mesh-muted" /> heute · <Dot className="fill-none" hollow /> länger
+          nicht
+        </span>
         {missing > 0 && (
           <span>
             {missing} {missing === 1 ? 'Knoten meldet' : 'Knoten melden'} keine Position und{' '}
@@ -326,24 +366,41 @@ function declutter(
   return indices;
 }
 
+/**
+ * How each state is drawn.
+ *
+ * Filled means answering, hollow means it stopped — a shape rather than only
+ * a shade, because a shade is what a light basemap eats first, and because
+ * "was here, is not answering" is the finding an operator is after.
+ */
+const LOOKS: Record<Heard, { readonly fill: string; readonly label: string }> = {
+  jetzt: { fill: 'fill-mesh-accent', label: 'fill-mesh-muted' },
+  still: { fill: 'fill-mesh-muted', label: 'fill-mesh-muted' },
+  lange: { fill: 'fill-none', label: 'fill-mesh-faint' },
+};
+
 function Node({
   placed,
   x,
   y,
+  state,
   label,
+  chosen,
   onOpen,
 }: {
   readonly placed: Placed;
   readonly x: number;
   readonly y: number;
+  readonly state: Heard;
   readonly label: boolean;
+  readonly chosen: boolean;
   readonly onOpen: () => void;
 }) {
-  const { node, stale } = placed;
+  const { node } = placed;
+  const look = LOOKS[state];
 
   return (
     <g
-      opacity={stale ? 0.45 : 1}
       role="button"
       tabIndex={0}
       className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
@@ -352,18 +409,29 @@ function Node({
         if (event.key === 'Enter' || event.key === ' ') onOpen();
       }}
     >
+      {chosen && (
+        <circle cx={x} cy={y} r={13} className="fill-none stroke-mesh-accent" strokeWidth={2} />
+      )}
       {node.own && (
-        <circle cx={x} cy={y} r={11} className="fill-none stroke-mesh-accent" strokeWidth={1} />
+        <circle
+          cx={x}
+          cy={y}
+          r={10}
+          className="fill-none stroke-mesh-accent"
+          strokeWidth={1}
+          strokeDasharray="2 3"
+        />
       )}
       <circle
         cx={x}
         cy={y}
         r={node.own ? 6 : 5}
-        className={stale ? 'fill-mesh-border' : 'fill-mesh-accent'}
+        className={look.fill}
         // A dot on a photographic base needs an edge, or it disappears into
-        // whatever it happens to sit on.
-        stroke="rgba(0,0,0,0.55)"
-        strokeWidth={1}
+        // whatever it happens to sit on. For the hollow state the edge is the
+        // dot.
+        stroke={state === 'lange' ? 'currentColor' : 'rgba(0,0,0,0.55)'}
+        strokeWidth={state === 'lange' ? 2 : 1}
       />
       {label && (
         <text
@@ -371,7 +439,7 @@ function Node({
           y={y - 12}
           textAnchor="middle"
           fontSize={11}
-          className={stale ? 'fill-mesh-faint' : 'fill-mesh-muted'}
+          className={look.label}
           // Same reason as the dot: a name has to stay readable over a map.
           paintOrder="stroke"
           stroke="rgba(0,0,0,0.55)"
@@ -387,6 +455,22 @@ function Node({
         {node.source === 'telemetry' ? ' · Position aus Telemetrie' : ''}
       </title>
     </g>
+  );
+}
+
+/** The legend's little circle, drawn the same way the map draws them. */
+function Dot({ className, hollow = false }: { readonly className: string; readonly hollow?: boolean }) {
+  return (
+    <svg width={9} height={9} viewBox="0 0 9 9" className="inline-block align-[-1px]" aria-hidden="true">
+      <circle
+        cx={4.5}
+        cy={4.5}
+        r={hollow ? 3 : 3.5}
+        className={className}
+        stroke={hollow ? 'currentColor' : 'none'}
+        strokeWidth={hollow ? 1.5 : 0}
+      />
+    </svg>
   );
 }
 
@@ -413,12 +497,15 @@ function Rings({
   nodes,
   now,
   size,
+  selected,
+  onSelect,
 }: {
   readonly nodes: readonly GroundNode[];
   readonly now: number;
   readonly size: { readonly width: number; readonly height: number };
+  readonly selected: string | null;
+  readonly onSelect: (key: string | null) => void;
 }) {
-  const navigate = useNavigate();
   const placed = rings(nodes, now);
   const centreX = size.width / 2;
   const centreY = size.height / 2;
@@ -468,18 +555,29 @@ function Rings({
               role="button"
               tabIndex={0}
               className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
-              onClick={() => navigate(`/knoten/${one.node.key}`)}
+              onClick={() => onSelect(one.node.key === selected ? null : one.node.key)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
-                  navigate(`/knoten/${one.node.key}`);
+                  onSelect(one.node.key === selected ? null : one.node.key);
                 }
               }}
             >
+              {one.node.key === selected && (
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={11}
+                  className="fill-none stroke-mesh-accent"
+                  strokeWidth={2}
+                />
+              )}
               <circle
                 cx={x}
                 cy={y}
                 r={4}
-                className={one.stale ? 'fill-mesh-border' : 'fill-mesh-accent'}
+                className={LOOKS[heard(one.node.lastSeen, now)].fill}
+                stroke={heard(one.node.lastSeen, now) === 'lange' ? 'currentColor' : 'none'}
+                strokeWidth={1.5}
               />
               <title>
                 {one.node.name} ·{' '}

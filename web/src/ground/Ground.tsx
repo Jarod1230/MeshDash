@@ -4,7 +4,8 @@ import { useLiveReload, type AppEvent } from '../lib/events';
 import { isAdvert } from '../lib/pushes';
 import { useNow } from '../lib/useNow';
 import { useResource } from '../lib/useResource';
-import type { KnownContact } from '../modules/nodes/types';
+import type { KnownContact, Trace } from '../modules/nodes/types';
+import { links, strokeFor, type MeshLink } from './links';
 import { NodePanel } from './NodePanel';
 import { useSize } from './useSize';
 import { useTiles, tileKey } from './useTiles';
@@ -75,6 +76,9 @@ export function Ground() {
   const contacts = useResource<KnownContact[]>('/nodes/contacts');
   const status = useResource<{ node_self: SelfNode | null }>('/system/status');
   const tiles = useResource<TileInfo>('/tiles');
+  // Every trace ever measured, because each one is a statement about a leg
+  // that stays true until something contradicts it.
+  const traces = useResource<Trace[]>('/nodes/traces?limit=200');
 
   useLiveReload(
     (event: AppEvent) => event.type === 'push' && isAdvert(event.payload),
@@ -86,18 +90,30 @@ export function Ground() {
     [contacts.data, status.data],
   );
   const geo = useMemo(() => geography(nodes, now), [nodes, now]);
+  const mesh = useMemo(() => links(nodes, traces.data ?? [], now), [nodes, traces.data, now]);
 
   // The selection lives in the address, so a link to a dot opens the same
   // thing a click on it does. A path would say "another view"; this is the
   // same view with something picked out — see ADR-0014.
   const [params, setParams] = useSearchParams();
   const chosen = params.get('knoten');
+  // Layers refine this view rather than being another view, so they ride in
+  // the query string — see ADR-0014. Only the deviation is written down; an
+  // address without it means the layer is on.
+  const showLinks = params.get('verbindungen') !== 'aus';
   const selected = nodes.find((node) => node.key === chosen) ?? null;
 
   const select = (key: string | null) => {
     const next = new URLSearchParams(params);
     if (key === null) next.delete('knoten');
     else next.set('knoten', key);
+    setParams(next, { replace: true });
+  };
+
+  const toggleLinks = () => {
+    const next = new URLSearchParams(params);
+    if (showLinks) next.set('verbindungen', 'aus');
+    else next.delete('verbindungen');
     setParams(next, { replace: true });
   };
 
@@ -115,6 +131,9 @@ export function Ground() {
             tiles={tiles.data ?? null}
             selected={chosen}
             onSelect={select}
+            mesh={showLinks ? mesh : []}
+            linksOn={showLinks}
+            onToggleLinks={toggleLinks}
           />
         ))}
 
@@ -166,6 +185,9 @@ function Geography({
   tiles,
   selected,
   onSelect,
+  mesh,
+  linksOn,
+  onToggleLinks,
 }: {
   readonly geo: GeographyOf;
   readonly nodes: readonly GroundNode[];
@@ -174,6 +196,9 @@ function Geography({
   readonly tiles: TileInfo | null;
   readonly selected: string | null;
   readonly onSelect: (key: string | null) => void;
+  readonly mesh: readonly MeshLink[];
+  readonly linksOn: boolean;
+  readonly onToggleLinks: () => void;
 }) {
   // Null means "whatever fits". Once the reader has moved, their view is kept
   // as it is — including across a resize, which is what a map does.
@@ -198,6 +223,10 @@ function Geography({
     at: onScreen(one.world, view, size.width, size.height),
   }));
   const labelled = declutter(placed);
+  const where = new Map(placed.map(({ one, at }) => [one.node.key, at]));
+  // A link with an unplaced end cannot be drawn anywhere honest, so it is not
+  // drawn at all — and the note below says how many that was.
+  const drawable = mesh.filter((link) => where.has(link.from) && where.has(link.to));
 
   // True at the middle of the screen and nowhere else — that is Mercator, and
   // over the span of a mesh the difference is smaller than the bar is wide.
@@ -269,6 +298,31 @@ function Geography({
           );
         })}
 
+        {drawable.map((link) => {
+          const from = where.get(link.from);
+          const to = where.get(link.to);
+          if (from === undefined || to === undefined) return null;
+
+          return (
+            <line
+              key={link.id}
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+              className="stroke-mesh-accent"
+              strokeWidth={strokeFor(link.snr)}
+              strokeLinecap="round"
+              opacity={link.snr === null ? 0.4 : 0.75}
+            >
+              <title>
+                {link.kind === 'direkt' ? 'direkt erreichbar' : 'gemessener Weg'}
+                {link.snr === null ? ' · Güte nicht gemessen' : ` · ${link.snr.toFixed(1)} dB`}
+              </title>
+            </line>
+          );
+        })}
+
         {placed.map(({ one, at }, index) => (
           <Node
             key={one.node.key}
@@ -282,6 +336,23 @@ function Geography({
           />
         ))}
       </svg>
+
+      {/* The layer switch sits above the scale, in the corner ADR-0011 gives
+          it. One switch today; the traffic layer joins it. */}
+      <div className="absolute bottom-12 left-4 flex gap-1">
+        <button
+          type="button"
+          onClick={onToggleLinks}
+          aria-pressed={linksOn}
+          className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+            linksOn
+              ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
+              : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
+          }`}
+        >
+          Verbindungen
+        </button>
+      </div>
 
       {/* Scale and credit share the bottom left, in that order. Kept in one
           row because two absolutely positioned boxes near the same corner
@@ -299,7 +370,7 @@ function Geography({
       {/* Each line carries its own background rather than the block having
           one: over a light basemap, faint text on nothing is unreadable, and
           a single box around them all would be a grey slab across the map. */}
-      <div className="pointer-events-none absolute right-4 bottom-14 flex flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
+      <div className="pointer-events-none absolute right-4 bottom-14 flex max-w-[min(30rem,calc(100%-9rem))] flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
         <span>
           Norden ist oben · <Dot className="fill-mesh-accent" /> in der letzten Stunde gehört ·{' '}
           <Dot className="fill-mesh-muted" /> heute · <Dot className="fill-none" hollow /> länger
@@ -317,6 +388,27 @@ function Geography({
             {placed.length - labelled.size === 1 ? 'Name liegt' : 'Namen liegen'} zu dicht
             beieinander und {placed.length - labelled.size === 1 ? 'steht' : 'stehen'} nur im
             Tooltip.
+          </span>
+        )}
+        {linksOn && drawable.length > 0 && (
+          <span>Linie heißt: dieser Weg wurde beobachtet · dicker heißt besser gehört</span>
+        )}
+        {linksOn && mesh.length === 0 && (
+          // An empty layer without a reason reads as "there are no
+          // connections", which would be a claim about the mesh. The claim
+          // here is about what has been observed, and that is a different
+          // sentence.
+          <span>
+            Noch kein Weg belegt. Ein Weg entsteht, sobald der Node eine Route zu einem Kontakt
+            kennt oder ein „Weg messen" ihn abläuft.
+          </span>
+        )}
+        {linksOn && mesh.length > drawable.length && (
+          <span>
+            {mesh.length - drawable.length}{' '}
+            {mesh.length - drawable.length === 1 ? 'Verbindung führt' : 'Verbindungen führen'} zu
+            einem Knoten ohne Position und {mesh.length - drawable.length === 1 ? 'fehlt' : 'fehlen'}{' '}
+            hier.
           </span>
         )}
         {tiles !== null && !tiles.available && (

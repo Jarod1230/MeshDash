@@ -187,8 +187,11 @@ pub struct Packet<'a> {
 /// keeps that width (`packet->getPathHashSize()` in `Mesh::routeRecvPacket`).
 ///
 /// `PATH_HASH_SIZE` (1) is only the default of the one-argument
-/// `Identity::copyHashTo`. It is **not** what arrives: a mesh observed on
-/// 2026-08-26 sent two bytes per station throughout.
+/// `Identity::copyHashTo`. It is **not** what arrives, and it is not fixed
+/// per mesh either: the same mesh, heard at the same place, sent two bytes per
+/// station on 2026-08-26 and one byte on 2026-08-27. The width is a setting on
+/// whoever sent the packet, so reading it off one measurement reads off one
+/// device's mood.
 ///
 /// # A prefix is not an identity
 ///

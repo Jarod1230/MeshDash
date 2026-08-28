@@ -227,7 +227,10 @@ describe('Die Karte als Grundfläche', () => {
     // The point of the shutter: the drawing underneath is not thrown away,
     // so the section an operator was looking at survives the detour.
     expect(await screen.findByRole('heading', { name: 'Verbindung' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
+    // Awaited, not read straight off: the shutter renders on the first pass
+    // while the surface waits for what it draws. Reading it immediately makes
+    // the test pass or fail on how fast the machine settles a promise.
+    expect(await screen.findByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
   });
 
   it('closes the page on Escape and leaves the surface standing', async () => {
@@ -240,7 +243,7 @@ describe('Die Karte als Grundfläche', () => {
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Verbindung' })).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: /Netzansicht/ })).toBeInTheDocument();
   });
 });
 

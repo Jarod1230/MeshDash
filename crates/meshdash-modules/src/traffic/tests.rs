@@ -227,3 +227,50 @@ async fn a_packet_it_cannot_read_is_not_a_reason_to_stop() {
         1
     );
 }
+
+#[tokio::test]
+async fn puts_every_packet_it_can_read_on_the_bus() {
+    let context = context_with(serde_json::json!({})).await;
+    let mut watching = context.events.subscribe();
+
+    feed(&context, heard(&[0xAA, 0xBB])).await;
+
+    // The push itself comes first; the decoded packet follows it.
+    let announced = loop {
+        match watching.recv().await.unwrap() {
+            AppEvent::Module { module, kind, data } => {
+                assert_eq!(module, "traffic");
+                assert_eq!(kind, "packet");
+                break data;
+            }
+            _ => continue,
+        }
+    };
+
+    assert_eq!(announced["route_type"], 1);
+    assert_eq!(announced["payload_type"], 2);
+    assert_eq!(announced["stations"], serde_json::json!(["aa", "bb"]));
+    assert_eq!(announced["width"], 1);
+    assert_eq!(announced["rssi"], -92);
+    // The encrypted remainder is not in there, as it is not anywhere else.
+    assert!(!announced.to_string().contains("dead"));
+}
+
+#[tokio::test]
+async fn still_announces_when_the_log_is_switched_off() {
+    // Watching what happens now and keeping a history are two wishes. Turning
+    // off the second must not turn off the first.
+    let context = context_with(serde_json::json!({ "record": false })).await;
+    let mut watching = context.events.subscribe();
+
+    feed(&context, heard(&[0xCC])).await;
+
+    let announced = loop {
+        match watching.recv().await.unwrap() {
+            AppEvent::Module { data, .. } => break data,
+            _ => continue,
+        }
+    };
+
+    assert_eq!(announced["stations"], serde_json::json!(["cc"]));
+}

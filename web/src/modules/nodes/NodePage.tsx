@@ -7,6 +7,8 @@ import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
 import { PresenceBand, type Presence } from '../../ui/PresenceBand';
+import { neighbours, type HeardBy } from '../../lib/neighbours';
+import { Neighbours } from './Neighbours';
 import { PacketList } from './PacketList';
 import { TracePanel } from './TracePanel';
 import { RangePicker } from '../../ui/RangePicker';
@@ -60,6 +62,13 @@ export function NodePage() {
   const range = useTimeRange('7d');
   const presence = useResource<Presence>(`/nodes/presence?node=${key}${range.query}`);
   const traces = useResource<Trace[]>(`/nodes/traces?node=${key}&limit=10`);
+  // Every trace, not only the ones aimed at this node: a leg touching it can
+  // come out of a route measured to somewhere else entirely.
+  const allTraces = useResource<Trace[]>('/nodes/traces?limit=200');
+  const overheard = useResource<HeardBy[]>('/traffic/links');
+  const self = useResource<{ node_self: { public_key: string; name: string } | null }>(
+    '/system/status',
+  );
   const routeChanges = usePagedResource<RouteChange>(
     `/nodes/route-changes?node=${key}`,
     ROUTE_CHANGES_PAGE,
@@ -92,6 +101,19 @@ export function NodePage() {
   }
 
   const contact = contacts.data.find((candidate) => candidate.public_key === key);
+  // This node is not a contact of itself, so it has to be added by hand or
+  // every hearing that involves it goes unnamed.
+  const known = neighbours(
+    key,
+    [
+      ...contacts.data.map((one) => ({ key: one.public_key, name: one.name, own: false })),
+      ...(self.data?.node_self === null || self.data?.node_self === undefined
+        ? []
+        : [{ key: self.data.node_self.public_key, name: self.data.node_self.name, own: true }]),
+    ],
+    allTraces.data ?? [],
+    overheard.data ?? [],
+  );
 
   if (contact === undefined) {
     return (
@@ -252,6 +274,10 @@ export function NodePage() {
             )}
           </>
         )}
+      </Panel>
+
+      <Panel title="Nachbarn" hint="wer diesen Knoten hört und wen er hört">
+        <Neighbours neighbours={known} now={now} />
       </Panel>
 
       <Panel title="Gehörte Pakete" hint="was über diesen Knoten lief">

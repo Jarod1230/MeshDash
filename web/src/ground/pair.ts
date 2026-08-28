@@ -1,4 +1,5 @@
-import { resolve, type HeardBy } from './links';
+import { pairId, resolve } from '../lib/prefix';
+import type { HeardBy } from './links';
 import type { GroundNode } from './projection';
 import type { Trace } from '../modules/nodes/types';
 
@@ -41,6 +42,8 @@ export interface Measured {
   readonly at: number;
 }
 
+export { pairId };
+
 /** What is known about the connection between two nodes. */
 export interface PairFacts {
   readonly a: GroundNode;
@@ -51,11 +54,6 @@ export interface PairFacts {
   readonly overheard: readonly Overheard[];
   /** Legs a trace measured, newest first. */
   readonly measured: readonly Measured[];
-}
-
-/** The identity of a pair, whichever way round it was seen. */
-export function pairId(a: string, b: string): string {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
 /**

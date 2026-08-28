@@ -403,10 +403,15 @@ aufgeschrieben. Reihenfolge wie hier.
    Güte — **und die Richtung**, getrennt je Richtung. Damit ist auch der
    Einfall unten erledigt, dass die Karte beide Richtungen zusammenwirft: Die
    Linie tut es weiterhin, die Tafel nicht.
-4. **Nachbarn auf der Knotenseite.** Aus zwei Quellen, die sich ergänzen: was
-   sich aus gehörten Paketen ergibt (kostenlos, ungenau bei kurzen Präfixen)
-   und was eine Nachbarabfrage misst (genau, kostet Sendezeit). Beide gehören
-   nebeneinander, mit dieser Unterscheidung.
+4. [x] **Nachbarn auf der Knotenseite.** Aus zwei Quellen nebeneinander:
+   mitgehört (kostenlos, ungenau bei kurzen Präfixen) und von einer Wegmessung
+   gemessen (genau, kostet Sendezeit). Beide Richtungen getrennt, und eine nie
+   beobachtete Richtung wird ausgeschrieben statt weggelassen.
+
+   Zur Frage „durch neighbours Abfrage?": Die Telemetrie-Nachbarabfrage liefert,
+   was ein Knoten über **sich** meldet — Batterie, Speicher —, nicht wie gut
+   eine Strecke trägt. Das misst nur `CMD_SEND_TRACE_PATH`. Deshalb ist sie
+   hier nicht als Quelle geführt.
 5. **Nachrichtenseite neu bauen.**
 
 ## Gesammelte Einfälle

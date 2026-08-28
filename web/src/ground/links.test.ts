@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { links, resolve, strokeFor, type HeardBy } from './links';
+import { links, strokeFor, type HeardBy } from './links';
+import { resolve } from '../lib/prefix';
 import type { GroundNode } from './projection';
 import type { Trace } from '../modules/nodes/types';
 

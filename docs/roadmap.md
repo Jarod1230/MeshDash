@@ -345,13 +345,17 @@ selbst hat.
   das statt zu schweigen. Was sie füllen würde, ist die Verkehrsebene — jedes
   gehörte Paket trägt seinen Pfad, und daraus wird ablesbar, wer wen direkt
   hört.
-- **Verkehrsebene** — der Dienstteil steht als Modul `traffic`: jedes gehörte
-  Paket wird mit Frist mitgeschrieben, und aus seinem Pfad entsteht die
-  Verdichtung „wer hört wen direkt", die keiner Frist unterliegt. Die
-  Entscheidung über Aufbewahrung und Verdichtung ist damit getroffen, siehe
-  [ADR-0016](decisions/0016-verkehr-aufbewahren.md). **Offen ist die
-  Darstellung:** die Verdichtung in die Verbindungsebene einspeisen und den
-  laufenden Verkehr live zeigen.
+- **Verkehrsebene** — Modul `traffic` schreibt jedes gehörte Paket mit Frist
+  mit und verdichtet daraus „wer hört wen direkt"
+  ([ADR-0016](decisions/0016-verkehr-aufbewahren.md)). Die Verdichtung speist
+  die Verbindungsebene: Am 2026-08-27 wurden so acht Paare aus 67 gehörten
+  Paketen belegt, ohne dass jemand etwas gesendet hat. Dazu eine
+  Live-Anzeige, wie viel gerade läuft.
+
+  **Offen bleibt die Bahn eines einzelnen Pakets.** Dafür müsste `traffic`
+  jedes gelesene Paket als Ereignis veröffentlichen
+  ([ADR-0007](decisions/0007-modul-ereignisse.md)) — die Oberfläche darf
+  Nutzlasten nicht selbst deuten, das ist Sache des Dienstes.
 - **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel, und
   von dort führt ein Schritt zur vollen Knotenseite: **erledigt**, die Auswahl
   steht als `?knoten=` in der Adresse. Offen bleibt dasselbe für die anderen

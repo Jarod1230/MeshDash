@@ -5,13 +5,14 @@
  * Values from `meshdash_proto::opcode::Push`, verified against the firmware
  * source (MeshCore commit d929643) and listed in
  * docs/research/meshcore-companion-protocol.md. Nothing here is guessed, and
- * nothing beyond these four belongs here: decoding payloads is the backend's
+ * nothing beyond these five belongs here: decoding payloads is the backend's
  * job, and the browser only needs to know which page to nudge.
  */
 const PUSH_ADVERT = 0x80;
 const PUSH_NEW_ADVERT = 0x8a;
 const PUSH_MSG_WAITING = 0x83;
 const PUSH_TRACE_DATA = 0x89;
+const PUSH_RX_LOG = 0x88;
 
 /** The opcode of a push event, read from the leading byte of its hex payload. */
 export function pushOpcode(payload: string | undefined): number | null {
@@ -29,6 +30,17 @@ export function isAdvert(payload: string | undefined): boolean {
 /** Whether a push announces that messages are waiting to be fetched. */
 export function isMessageWaiting(payload: string | undefined): boolean {
   return pushOpcode(payload) === PUSH_MSG_WAITING;
+}
+
+/**
+ * Whether a push is the node reporting a packet it heard.
+ *
+ * Arrives for every packet the radio picks up, including packets meant for
+ * others — so this is the busiest event there is, and whatever reacts to it
+ * has to be cheap.
+ */
+export function isReceivedPacket(payload: string | undefined): boolean {
+  return pushOpcode(payload) === PUSH_RX_LOG;
 }
 
 /** Whether a push is a trace coming back. */

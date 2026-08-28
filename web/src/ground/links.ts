@@ -1,6 +1,20 @@
 import type { GroundNode } from './projection';
 import type { Trace } from '../modules/nodes/types';
 
+/** What `/api/v1/traffic/links` answers: one observed "heard directly". */
+export interface HeardBy {
+  /** Prefix of the station that transmitted, lowercase hex. */
+  readonly talker: string;
+  /** Prefix of the station that heard it. Empty means this node. */
+  readonly listener: string;
+  /** Bytes per prefix. One byte is a weak match, three is nearly certain. */
+  readonly width: number;
+  readonly first_seen: string;
+  readonly last_seen: string;
+  /** How many packets showed it. */
+  readonly heard: number;
+}
+
 /**
  * Which connections in the mesh are established fact, and how well they carry.
  *
@@ -14,6 +28,11 @@ import type { Trace } from '../modules/nodes/types';
  * - **Traced legs.** A trace walks a route and reports, per station, how well
  *   it heard the one before it. Those are the only measurements MeshDash has
  *   about how two *other* stations hear each other.
+ * - **Overheard packets.** Every packet this node receives carries the path it
+ *   travelled, and a forwarding station appends itself to the end of it. So
+ *   each neighbouring pair on that path heard each other, and the last station
+ *   was heard here. Nobody had to transmit for this — it accumulates from
+ *   listening.
  *
  * Everything else stays undrawn. A route known from a contact's path is a list
  * of one-byte key prefixes, and in a mesh of any size two nodes share a first
@@ -27,7 +46,7 @@ import type { Trace } from '../modules/nodes/types';
  * Separate from whether it was measured: a leg a trace walked is established
  * fact even where the answer carried no value for it.
  */
-export type LinkKind = 'direkt' | 'verfolgt';
+export type LinkKind = 'direkt' | 'verfolgt' | 'gehört';
 
 /** One connection between two nodes, as far as it was observed. */
 export interface MeshLink {
@@ -43,6 +62,14 @@ export interface MeshLink {
    */
   readonly snr: number | null;
   readonly kind: LinkKind;
+  /**
+   * How many packets showed this pair, where that was counted.
+   *
+   * Only overheard links have it. Twenty-eight packets over a pair says more
+   * about a link than one does, and it is the only strength this source can
+   * honestly report.
+   */
+  readonly heard: number | null;
   /** When this was observed, epoch milliseconds. Newer wins over older. */
   readonly at: number;
 }
@@ -77,6 +104,7 @@ export function resolve(prefix: string, nodes: readonly GroundNode[]): string | 
 export function links(
   nodes: readonly GroundNode[],
   traces: readonly Trace[],
+  overheard: readonly HeardBy[],
   now: number,
 ): MeshLink[] {
   const own = nodes.find((node) => node.own);
@@ -104,6 +132,7 @@ export function links(
         from: own.key,
         to: node.key,
         snr: null,
+        heard: null,
         kind: 'direkt',
         // The link is as current as the last time anything was heard from it.
         at: Math.min(node.lastSeen, now),
@@ -137,8 +166,29 @@ export function links(
       // coming back, not this leg, and pinning it here would be an invention.
       const snr = trace.hops[leg]?.snr ?? null;
 
-      add({ id: pairId(from, to), from, to, snr, kind: 'verfolgt', at });
+      add({ id: pairId(from, to), from, to, snr, heard: null, kind: 'verfolgt', at });
     }
+  }
+
+  for (const pair of overheard) {
+    // The empty listener is this node: a receiver leaves no prefix in the path
+    // it received, so there is nothing to resolve.
+    const listener = pair.listener === '' ? (own?.key ?? null) : resolve(pair.listener, nodes);
+    const talker = resolve(pair.talker, nodes);
+    if (talker === null || listener === null || talker === listener) continue;
+
+    add({
+      id: pairId(talker, listener),
+      from: talker,
+      to: listener,
+      // The path says who forwarded, not how well it was received. The one
+      // reception this node did measure belongs to a packet, not to the pair,
+      // and averaging over a month of them would invent a number.
+      snr: null,
+      heard: pair.heard,
+      kind: 'gehört',
+      at: new Date(pair.last_seen).getTime(),
+    });
   }
 
   return [...found.values()];

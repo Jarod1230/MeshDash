@@ -12,6 +12,17 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Mitgehörte Verbindungen auf der Karte.** Was das Modul `traffic` aus den
+  Pfaden gehörter Pakete verdichtet, wird jetzt gezeichnet: Linien für Paare,
+  die einander nachweislich hören — ohne dass jemand etwas senden musste. Ein
+  Präfix, auf das mehrere bekannte Knoten passen, wird weiterhin niemandem
+  zugeordnet. Der Tooltip sagt, woher eine Linie stammt und wie viele Pakete
+  sie belegen.
+
+- **Wie viel gerade läuft.** Unten links steht, wie viele Pakete der Node in
+  der letzten Minute gehört hat — auch fremde. Vorher sahen ein stilles Mesh
+  und eine tote Verbindung gleich aus.
+
 - **Modul `traffic`: jedes gehörte Paket, und wer wen direkt hört.** Der Node
   meldet jedes Paket, das er empfängt — auch fremdes und verworfenes. MeshDash
   schreibt das jetzt mit: `GET /api/v1/traffic/packets` liefert den Verlauf,

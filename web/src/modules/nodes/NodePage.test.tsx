@@ -38,6 +38,8 @@ function answers(overrides: Record<string, unknown> = {}) {
             ? (overrides['routeChanges'] ?? [])
             : path.includes('/telemetry/neighbours')
               ? (overrides['readings'] ?? [])
+              : path.includes('/traffic/packets')
+                ? (overrides['packets'] ?? [])
               : (overrides['thread'] ?? []);
     return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
   });
@@ -242,5 +244,55 @@ describe('Weg messen', () => {
     expect(await screen.findByText(/kein Weg bekannt/)).toBeInTheDocument();
     expect(screen.queryByText(/direkt erreichbar/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Weg messen' })).toBeDisabled();
+  });
+});
+
+describe('Gehörte Pakete auf der Knotenseite', () => {
+  const packet = {
+    id: 7,
+    heard_at: new Date().toISOString(),
+    route_type: 1,
+    payload_type: 2,
+    version: 0,
+    stations: 2,
+    path: 'aabb',
+    path_width: 1,
+    snr: 11.5,
+    rssi: -27,
+    size: 23,
+  };
+
+  it('asks only for the packets this node touched', async () => {
+    const fetchMock = answers({ packets: [packet] });
+    vi.stubGlobal('fetch', fetchMock);
+    show();
+
+    await screen.findByText('Repeater Nord');
+    const asked = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(asked.some((url) => url.includes(`/traffic/packets?station=${KEY}`))).toBe(true);
+  });
+
+  it('names the kind of packet rather than its number', async () => {
+    vi.stubGlobal('fetch', answers({ packets: [packet] }));
+    show();
+
+    expect(await screen.findByText('Textnachricht')).toBeInTheDocument();
+    expect(screen.getByText('geflutet')).toBeInTheDocument();
+  });
+
+  it('says how weak a one-byte match is instead of showing it as certain', async () => {
+    // 256 values against a few dozen nodes: two sharing a first byte is
+    // likelier than not.
+    vi.stubGlobal('fetch', answers({ packets: [packet] }));
+    show();
+
+    expect(await screen.findByText(/256 Möglichkeiten/)).toBeInTheDocument();
+  });
+
+  it('does not claim a sender for a packet nobody forwarded', async () => {
+    vi.stubGlobal('fetch', answers({ packets: [] }));
+    show();
+
+    expect(await screen.findByText(/verschlüsselten Nutzlast/)).toBeInTheDocument();
   });
 });

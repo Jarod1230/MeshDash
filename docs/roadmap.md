@@ -393,11 +393,11 @@ aufgeschrieben. Reihenfolge wie hier.
 
 1. [x] **Einstellungsseite** — siehe „Gesammelte Einfälle" unten; erledigt mit
    [ADR-0017](decisions/0017-einstellungen-zur-laufzeit.md).
-2. **Pakete zu einem Knoten sehen.** Mitgeschnitten werden sie längst; es fehlt
-   die Liste — gefiltert nach Knoten, erreichbar aus der Knotenseite und aus
-   den Sichtungen. Dafür braucht `traffic` einen Filter auf das Präfix einer
-   Station, und die Oberfläche muss dabei sagen, wie stark eine Zuordnung ist:
-   bei einem Byte ist sie schwach.
+2. [x] **Pakete zu einem Knoten sehen.** `GET /api/v1/traffic/packets?station=`
+   filtert auf die Stationen eines Weges, und die Knotenseite zeigt sie. Die
+   Zuordnung wird an Stationsgrenzen geprüft, nicht als Teilzeichenkette —
+   `aabb` enthält `ab`, und das ist keine Station. Wie stark ein Treffer ist,
+   steht dabei: bei einem Byte sind es 256 Möglichkeiten.
 3. **Klick auf eine Verbindung.** Tut heute nichts, und der Tooltip beim
    Darüberhalten ist bei 1,25 px Strichstärke keine Bedienung — es braucht
    einen breiteren unsichtbaren Griff und eine Tafel wie beim Knoten: seit wann

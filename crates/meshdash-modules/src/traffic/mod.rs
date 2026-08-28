@@ -61,10 +61,11 @@ use serde::{Deserialize, Serialize};
 use crate::query::{BadTimeRange, TimeRange, Window};
 
 /// Schema of this module. Versions count from 1, per module.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "the packet log and the summary of who hears whom",
-    sql: "
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "the packet log and the summary of who hears whom",
+        sql: "
         -- One row per heard packet. Subject to [modules.traffic] keep_days;
         -- see ADR-0016. No payload: it is encrypted and not ours to keep.
         CREATE TABLE traffic_packets (
@@ -105,7 +106,46 @@ const MIGRATIONS: &[Migration] = &[Migration {
             PRIMARY KEY (talker, listener, width)
         );
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        description: "the stations of a packet, one row each",
+        sql: "
+        -- The path is kept twice on purpose: as it arrived, in
+        -- traffic_packets.path, and split up here.
+        --
+        -- The raw form is the record. This one is the only form that can be
+        -- searched: finding every packet a station touched means matching at
+        -- station boundaries, and a substring search over a run of
+        -- concatenated prefixes matches across them — 'aabbccdd' contains
+        -- 'bbcc', which is no station at all.
+        CREATE TABLE traffic_packet_stations (
+            packet_id INTEGER NOT NULL,
+            position  INTEGER NOT NULL,
+            prefix    TEXT    NOT NULL,
+            PRIMARY KEY (packet_id, position)
+        );
+
+        CREATE INDEX traffic_packet_stations_prefix
+            ON traffic_packet_stations (prefix);
+
+        -- What is already stored is split too, so the packet list does not
+        -- begin with a silent hole where the older half of the retention
+        -- period should be.
+        INSERT INTO traffic_packet_stations (packet_id, position, prefix)
+        WITH RECURSIVE split(id, width, rest, pos) AS (
+            SELECT id, path_width * 2, path, 0
+            FROM traffic_packets
+            WHERE path <> ''
+            UNION ALL
+            SELECT id, width, substr(rest, width + 1), pos + 1
+            FROM split
+            WHERE length(rest) > width
+        )
+        SELECT id, pos, substr(rest, 1, width) FROM split WHERE length(rest) >= width;
+    ",
+    },
+];
 
 /// How this module may be configured, under `[modules.traffic]`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -329,7 +369,7 @@ pub async fn record_packet(
     snr: f32,
     rssi: i8,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
+    let id = sqlx::query(
         "INSERT INTO traffic_packets
             (heard_at, route_type, payload_type, version, stations, path, path_width,
              snr, rssi, size)
@@ -346,7 +386,21 @@ pub async fn record_packet(
     .bind(i64::from(rssi))
     .bind(i64::try_from(size).unwrap_or(i64::MAX))
     .execute(context.db.pool())
-    .await?;
+    .await?
+    .last_insert_rowid();
+
+    // The path again, split at station boundaries. Only this form can be
+    // searched — see the note on the table.
+    for (position, station) in packet.path.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO traffic_packet_stations (packet_id, position, prefix) VALUES (?, ?, ?)",
+        )
+        .bind(id)
+        .bind(i64::try_from(position).unwrap_or(i64::MAX))
+        .bind(to_hex(station.key_prefix))
+        .execute(context.db.pool())
+        .await?;
+    }
 
     Ok(())
 }
@@ -415,6 +469,18 @@ pub async fn sweep(context: &AppContext, keep_days: i64) -> Result<u64, sqlx::Er
     }
 
     let cutoff = (Utc::now() - chrono::Duration::days(keep_days)).to_rfc3339();
+
+    // The stations first, while their packets are still there to name them.
+    // SQLite does not enforce the reference on its own unless asked to, and
+    // asking would make every other statement pay for it.
+    sqlx::query(
+        "DELETE FROM traffic_packet_stations WHERE packet_id IN
+            (SELECT id FROM traffic_packets WHERE heard_at < ?)",
+    )
+    .bind(&cutoff)
+    .execute(context.db.pool())
+    .await?;
+
     let removed = sqlx::query("DELETE FROM traffic_packets WHERE heard_at < ?")
         .bind(cutoff)
         .execute(context.db.pool())
@@ -481,6 +547,13 @@ fn to_hex(bytes: &[u8]) -> String {
 /// Which packets to answer with.
 #[derive(Debug, Deserialize, Default)]
 pub struct PacketQuery {
+    /// Only packets a given node touched, by full public key.
+    ///
+    /// Matched against the stations on the path: a stored prefix counts when
+    /// the key starts with it. How strong that is depends on how wide the
+    /// sender made its prefixes — at one byte, several nodes fit, and the
+    /// answer carries `path_width` so a reader can say so.
+    station: Option<String>,
     /// Only packets older than this one.
     before: Option<i64>,
     /// How many to return.
@@ -510,7 +583,9 @@ async fn list_packets(
     State(context): State<AppContext>,
     Query(query): Query<PacketQuery>,
 ) -> Result<Json<Vec<HeardPacket>>, TrafficError> {
-    Ok(Json(read_packets(&context, &query.window()?).await?))
+    Ok(Json(
+        read_packets(&context, query.station.as_deref(), &query.window()?).await?,
+    ))
 }
 
 async fn list_links(State(context): State<AppContext>) -> Result<Json<Vec<HeardBy>>, TrafficError> {
@@ -534,21 +609,26 @@ type PacketRow = (
 /// Reads the packet log, newest first.
 pub async fn read_packets(
     context: &AppContext,
+    station: Option<&str>,
     window: &Window,
 ) -> Result<Vec<HeardPacket>, sqlx::Error> {
     let rows: Vec<PacketRow> = sqlx::query_as(
         "SELECT id, heard_at, route_type, payload_type, version, stations, path,
                 path_width, snr, rssi, size
-         FROM traffic_packets
+         FROM traffic_packets p
          WHERE (?1 IS NULL OR id < ?1)
            AND (?2 IS NULL OR heard_at >= ?2)
            AND (?3 IS NULL OR heard_at <= ?3)
+           AND (?5 IS NULL OR EXISTS (
+                 SELECT 1 FROM traffic_packet_stations s
+                 WHERE s.packet_id = p.id AND ?5 LIKE s.prefix || '%'))
          ORDER BY id DESC LIMIT ?4",
     )
     .bind(window.before)
     .bind(&window.since)
     .bind(&window.until)
     .bind(window.limit)
+    .bind(station.map(str::to_lowercase))
     .fetch_all(context.db.pool())
     .await?;
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLiveReload, type AppEvent } from '../lib/events';
 import { isAdvert, isReceivedPacket } from '../lib/pushes';
@@ -23,6 +23,7 @@ import {
   rings,
   scaleStep,
   toLatitude,
+  zoomStep,
   visibleTiles,
   zoomAt,
   type Geography as GeographyOf,
@@ -230,8 +231,44 @@ function Geography({
   // is tracked here, and a click that came out of a drag is ignored — nobody
   // means to open a node by letting go of the map on top of it.
   const drag = useRef({ active: false, x: 0, y: 0, moved: false });
+  const surface = useRef<SVGSVGElement | null>(null);
 
   const view = moved ?? fit(geo, size.width, size.height, PADDING);
+  // What the wheel listener needs, kept where a listener may read it. The
+  // listener outlives any single render and must not close over a stale view.
+  const latest = useRef({ view, size });
+  useEffect(() => {
+    latest.current = { view, size };
+  });
+
+  // Attached by hand rather than through React: React registers wheel
+  // listeners as passive, and a passive listener cannot stop a pinch from
+  // zooming the whole page instead of the map.
+  useEffect(() => {
+    const element = surface.current;
+    if (element === null) return;
+
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const box = element.getBoundingClientRect();
+      const now = latest.current;
+
+      setMoved(
+        zoomAt(
+          now.view,
+          zoomStep(event.deltaY, event.deltaMode, event.ctrlKey),
+          event.clientX - box.left,
+          event.clientY - box.top,
+          now.size.width,
+          now.size.height,
+        ),
+      );
+    };
+
+    element.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => element.removeEventListener('wheel', onWheel);
+  }, []);
   const open = (key: string) => {
     if (drag.current.moved) return;
     onSelect(key === selected ? null : key);
@@ -260,24 +297,12 @@ function Geography({
   return (
     <>
       <svg
+        ref={surface}
         width={size.width}
         height={size.height}
         className="block cursor-grab touch-none select-none active:cursor-grabbing"
         role="img"
         aria-label={`Karte mit ${geo.placed.length} verorteten Knoten`}
-        onWheel={(event) => {
-          const box = event.currentTarget.getBoundingClientRect();
-          setMoved(
-            zoomAt(
-              view,
-              event.deltaY > 0 ? -0.4 : 0.4,
-              event.clientX - box.left,
-              event.clientY - box.top,
-              size.width,
-              size.height,
-            ),
-          );
-        }}
         onPointerDown={(event) => {
           drag.current = { active: true, x: event.clientX, y: event.clientY, moved: false };
         }}

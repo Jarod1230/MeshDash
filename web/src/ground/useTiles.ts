@@ -12,6 +12,15 @@ import type { TileAt } from './projection';
  */
 const KEEP = 400;
 
+/**
+ * How long a tile that failed is left alone before it is tried again.
+ *
+ * A source can be briefly unreachable, or refuse under load. Never asking
+ * again would leave a hole in the map for the life of the page; asking on
+ * every redraw would hammer whoever just said no.
+ */
+const RETRY_AFTER = 30_000;
+
 /** The key a tile is cached under, and the path it is fetched from. */
 function keyOf(tile: TileAt): string {
   return `${tile.z}/${tile.x}/${tile.y}`;
@@ -39,7 +48,11 @@ function keyOf(tile: TileAt): string {
 export function useTiles(tiles: readonly TileAt[], enabled: boolean): ReadonlyMap<string, string> {
   const owned = useRef(new Map<string, string>());
   const started = useRef(new Set<string>());
-  const failed = useRef(new Set<string>());
+  // When a tile last failed, so it can be tried again rather than written off
+  // for the life of the page — a source that was briefly unreachable is not a
+  // source that has no tile.
+  const failed = useRef(new Map<string, number>());
+  const alive = useRef(true);
   const [ready, setReady] = useState<ReadonlyMap<string, string>>(new Map());
 
   const wanted = tiles.map(keyOf).join(' ');
@@ -47,14 +60,25 @@ export function useTiles(tiles: readonly TileAt[], enabled: boolean): ReadonlyMa
   useEffect(() => {
     if (!enabled) return;
 
-    let cancelled = false;
-
-    // Started in a microtask: every setState below happens after an await,
-    // and deferring the start makes that explicit rather than silenced.
+    // Deliberately without a per-run cancellation flag.
+    //
+    // The view changes on every frame of a drag, so this effect restarts on
+    // every frame. Cancelling the run before it would abandon requests that
+    // were already in flight — and because the key stays marked as started,
+    // those tiles are never asked for again. That is a stretch of map that
+    // stays blank until the page is reloaded, which is what a real drag on a
+    // real map produced. A tile is a tile wherever the view has moved to
+    // since; there is nothing to cancel.
+    //
+    // Started in a microtask: every setState below happens after an await, and
+    // deferring the start makes that explicit rather than silenced.
     queueMicrotask(async () => {
       for (const key of wanted.split(' ').filter((one) => one !== '')) {
-        if (cancelled) return;
-        if (started.current.has(key) || failed.current.has(key)) continue;
+        if (!alive.current) return;
+        if (started.current.has(key)) continue;
+
+        const failedAt = failed.current.get(key);
+        if (failedAt !== undefined && Date.now() - failedAt < RETRY_AFTER) continue;
 
         // Marked before the request goes out, so a redraw mid-flight does not
         // ask for the same tile a second time.
@@ -65,15 +89,16 @@ export function useTiles(tiles: readonly TileAt[], enabled: boolean): ReadonlyMa
           url = await apiObjectUrl(`/tiles/${key}`);
         } catch {
           started.current.delete(key);
-          failed.current.add(key);
+          failed.current.set(key, Date.now());
           continue;
         }
 
-        if (cancelled) {
+        if (!alive.current) {
           URL.revokeObjectURL(url);
           return;
         }
 
+        failed.current.delete(key);
         owned.current.set(key, url);
 
         // Oldest first: a Map iterates in insertion order.
@@ -89,10 +114,6 @@ export function useTiles(tiles: readonly TileAt[], enabled: boolean): ReadonlyMa
         setReady(new Map(owned.current));
       }
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [wanted, enabled]);
 
   // On unmount, let go of every image at once — and forget everything else
@@ -108,8 +129,10 @@ export function useTiles(tiles: readonly TileAt[], enabled: boolean): ReadonlyMa
     const urls = owned.current;
     const asked = started.current;
     const broken = failed.current;
+    alive.current = true;
 
     return () => {
+      alive.current = false;
       for (const url of urls.values()) {
         URL.revokeObjectURL(url);
       }

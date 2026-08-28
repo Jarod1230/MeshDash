@@ -15,6 +15,7 @@ import {
   toWorld,
   visibleTiles,
   zoomAt,
+  zoomStep,
   type GroundNode,
 } from './projection';
 
@@ -190,6 +191,37 @@ describe('zoomAt', () => {
 
     expect(zoomAt(view, 5, 400, 300, 800, 600).zoom).toBe(22);
     expect(zoomAt({ ...view, zoom: 1 }, -5, 400, 300, 800, 600).zoom).toBe(0);
+  });
+});
+
+describe('zoomStep', () => {
+  it('follows how much the wheel actually moved', () => {
+    // A mouse notch in Chrome is 100 pixels; a trackpad sends a stream of
+    // single digits. One fixed step per event makes the mouse behave and the
+    // trackpad fly from the whole world to a single house in one swipe.
+    expect(zoomStep(-100, 0, false)).toBeCloseTo(0.4, 6);
+    expect(Math.abs(zoomStep(-4, 0, false))).toBeLessThan(0.05);
+  });
+
+  it('zooms in when the wheel goes up, out when it goes down', () => {
+    expect(zoomStep(-100, 0, false)).toBeGreaterThan(0);
+    expect(zoomStep(100, 0, false)).toBeLessThan(0);
+  });
+
+  it('caps a flick, so no single event crosses a zoom level', () => {
+    expect(zoomStep(-100_000, 0, false)).toBe(0.6);
+    expect(zoomStep(100_000, 0, false)).toBe(-0.6);
+  });
+
+  it('reads a pinch on its own scale', () => {
+    // A pinch arrives as a wheel event with the control key held, and its
+    // numbers are far smaller than a scroll's.
+    expect(zoomStep(-10, 0, true)).toBeGreaterThan(zoomStep(-10, 0, false));
+  });
+
+  it('understands a wheel that counts in lines', () => {
+    // Firefox reports lines rather than pixels; three lines is about a notch.
+    expect(zoomStep(-3, 1, false)).toBeCloseTo(zoomStep(-48, 0, false), 6);
   });
 });
 

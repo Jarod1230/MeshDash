@@ -271,6 +271,27 @@ export function zoomAt(
   };
 }
 
+/**
+ * How much one wheel event should change the zoom.
+ *
+ * A mouse wheel sends few large notches; a trackpad sends a stream of small
+ * ones, dozens per gesture. Treating both as one fixed step means a mouse
+ * behaves and a trackpad flies from the whole world to a single house in one
+ * swipe — reported from a MacBook, and exactly what a fixed step does.
+ *
+ * So the step follows the size of the event, and is capped so no single flick
+ * can cross more than half a zoom level.
+ */
+export function zoomStep(deltaY: number, deltaMode: number, pinch: boolean): number {
+  // deltaMode: 0 pixels, 1 lines, 2 pages. Firefox reports lines.
+  const pixels = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? 400 : 1);
+  // A pinch arrives as a wheel event with the control key held — macOS and
+  // Windows both do this — and its numbers are far smaller than a scroll's.
+  const perPixel = pinch ? 0.012 : 0.004;
+
+  return Math.min(Math.max(-pixels * perPixel, -0.6), 0.6);
+}
+
 /** Moves the view by a drag, in pixels. */
 export function panBy(view: View, dx: number, dy: number): View {
   const scale = scaleOf(view.zoom);

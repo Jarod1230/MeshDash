@@ -3,6 +3,7 @@ import { systemModule } from './system';
 import { nodesModule } from './nodes';
 import { messagesModule } from './messages';
 import { telemetryModule } from './telemetry';
+import { settingsModule } from './settings';
 
 /**
  * The module registry.
@@ -15,6 +16,7 @@ export const modules: readonly UiModule[] = [
   nodesModule,
   messagesModule,
   telemetryModule,
+  settingsModule,
 ];
 
 export type { UiModule };

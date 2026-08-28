@@ -47,5 +47,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0014](0014-die-adresse-bleibt-ein-pfad.md) | Die Karte liegt außerhalb der Routen, die Adresse bleibt ein Pfad | Angenommen |
 | [0015](0015-eigene-zeichnung-statt-leaflet.md) | Die Karte zeichnet MeshDash selbst, in Web-Mercator, ohne Leaflet | Angenommen |
 | [0016](0016-verkehr-aufbewahren.md) | Rohverkehr mit Frist, „wer hört wen" verdichtet und bleibend | Angenommen |
+| [0017](0017-einstellungen-zur-laufzeit.md) | Modul-Einstellungen im Betrieb änderbar, Datei bleibt der Grund | Angenommen |
 
 Vorlage: [`template.md`](template.md).

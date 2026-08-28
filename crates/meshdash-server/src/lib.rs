@@ -34,6 +34,7 @@ use subtle::ConstantTimeEq;
 
 pub mod events;
 pub mod frontend;
+pub mod settings;
 
 /// Prefix every module route sits under, per `docs/conventions.md`.
 pub const API_PREFIX: &str = "/api/v1";
@@ -136,6 +137,10 @@ pub fn build_router(registry: &ModuleRegistry, context: AppContext, auth: AuthCo
         api = api.nest(&mount, routes);
     }
 
+    // Mounted by the server, not by a module: settings belong to every module
+    // and to none, and a module may not read another's section.
+    api = api.nest("/settings", settings::routes());
+
     // The API answers its own misses, so that an unmatched path inside the API
     // still passes through the guard below. Otherwise an unauthenticated
     // caller could tell a real path (401) from an invented one (404) and map
@@ -177,7 +182,6 @@ fn not_found() -> WithStatus {
 mod tests {
     use super::*;
     use axum::{body::Body, http::Request, routing::get};
-    use meshdash_core::config::ModuleSettings;
     use meshdash_core::{
         db::Database,
         event::EventBus,
@@ -199,7 +203,7 @@ mod tests {
             db,
             events,
             link,
-            settings: ModuleSettings::default(),
+            settings: meshdash_core::settings::Settings::default(),
         }
     }
 

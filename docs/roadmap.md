@@ -386,6 +386,28 @@ selbst hat.
   Bezugspunkt. Eine geschätzte Position wird als geschätzt gezeigt, mit ihrer
   Unsicherheit, oder sie wird nicht gezeigt.
 
+## Aus der Benutzung gemeldet
+
+Am 2026-08-28 beim ersten längeren Ansehen der laufenden Anwendung
+aufgeschrieben. Reihenfolge wie hier.
+
+1. [x] **Einstellungsseite** — siehe „Gesammelte Einfälle" unten; erledigt mit
+   [ADR-0017](decisions/0017-einstellungen-zur-laufzeit.md).
+2. **Pakete zu einem Knoten sehen.** Mitgeschnitten werden sie längst; es fehlt
+   die Liste — gefiltert nach Knoten, erreichbar aus der Knotenseite und aus
+   den Sichtungen. Dafür braucht `traffic` einen Filter auf das Präfix einer
+   Station, und die Oberfläche muss dabei sagen, wie stark eine Zuordnung ist:
+   bei einem Byte ist sie schwach.
+3. **Klick auf eine Verbindung.** Tut heute nichts, und der Tooltip beim
+   Darüberhalten ist bei 1,25 px Strichstärke keine Bedienung — es braucht
+   einen breiteren unsichtbaren Griff und eine Tafel wie beim Knoten: seit wann
+   belegt, aus wie vielen Paketen, gemessene Güte, Richtung.
+4. **Nachbarn auf der Knotenseite.** Aus zwei Quellen, die sich ergänzen: was
+   sich aus gehörten Paketen ergibt (kostenlos, ungenau bei kurzen Präfixen)
+   und was eine Nachbarabfrage misst (genau, kostet Sendezeit). Beide gehören
+   nebeneinander, mit dieser Unterscheidung.
+5. **Nachrichtenseite neu bauen.**
+
 ## Gesammelte Einfälle
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
@@ -421,12 +443,13 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   darunter schreibt, wie viele sie weggelassen hat. Offen bleibt das Bessere:
   bei Enge zu einer Gruppe zusammenfassen, statt einen der beiden Namen
   auszulassen.
-- **Einstellungen gehören in die Oberfläche.** Nachbarabfrage, Intervalle,
-  später der Kartendienst und was sonst noch dazukommt, stehen heute in der
-  Konfigurationsdatei; wer sie ändern will, braucht Dateizugriff und einen
-  Neustart. Ein Einstellungsbereich, der alles an einem Ort sammelt, ist
-  vorgesehen — dann auch mit dem, was der Node selbst kann (Name,
-  Sendeleistung, Funkparameter).
+- [x] **Einstellungen gehören in die Oberfläche** — umgesetzt für die Optionen,
+  die ein laufender Dienst befolgen kann
+  ([ADR-0017](decisions/0017-einstellungen-zur-laufzeit.md)). Offen bleibt die
+  Kartenquelle: Der Kachelclient wird beim Start gebaut.
+  Noch nicht dabei ist, was der Node selbst kann — Name, Sendeleistung,
+  Funkparameter. Das sind Kommandos an das Gerät, keine Einstellungen von
+  MeshDash, und sie gehören auf dieselbe Seite.
 - **Achsenbeschriftung bei winzigem Wertebereich.** Zeigt eine Kurve nur
   wenige Millivolt Unterschied, rundet die Y-Achse alle Marken auf denselben
   Text — beim Ausprobieren stand dreimal `4.10` untereinander. Die Zahl der

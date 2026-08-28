@@ -2,11 +2,11 @@
 
 use crate::query::Window;
 use meshdash_core::{
-    config::ModuleSettings,
     db::Database,
     event::EventBus,
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
+    settings::Settings,
 };
 use meshdash_transport::mock::{MockTransport, SentFrames, Step};
 
@@ -64,7 +64,7 @@ async fn context_and_record_with(script: Vec<Step>) -> (AppContext, SentFrames) 
         db,
         events,
         link,
-        settings: ModuleSettings::default(),
+        settings: Settings::default(),
     };
 
     let mut registry = ModuleRegistry::new();

@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use axum::Router;
 use meshdash_core::{
     config::ModuleSettings, db::Database, event::EventBus, link, module::AppContext,
+    settings::Settings as RuntimeSettings,
 };
 use meshdash_transport::mock::{MockTransport, Step};
 
@@ -51,7 +52,7 @@ async fn context_with(settings: serde_json::Value) -> AppContext {
         db,
         events,
         link: handle,
-        settings: module_settings,
+        settings: RuntimeSettings::from_file(module_settings),
     }
 }
 

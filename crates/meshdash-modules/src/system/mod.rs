@@ -330,8 +330,9 @@ async fn handle(context: &AppContext, event: AppEvent) {
                 tracing::error!(%error, "could not record that the node disconnected");
             }
         }
-        // Everything else belongs to other modules.
-        AppEvent::Push { .. } | AppEvent::Module { .. } => {}
+        // Everything else belongs to other modules. This module reads its
+        // settings when it uses them, so a change needs nothing here.
+        AppEvent::Push { .. } | AppEvent::Module { .. } | AppEvent::SettingsChanged { .. } => {}
     }
 }
 

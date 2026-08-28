@@ -294,7 +294,13 @@ export function NodePage() {
         ) : readings.data.length === 0 ? (
           <Empty>
             Dieser Knoten wurde nicht nach Messwerten gefragt, oder hat nicht geantwortet. Gefragt
-            wird nur, wenn <code className="text-mesh-accent">[modules.telemetry] neighbours</code>{' '}
+            wird nur, wenn die Nachbarabfrage unter{' '}
+            <Link
+              to="/einstellungen"
+              className="text-mesh-accent underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+            >
+              Einstellungen
+            </Link>{' '}
             eingeschaltet ist.
           </Empty>
         ) : (

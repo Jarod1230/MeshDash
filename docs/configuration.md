@@ -138,6 +138,21 @@ Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
   [`testing.md`](testing.md).
 - **Kommandozeilenargumente**, insbesondere `--config`. Gehören zum Binary.
 
+## Was die Oberfläche ändern kann, und was nicht
+
+Seit [ADR-0017](decisions/0017-einstellungen-zur-laufzeit.md) sind
+**Modul-Optionen im Betrieb änderbar** — unter „Einstellungen" in der
+Oberfläche. Was dort geändert wird, liegt in der Datenbank und gewinnt gegen
+die Datei, Option für Option. Alles Unberührte kommt weiter aus der Datei; die
+Seite zeigt an, wo etwas abweicht.
+
+**Nicht änderbar sind die Optionen, die entscheiden, wie der Dienst startet:**
+`[server]`, `[auth]`, `[database]`, `[node]`, `[log]` — und `[modules.tiles]`,
+weil der Kachelclient beim Start gebaut wird. Sie gelten ab dem nächsten Start.
+
+Geändert wird nie die Datei selbst. Sie gehört dem Betreiber, samt ihren
+Kommentaren.
+
 ## Beim Ergänzen einer Option
 
 1. Option in dieses Dokument aufnehmen, mit Kommentar wozu sie dient.
@@ -146,3 +161,7 @@ Bewusst noch nicht umgesetzt, damit hier nichts steht, was nicht funktioniert:
    nicht vom Kern.
 4. Sicherheitsrelevante Voreinstellungen restriktiv wählen. `bind` steht
    bewusst auf `127.0.0.1`.
+5. Soll sie im Betrieb änderbar sein, in `crates/meshdash-server/src/settings.rs`
+   und in die Liste auf der Einstellungsseite aufnehmen — dort braucht sie einen
+   Satz dazu, **was sie kostet**. Und das Modul muss sie beim Benutzen lesen,
+   nicht beim Start festhalten.

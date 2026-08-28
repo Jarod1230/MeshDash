@@ -75,6 +75,16 @@ pub enum AppEvent {
     ///
     /// This goes out over `/api/v1/events` as well, so `data` must never carry
     /// a secret.
+    /// Somebody changed a module's settings while it was running.
+    ///
+    /// A module that reads a setting when it uses it needs nothing from this.
+    /// One that captured a value at start — a timer interval, a client built
+    /// once — reacts here rather than going on with the old value.
+    SettingsChanged {
+        /// Whose settings changed.
+        module: String,
+    },
+
     Module {
         /// Which module published it.
         module: String,

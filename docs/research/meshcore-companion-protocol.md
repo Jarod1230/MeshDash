@@ -893,9 +893,23 @@ Pakets, nicht ihre eigene Einstellung — `packet->getPathHashSize()` in
 gleichförmig.
 
 `PATH_HASH_SIZE` (1) ist **nur** die Vorgabe der einargumentigen
-`copyHashTo()`, nicht das, was ankommt. Stufe `HARDWARE`, am 2026-08-26 an
-einem echten Mesh gemessen: **zwei Byte je Station** in jedem gehörten Paket,
-also `path_hash_mode = 1` beim Absender.
+`copyHashTo()`, nicht das, was ankommt. Stufe `HARDWARE`, an einem echten Mesh
+gemessen — und die Messung fiel zweimal verschieden aus:
+
+| Datum | Breite je Station | Also beim Absender |
+| --- | --- | --- |
+| 2026-08-26 | 2 Byte in jedem gehörten Paket | `path_hash_mode = 1` |
+| 2026-08-27 | 1 Byte in jedem gehörten Paket | `path_hash_mode = 0` |
+
+Dasselbe Mesh, dieselbe Empfangsstelle, ein Tag dazwischen. Das ist kein
+Widerspruch, sondern die Bestätigung des Absatzes darüber: **Die Breite ist
+eine Einstellung des Absenders und keine Eigenschaft des Netzes.** Wer sie aus
+einer Messung ableitet, leitet aus der Laune eines Geräts ab.
+
+Für die Zuordnung eines Pfadeintrags zu einem Knoten hat das Folgen: Bei einem
+Byte ist der Treffer schwach, und in einem Mesh mit einigen Dutzend Knoten
+teilen sich zwei mit hoher Wahrscheinlichkeit das erste Byte. Wer zuordnet,
+zählt die Kandidaten und benennt bei mehreren niemanden.
 
 **Ein Präfix ist keine Identität.** Wie schwach der Treffer ist, hängt an der
 Breite: Bei einem Byte, 256 Werten, teilen sich in einem Mesh mit einigen

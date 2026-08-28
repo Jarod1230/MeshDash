@@ -269,10 +269,10 @@ Abschnitt „Die Paketebene"; gelesen wird das Ergebnis von
   Gezeigt wird, **dass** etwas lief, welcher Art und wie gut empfangen — nicht
   was drinstand. Gespeichert wird die Nutzlast gar nicht erst.
 
-**Offen bleibt die Menge.** Ein Rahmen je gehörtem Paket ist auf einem regen
-Mesh viel. Bevor davon etwas in die Datenbank geht, braucht es eine
-Entscheidung über Verdichtung und Aufbewahrung — sonst wächst die Datei
-schneller als alles andere zusammen. Gehört zu Stufe C.
+**Die Menge ist entschieden.** Ein Rahmen je gehörtem Paket ist auf einem regen
+Mesh viel; deshalb hat der Rohverlauf eine Frist (voreingestellt 30 Tage) und
+das, was man wirklich behalten will — wer hört wen —, wird verdichtet und
+bleibt. [ADR-0016](decisions/0016-verkehr-aufbewahren.md).
 
 ### Stufe B — genug Knoten, um eine Karte zu sein
 
@@ -345,9 +345,13 @@ selbst hat.
   das statt zu schweigen. Was sie füllen würde, ist die Verkehrsebene — jedes
   gehörte Paket trägt seinen Pfad, und daraus wird ablesbar, wer wen direkt
   hört.
-- **Verkehrsebene** — was gerade läuft, live über den vorhandenen
-  Ereignisstrom. Wie weit sie geht, entscheidet Stufe A: von „ein Paket kam
-  an, so gut war es" bis zur verfolgten Bahn über die Stationen.
+- **Verkehrsebene** — der Dienstteil steht als Modul `traffic`: jedes gehörte
+  Paket wird mit Frist mitgeschrieben, und aus seinem Pfad entsteht die
+  Verdichtung „wer hört wen direkt", die keiner Frist unterliegt. Die
+  Entscheidung über Aufbewahrung und Verdichtung ist damit getroffen, siehe
+  [ADR-0016](decisions/0016-verkehr-aufbewahren.md). **Offen ist die
+  Darstellung:** die Verdichtung in die Verbindungsebene einspeisen und den
+  laufenden Verkehr live zeigen.
 - **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel, und
   von dort führt ein Schritt zur vollen Knotenseite: **erledigt**, die Auswahl
   steht als `?knoten=` in der Adresse. Offen bleibt dasselbe für die anderen

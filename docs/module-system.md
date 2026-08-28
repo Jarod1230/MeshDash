@@ -145,6 +145,7 @@ pflegen, sobald sich etwas ändert.
 | `messages` | Direktnachrichten und Kanäle, Verlauf, Senden | **umgesetzt** — Gespräche unter `/api/v1/messages/{conversations,conversation}`, dazu die flachen Listen und das Senden |
 | `telemetry` | Batterie, SNR/RSSI und weitere Messwerte über die Zeit | **umgesetzt** — `/api/v1/telemetry/{battery,signal,neighbours}`; Nachbarabfrage abschaltbar, meldet Positionen als Ereignis weiter |
 | `tiles` | Kartenkacheln holen und behalten | **umgesetzt** — `/api/v1/tiles/{z}/{x}/{y}`, ohne Quelle abgeschaltet |
+| `traffic` | Jedes gehörte Paket, und wer wen direkt hört | **umgesetzt** — `/api/v1/traffic/{packets,links}` |
 | `admin` | Fernadministration von Repeatern und Room-Servern | angedacht |
 | `alerts` | Benachrichtigung, wenn ein Node ausfällt | angedacht |
 

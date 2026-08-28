@@ -1,3 +1,4 @@
+import { pairId, resolve } from '../lib/prefix';
 import type { GroundNode } from './projection';
 import type { Trace } from '../modules/nodes/types';
 
@@ -74,25 +75,6 @@ export interface MeshLink {
   readonly at: number;
 }
 
-/** The same pair, whichever direction it was seen from. */
-function pairId(a: string, b: string): string {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
-}
-
-/**
- * Which node a trace's key prefix refers to — if it can only be one.
- *
- * A station on a traced route is named by the leading bytes of its key, often
- * a single one. With more than one candidate, nobody is named: the same
- * birthday problem as a message's sender prefix, and the same answer.
- */
-export function resolve(prefix: string, nodes: readonly GroundNode[]): string | null {
-  if (prefix === '') return null;
-
-  const candidates = nodes.filter((node) => node.key.startsWith(prefix.toLowerCase()));
-
-  return candidates.length === 1 ? (candidates[0]?.key ?? null) : null;
-}
 
 /**
  * Collects every connection worth drawing.

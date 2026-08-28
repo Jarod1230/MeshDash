@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveEvent, type AppEvent } from '../lib/events';
-import { resolve } from './links';
+import { resolve } from '../lib/prefix';
 import { isPlaceable, toWorld, type GroundNode, type World } from './projection';
 
 /** How long a packet takes to cross one leg, in milliseconds. */

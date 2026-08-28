@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLiveReload, type AppEvent } from '../lib/events';
-import { isAdvert } from '../lib/pushes';
+import { isAdvert, isReceivedPacket } from '../lib/pushes';
 import { useNow } from '../lib/useNow';
 import { useResource } from '../lib/useResource';
 import type { KnownContact, Trace } from '../modules/nodes/types';
-import { links, strokeFor, type MeshLink } from './links';
+import { links, strokeFor, type HeardBy, type MeshLink } from './links';
 import { NodePanel } from './NodePanel';
+import { useHeardRate } from './useHeardRate';
 import { useSize } from './useSize';
 import { useTiles, tileKey } from './useTiles';
 import {
@@ -79,10 +80,20 @@ export function Ground() {
   // Every trace ever measured, because each one is a statement about a leg
   // that stays true until something contradicts it.
   const traces = useResource<Trace[]>('/nodes/traces?limit=200');
+  // What the node overheard: who forwarded to whom, accumulated from packets
+  // nobody had to send for us. Bounded by the number of prefixes, so it can be
+  // asked for whole.
+  const overheard = useResource<HeardBy[]>('/traffic/links');
 
   useLiveReload(
     (event: AppEvent) => event.type === 'push' && isAdvert(event.payload),
     () => contacts.reload(),
+  );
+  // A heard packet can name a pair nobody had seen before, so the summary is
+  // asked for again. Cheap: it is a handful of rows, not the packet log.
+  useLiveReload(
+    (event: AppEvent) => event.type === 'push' && isReceivedPacket(event.payload),
+    () => overheard.reload(),
   );
 
   const nodes = useMemo(
@@ -90,7 +101,10 @@ export function Ground() {
     [contacts.data, status.data],
   );
   const geo = useMemo(() => geography(nodes, now), [nodes, now]);
-  const mesh = useMemo(() => links(nodes, traces.data ?? [], now), [nodes, traces.data, now]);
+  const mesh = useMemo(
+    () => links(nodes, traces.data ?? [], overheard.data ?? [], now),
+    [nodes, traces.data, overheard.data, now],
+  );
 
   // The selection lives in the address, so a link to a dot opens the same
   // thing a click on it does. A path would say "another view"; this is the
@@ -316,8 +330,7 @@ function Geography({
               opacity={link.snr === null ? 0.4 : 0.75}
             >
               <title>
-                {link.kind === 'direkt' ? 'direkt erreichbar' : 'gemessener Weg'}
-                {link.snr === null ? ' · Güte nicht gemessen' : ` · ${link.snr.toFixed(1)} dB`}
+                {describeLink(link)}
               </title>
             </line>
           );
@@ -339,7 +352,8 @@ function Geography({
 
       {/* The layer switch sits above the scale, in the corner ADR-0011 gives
           it. One switch today; the traffic layer joins it. */}
-      <div className="absolute bottom-12 left-4 flex gap-1">
+      <div className="absolute bottom-12 left-4 flex items-center gap-2">
+        <HeardRate />
         <button
           type="button"
           onClick={onToggleLinks}
@@ -430,6 +444,44 @@ function Geography({
       )}
     </>
   );
+}
+
+/**
+ * Whether anything is on the air right now.
+ *
+ * A quiet mesh and a dead connection look the same without this. Says nothing
+ * at all until a packet has been heard — a confident "0" before the first
+ * event would be a claim, not a measurement.
+ */
+function HeardRate() {
+  const rate = useHeardRate();
+  if (rate === 0) return null;
+
+  return (
+    <span
+      className="rounded-md border border-mesh-border bg-mesh-surface/90 px-2.5 py-1 text-xs text-mesh-muted backdrop-blur"
+      title="Pakete, die dieser Node in der letzten Minute gehört hat — auch fremde"
+    >
+      <span className="tabular text-mesh-accent">{rate}</span> Pakete/Min
+    </span>
+  );
+}
+
+/**
+ * What a line is, in one sentence.
+ *
+ * Each of the three sources says something different, and saying "measured"
+ * about all of them would be the one wrong word: only a trace measures.
+ */
+function describeLink(link: MeshLink): string {
+  const what =
+    link.kind === 'direkt'
+      ? 'direkt erreichbar'
+      : link.kind === 'verfolgt'
+        ? 'gemessener Weg'
+        : `mitgehört${link.heard === null ? '' : ` in ${link.heard} ${link.heard === 1 ? 'Paket' : 'Paketen'}`}`;
+
+  return `${what}${link.snr === null ? ' · Güte nicht gemessen' : ` · ${link.snr.toFixed(1)} dB`}`;
 }
 
 /**

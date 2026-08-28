@@ -51,7 +51,9 @@ function answerWith(status: number, body: unknown) {
         : path.includes('/system/connections')
           ? HISTORY
           : // The ground surface asks for these on every render of the shell.
-            path.includes('/nodes/contacts') || path.includes('/nodes/traces')
+            path.includes('/nodes/contacts') ||
+              path.includes('/nodes/traces') ||
+              path.includes('/traffic/links')
             ? []
             : body;
     return Promise.resolve({
@@ -205,7 +207,7 @@ describe('Die Karte als Grundfläche', () => {
         const path = String(url);
         const body = path.includes('/nodes/contacts')
           ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
-          : path.includes('/nodes/traces')
+          : path.includes('/nodes/traces') || path.includes('/traffic/links')
             ? []
             : path.includes('/system/connections')
               ? HISTORY
@@ -267,7 +269,7 @@ describe('Einen Knoten antippen', () => {
       const path = String(url);
       const body = path.includes('/nodes/contacts')
         ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
-        : path.includes('/nodes/traces')
+        : path.includes('/nodes/traces') || path.includes('/traffic/links')
           ? []
           : path.includes('/system/connections')
             ? HISTORY
@@ -333,7 +335,7 @@ describe('Die Verbindungsebene', () => {
       const path = String(url);
       const body = path.includes('/nodes/contacts')
         ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
-        : path.includes('/nodes/traces')
+        : path.includes('/nodes/traces') || path.includes('/traffic/links')
           ? []
           : path.includes('/system/connections')
             ? HISTORY
@@ -391,7 +393,7 @@ describe('Die Verbindungsebene', () => {
               { ...contact('a', 54.0, 13.0), stations: null, path: null },
               { ...contact('b', 54.02, 13.04), stations: null, path: null },
             ]
-          : path.includes('/nodes/traces')
+          : path.includes('/nodes/traces') || path.includes('/traffic/links')
             ? []
             : path.includes('/system/connections')
               ? HISTORY
@@ -410,3 +412,50 @@ describe('Die Verbindungsebene', () => {
     expect(await screen.findByText(/Noch kein Weg belegt/)).toBeInTheDocument();
   });
 });
+
+describe('Was mitgehört wurde, steht auf der Karte', () => {
+  it('draws a line for a pair the node overheard, resolved to real nodes', async () => {
+    // Nobody transmitted for this: it accumulates from listening.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        const path = String(url);
+        const body = path.includes('/nodes/contacts')
+          ? [
+              { ...contact('d7' + '95'.repeat(31), 54.0, 13.0), stations: null, path: null },
+              { ...contact('fb' + '07'.repeat(31), 54.02, 13.04), stations: null, path: null },
+            ]
+          : path.includes('/traffic/links')
+            ? [
+                {
+                  talker: 'd7',
+                  listener: '',
+                  width: 1,
+                  first_seen: new Date().toISOString(),
+                  last_seen: new Date().toISOString(),
+                  heard: 4,
+                },
+              ]
+            : path.includes('/nodes/traces')
+              ? []
+              : path.includes('/system/connections')
+                ? HISTORY
+                : path.includes('/tiles')
+                  ? { available: false, attribution: '', max_zoom: 0 }
+                  : STATUS;
+        return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+      }),
+    );
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('img', { name: /Karte mit/ });
+    // The empty listener is this node; the talker resolves to exactly one
+    // contact, so the pair can be drawn.
+    await waitFor(() => expect(container.querySelectorAll('line')).toHaveLength(1));
+  });
+})

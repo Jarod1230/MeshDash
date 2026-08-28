@@ -12,6 +12,21 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Verbindungen lassen sich anklicken.** Über jeder Linie liegt jetzt ein
+  unsichtbarer Griff von 16 px — die gezeichnete Linie ist ein bis vier Pixel
+  breit, und die trifft niemand. Die Tafel dazu zeigt, was die Linie nicht
+  zeigen kann:
+
+  **Die Richtung.** Hören ist nicht symmetrisch — andere Antennenhöhe, andere
+  Sendeleistung, ein Hügel auf einer Seite. „A wurde von B gehört, umgekehrt
+  nie" ist meist der interessante Befund, und eine Linie zwischen zwei Punkten
+  verschluckt ihn. Ist nur eine Richtung belegt, sagt die Tafel auch, was das
+  *nicht* heißt.
+
+  **Woher es bekannt ist.** Direkt erreicht, von einer Wegmessung gemessen oder
+  im Vorbeigehen mitgehört sind drei Aussagen von drei verschiedenen Stärken.
+  Sie stehen nebeneinander, statt zu einer verrechnet zu werden.
+
 - **Gehörte Pakete auf der Knotenseite.** Was über einen Knoten lief, steht
   jetzt bei ihm: Art, Route, Weg, Empfangsqualität, Größe. Der Weg zeigt die
   Stationen einzeln, die passende hervorgehoben.

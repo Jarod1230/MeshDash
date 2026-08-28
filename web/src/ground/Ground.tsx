@@ -6,7 +6,9 @@ import { useNow } from '../lib/useNow';
 import { useResource } from '../lib/useResource';
 import type { KnownContact, Trace } from '../modules/nodes/types';
 import { links, strokeFor, type HeardBy, type MeshLink } from './links';
+import { LinkPanel } from './LinkPanel';
 import { NodePanel } from './NodePanel';
+import { facts as pairFacts } from './pair';
 import { useFlights, positionOf, type Flight } from './useFlights';
 import { useHeardRate } from './useHeardRate';
 import { useSize } from './useSize';
@@ -114,16 +116,35 @@ export function Ground() {
   // same view with something picked out — see ADR-0014.
   const [params, setParams] = useSearchParams();
   const chosen = params.get('knoten');
+  const chosenLink = params.get('verbindung');
   // Layers refine this view rather than being another view, so they ride in
   // the query string — see ADR-0014. Only the deviation is written down; an
   // address without it means the layer is on.
   const showLinks = params.get('verbindungen') !== 'aus';
   const selected = nodes.find((node) => node.key === chosen) ?? null;
+  const selectedLink = useMemo(
+    () =>
+      chosenLink === null
+        ? null
+        : pairFacts(chosenLink, nodes, traces.data ?? [], overheard.data ?? []),
+    [chosenLink, nodes, traces.data, overheard.data],
+  );
 
+  // One thing at a time: picking a node clears a chosen link and the other
+  // way round. Two panels over the same map would cover it between them.
   const select = (key: string | null) => {
     const next = new URLSearchParams(params);
+    next.delete('verbindung');
     if (key === null) next.delete('knoten');
     else next.set('knoten', key);
+    setParams(next, { replace: true });
+  };
+
+  const selectLink = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    next.delete('knoten');
+    if (id === null) next.delete('verbindung');
+    else next.set('verbindung', id);
     setParams(next, { replace: true });
   };
 
@@ -151,6 +172,8 @@ export function Ground() {
             mesh={showLinks ? mesh : []}
             linksOn={showLinks}
             onToggleLinks={toggleLinks}
+            selectedLink={chosenLink}
+            onSelectLink={selectLink}
             flights={flights}
             frame={frame}
           />
@@ -158,6 +181,10 @@ export function Ground() {
 
       {selected !== null && (
         <NodePanel node={selected} now={now} onClose={() => select(null)} />
+      )}
+
+      {selectedLink !== null && (
+        <LinkPanel facts={selectedLink} now={now} onClose={() => selectLink(null)} />
       )}
     </div>
   );
@@ -207,6 +234,8 @@ function Geography({
   mesh,
   linksOn,
   onToggleLinks,
+  selectedLink,
+  onSelectLink,
   flights,
   frame,
 }: {
@@ -220,6 +249,8 @@ function Geography({
   readonly mesh: readonly MeshLink[];
   readonly linksOn: boolean;
   readonly onToggleLinks: () => void;
+  readonly selectedLink: string | null;
+  readonly onSelectLink: (id: string | null) => void;
   readonly flights: readonly Flight[];
   readonly frame: number;
 }) {
@@ -269,8 +300,14 @@ function Geography({
 
     return () => element.removeEventListener('wheel', onWheel);
   }, []);
-  const open = (key: string) => {
+  // A click that came out of a drag is not a click — nobody means to open
+  // something by letting go of the map on top of it.
+  const open = (key: string | null, link?: string) => {
     if (drag.current.moved) return;
+    if (link !== undefined) {
+      onSelectLink(link === selectedLink ? null : link);
+      return;
+    }
     onSelect(key === selected ? null : key);
   };
 
@@ -350,22 +387,44 @@ function Geography({
           const to = where.get(link.to);
           if (from === undefined || to === undefined) return null;
 
+          const chosen = link.id === selectedLink;
+
           return (
-            <line
+            <g
               key={link.id}
-              x1={from.x}
-              y1={from.y}
-              x2={to.x}
-              y2={to.y}
-              className="stroke-mesh-accent"
-              strokeWidth={strokeFor(link.snr)}
-              strokeLinecap="round"
-              opacity={link.snr === null ? 0.4 : 0.75}
+              role="button"
+              tabIndex={0}
+              aria-label={`Verbindung: ${describeLink(link)}`}
+              className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+              onClick={() => open(null, link.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') open(null, link.id);
+              }}
             >
-              <title>
-                {describeLink(link)}
-              </title>
-            </line>
+              {/* An invisible handle over the visible line. The drawn stroke
+                  is between one and four pixels wide — nobody hits that with
+                  a mouse, and on a touchscreen nobody hits it at all. */}
+              <line
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke="transparent"
+                strokeWidth={16}
+                strokeLinecap="round"
+              />
+              <line
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                className="stroke-mesh-accent"
+                strokeWidth={chosen ? strokeFor(link.snr) + 2 : strokeFor(link.snr)}
+                strokeLinecap="round"
+                opacity={chosen ? 1 : link.snr === null ? 0.4 : 0.75}
+              />
+              <title>{describeLink(link)}</title>
+            </g>
           );
         })}
 

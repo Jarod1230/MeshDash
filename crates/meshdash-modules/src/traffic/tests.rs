@@ -6,6 +6,7 @@
 
 use meshdash_core::{
     config::ModuleSettings, db::Database, event::EventBus, link, module::ModuleRegistry,
+    settings::Settings,
 };
 use meshdash_transport::mock::{MockTransport, Step};
 
@@ -28,7 +29,7 @@ async fn context_with(settings: serde_json::Value) -> AppContext {
         db,
         events,
         link: handle,
-        settings: module_settings,
+        settings: Settings::from_file(module_settings),
     };
 
     let mut registry = ModuleRegistry::new();

@@ -18,6 +18,7 @@ use meshdash_core::{
     event::EventBus,
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
+    settings::Settings,
 };
 use meshdash_modules::tiles::TilesModule;
 use meshdash_transport::mock::MockTransport;
@@ -40,7 +41,7 @@ async fn router(settings: serde_json::Value) -> axum::Router {
         db,
         events,
         link,
-        settings: module_settings,
+        settings: Settings::from_file(module_settings),
     };
 
     let mut registry = ModuleRegistry::new();

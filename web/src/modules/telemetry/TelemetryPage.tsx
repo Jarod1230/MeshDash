@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Chart, type Point } from '../../ui/Chart';
 import { SignalBars } from '../../ui/Signal';
 import { Empty, Failed, Loading } from '../../ui/States';
@@ -188,9 +189,16 @@ export function TelemetryPage() {
           <Loading what="Die Werte anderer Knoten" />
         ) : neighbours.data.length === 0 ? (
           <Empty>
-            Bisher hat kein anderer Knoten etwas gemeldet. Danach gefragt wird nur, wenn{' '}
-            <code className="text-mesh-accent">[modules.telemetry] neighbours</code> eingeschaltet
-            ist — jede Anfrage belegt Sendezeit im gemeinsamen Band.
+            Bisher hat kein anderer Knoten etwas gemeldet. MeshCore sendet fremde Telemetrie nicht
+            von selbst — sie muss angefordert werden, und jede Anfrage belegt Sendezeit im
+            gemeinsamen Band. Einschalten lässt sich das unter{' '}
+            <Link
+              to="/einstellungen"
+              className="text-mesh-accent underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+            >
+              Einstellungen
+            </Link>
+            .
           </Empty>
         ) : (
           <ul className="divide-y divide-mesh-border text-sm">

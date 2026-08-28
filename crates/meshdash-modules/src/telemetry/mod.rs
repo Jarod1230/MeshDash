@@ -154,7 +154,7 @@ const MIGRATIONS: &[Migration] = &[
 ];
 
 /// How this module may be configured, under `[modules.telemetry]`.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     /// Whether to ask other nodes for their readings at all.
@@ -180,6 +180,11 @@ impl Default for Settings {
         }
     }
 }
+
+/// How often to look again while the asking is switched off.
+///
+/// Short, because the only thing being waited for is somebody ticking a box.
+const IDLE_CHECK: Duration = Duration::from_secs(20);
 
 /// How often the node is asked.
 ///
@@ -352,27 +357,43 @@ impl Module for TelemetryModule {
         });
 
         // Asking other nodes is opt-in; see the note at the top of this file.
-        let settings: Settings = context
-            .settings
-            .get("telemetry")
-            .map_err(|error| error.to_string())?;
+        //
+        // The settings are read on every round rather than captured here, so
+        // switching the asking on or off, or changing how often, takes effect
+        // without a restart. An operator who ticks a box expects the box to
+        // mean something now.
+        let asking = Arc::clone(&context);
+        let pending_for_task = pending.clone();
+        tokio::spawn(async move {
+            loop {
+                let settings: Settings = match asking.settings.get("telemetry") {
+                    Ok(settings) => settings,
+                    Err(error) => {
+                        tracing::error!(%error, "cannot read the telemetry settings");
+                        Settings::default()
+                    }
+                };
 
-        if settings.neighbours {
-            let asking = Arc::clone(&context);
-            let pending_for_task = pending.clone();
-            tokio::spawn(async move {
-                let mut ticker =
-                    tokio::time::interval(Duration::from_secs(settings.every_minutes * 60));
-                ticker.tick().await;
+                if !settings.neighbours {
+                    // Nothing to do, and nothing to wait a long interval for:
+                    // the box may be ticked at any moment.
+                    tokio::time::sleep(IDLE_CHECK).await;
+                    continue;
+                }
 
-                loop {
-                    ticker.tick().await;
+                tokio::time::sleep(Duration::from_secs(settings.every_minutes.max(1) * 60)).await;
+
+                // Checked again on the far side of the wait: half an hour is
+                // long enough for somebody to have changed their mind.
+                if asking
+                    .settings
+                    .get::<Settings>("telemetry")
+                    .is_ok_and(|now| now.neighbours)
+                {
                     ask_one_neighbour(&asking, &settings, &pending_for_task).await;
                 }
-            });
-        } else {
-            tracing::debug!("not asking other nodes: [modules.telemetry] neighbours is off");
-        }
+            }
+        });
 
         // The other keeps the curve going.
         tokio::spawn(async move {

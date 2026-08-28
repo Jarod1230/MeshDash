@@ -7,6 +7,7 @@ use meshdash_core::{
     event::EventBus,
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
+    settings::Settings as RuntimeSettings,
 };
 use meshdash_proto::opcode::Response;
 use meshdash_transport::mock::{MockTransport, Step};
@@ -55,7 +56,7 @@ async fn context_with(script: Vec<Step>) -> AppContext {
         db,
         events,
         link,
-        settings: ModuleSettings::default(),
+        settings: RuntimeSettings::default(),
     };
 
     let mut registry = ModuleRegistry::new();
@@ -324,7 +325,7 @@ async fn context_configured(script: Vec<Step>, section: serde_json::Value) -> Ap
         db,
         events,
         link,
-        settings,
+        settings: RuntimeSettings::from_file(settings),
     };
 
     let mut registry = ModuleRegistry::new();

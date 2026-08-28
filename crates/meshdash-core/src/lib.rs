@@ -17,3 +17,4 @@ pub mod db;
 pub mod event;
 pub mod link;
 pub mod module;
+pub mod settings;

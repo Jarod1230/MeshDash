@@ -14,11 +14,11 @@
 #![allow(clippy::unwrap_used)]
 
 use meshdash_core::{
-    config::ModuleSettings,
     db::Database,
     event::EventBus,
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
+    settings::Settings,
 };
 use meshdash_modules::{
     messages, messages::MessagesModule, nodes, nodes::NodesModule, telemetry,
@@ -73,7 +73,7 @@ async fn context_with(script: Vec<Step>) -> AppContext {
         db,
         events,
         link,
-        settings: ModuleSettings::default(),
+        settings: Settings::default(),
     };
 
     let mut registry = ModuleRegistry::new();
@@ -169,7 +169,7 @@ async fn messages_survives_without_the_nodes_module() {
         db,
         events,
         link,
-        settings: ModuleSettings::default(),
+        settings: Settings::default(),
     };
 
     let mut registry = ModuleRegistry::new();

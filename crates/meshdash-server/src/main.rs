@@ -18,6 +18,7 @@ use meshdash_core::{
     event::EventBus,
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
+    settings::Settings,
 };
 use meshdash_transport::{Transport, serial::SerialTransport, tcp::TcpTransport};
 use tracing_subscriber::EnvFilter;
@@ -72,11 +73,17 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     // disconnect.
     let (link, prepared_link) = link::prepare(transport, LinkConfig::default(), events.clone());
 
+    // Settings the file laid down, with whatever an operator has changed
+    // since — see meshdash_core::settings.
+    let settings = Settings::load(config.modules.clone(), db.clone(), events.clone())
+        .await
+        .context("loading the settings")?;
+
     let context = AppContext {
         db,
         events,
         link,
-        settings: config.modules.clone(),
+        settings,
     };
 
     // The one place modules are switched on. Removing one means deleting its

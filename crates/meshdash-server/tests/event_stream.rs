@@ -15,11 +15,11 @@ use std::{net::SocketAddr, time::Duration};
 use futures::{SinkExt, StreamExt};
 use meshdash_core::{
     config::AuthConfig,
-    config::ModuleSettings,
     db::Database,
     event::{AppEvent, EventBus},
     link::{self, LinkConfig},
     module::{AppContext, ModuleRegistry},
+    settings::Settings,
 };
 use meshdash_transport::mock::MockTransport;
 use tokio_tungstenite::tungstenite::Message;
@@ -38,7 +38,7 @@ async fn serve(auth: AuthConfig) -> (SocketAddr, EventBus) {
         db,
         events: events.clone(),
         link,
-        settings: ModuleSettings::default(),
+        settings: Settings::default(),
     };
     let router = meshdash_server::build_router(&ModuleRegistry::new(), context, auth);
 

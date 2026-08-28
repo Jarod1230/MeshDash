@@ -108,7 +108,7 @@ const MIGRATIONS: &[Migration] = &[Migration {
 }];
 
 /// How this module may be configured, under `[modules.traffic]`.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     /// Whether to write the packet log at all.
@@ -204,7 +204,10 @@ impl Module for TrafficModule {
     }
 
     async fn start(&self, context: &AppContext) -> Result<(), String> {
-        let settings: Settings = context
+        // Read once here only to fail early on a misspelled option; every
+        // use below reads it again, so a change takes effect without a
+        // restart.
+        let _: Settings = context
             .settings
             .get("traffic")
             .map_err(|error| error.to_string())?;
@@ -213,7 +216,6 @@ impl Module for TrafficModule {
         let mut events = context.events.subscribe();
 
         let listening = Arc::clone(&context);
-        let recording = settings.record;
         tokio::spawn(async move {
             loop {
                 let event = match events.recv().await {
@@ -228,6 +230,11 @@ impl Module for TrafficModule {
                 };
 
                 if let AppEvent::Push { payload } = event {
+                    let recording = listening
+                        .settings
+                        .get::<Settings>("traffic")
+                        .map(|settings| settings.record)
+                        .unwrap_or(true);
                     handle_push(&listening, &payload, recording).await;
                 }
             }
@@ -238,7 +245,13 @@ impl Module for TrafficModule {
             let mut ticker = tokio::time::interval(SWEEP_EVERY);
             loop {
                 ticker.tick().await;
-                match sweep(&sweeping, settings.keep_days).await {
+                let keep_days = sweeping
+                    .settings
+                    .get::<Settings>("traffic")
+                    .map(|settings| settings.keep_days)
+                    .unwrap_or_else(|_| Settings::default().keep_days);
+
+                match sweep(&sweeping, keep_days).await {
                     Ok(0) => {}
                     Ok(removed) => tracing::info!(removed, "swept out old traffic"),
                     Err(error) => tracing::error!(%error, "could not sweep old traffic"),

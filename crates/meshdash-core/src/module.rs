@@ -23,8 +23,8 @@
 use axum::Router;
 
 use crate::{
-    config::ModuleSettings, db::Database, db::DatabaseError, db::Migration, event::EventBus,
-    link::LinkHandle,
+    db::Database, db::DatabaseError, db::Migration, event::EventBus, link::LinkHandle,
+    settings::Settings,
 };
 
 /// What the core hands a module so it can do its work.
@@ -43,7 +43,7 @@ pub struct AppContext {
     ///
     /// Untyped on purpose: the core carries these and does not interpret
     /// them. A module reads its section with [`ModuleSettings::get`].
-    pub settings: ModuleSettings,
+    pub settings: Settings,
 }
 
 /// Why a module could not be brought up.
@@ -242,7 +242,7 @@ mod tests {
             db,
             events,
             link,
-            settings: ModuleSettings::default(),
+            settings: Settings::default(),
         }
     }
 

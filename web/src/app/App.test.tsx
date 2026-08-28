@@ -349,9 +349,12 @@ describe('Die Verbindungsebene', () => {
     });
   }
 
-  /** Lines live in the SVG, where the accessibility tree does not go. */
+  /**
+   * One group per connection. Each holds two lines — the visible stroke and
+   * the invisible handle over it — so counting lines counts double.
+   */
   function drawnLines(container: HTMLElement) {
-    return [...container.querySelectorAll('line')];
+    return [...container.querySelectorAll('g[aria-label^="Verbindung:"]')];
   }
 
   it('draws a line to a direct neighbour and says the quality is unmeasured', async () => {
@@ -459,6 +462,104 @@ describe('Was mitgehört wurde, steht auf der Karte', () => {
     await screen.findByRole('img', { name: /Karte mit/ });
     // The empty listener is this node; the talker resolves to exactly one
     // contact, so the pair can be drawn.
-    await waitFor(() => expect(container.querySelectorAll('line')).toHaveLength(1));
+    await waitFor(() =>
+      expect(container.querySelectorAll('g[aria-label^="Verbindung:"]')).toHaveLength(1),
+    );
   });
 })
+
+describe('Eine Verbindung antippen', () => {
+  function withLink() {
+    return vi.fn().mockImplementation((url: string) => {
+      const path = String(url);
+      const body = path.includes('/nodes/contacts')
+        ? [contact('a', 54.0, 13.0), contact('b', 54.02, 13.04)]
+        : path.includes('/traffic/links')
+          ? [
+              {
+                talker: 'a',
+                listener: '',
+                width: 1,
+                first_seen: new Date(Date.now() - 7_200_000).toISOString(),
+                last_seen: new Date().toISOString(),
+                heard: 12,
+              },
+            ]
+          : path.includes('/nodes/traces')
+            ? []
+            : path.includes('/system/connections')
+              ? HISTORY
+              : path.includes('/tiles')
+                ? { available: false, attribution: '', max_zoom: 0 }
+                : STATUS;
+      return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+    });
+  }
+
+  it('opens a panel that keeps the direction of hearing', async () => {
+    // The line cannot say who heard whom, and that is usually the finding.
+    vi.stubGlobal('fetch', withLink());
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const lines = await screen.findAllByRole('button', { name: /Verbindung:/ });
+    await userEvent.click(lines[0]!);
+
+    const panel = await screen.findByRole('complementary', { name: /Verbindung/ });
+    expect(panel.textContent).toContain('wurde gehört von');
+    expect(panel.textContent).toContain('12 Pakete');
+  });
+
+  it('says that one direction proves nothing about the other', async () => {
+    vi.stubGlobal('fetch', withLink());
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const lines = await screen.findAllByRole('button', { name: /Verbindung:/ });
+    await userEvent.click(lines[0]!);
+
+    expect(await screen.findByText(/oft unsymmetrisch/)).toBeInTheDocument();
+  });
+
+  it('shows one panel at a time, not two over the same map', async () => {
+    vi.stubGlobal('fetch', withLink());
+    render(
+      <MemoryRouter initialEntries={['/?knoten=a']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('complementary', { name: /Knoten a/ });
+    await userEvent.click(screen.getAllByRole('button', { name: /Verbindung:/ })[0]!);
+
+    // Exactly one, and it is the link's: both fixtures happen to be called
+    // "Knoten a" and "Knoten b", so matching on the name alone would find the
+    // link panel and call it the node's.
+    await waitFor(() => expect(screen.getAllByRole('complementary')).toHaveLength(1));
+    expect(screen.getByRole('complementary').getAttribute('aria-label')).toMatch(/^Verbindung/);
+  });
+
+  it('can be hit: the handle is wider than the line', async () => {
+    vi.stubGlobal('fetch', withLink());
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('img', { name: /Karte mit/ });
+    const link = await screen.findAllByRole('button', { name: /Verbindung:/ });
+    expect(link.length).toBeGreaterThan(0);
+
+    const widths = [...container.querySelectorAll('line')].map((line) =>
+      Number(line.getAttribute('stroke-width')),
+    );
+    expect(Math.max(...widths)).toBeGreaterThanOrEqual(16);
+  });
+});

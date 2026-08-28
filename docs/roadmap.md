@@ -398,10 +398,11 @@ aufgeschrieben. Reihenfolge wie hier.
    Zuordnung wird an Stationsgrenzen geprüft, nicht als Teilzeichenkette —
    `aabb` enthält `ab`, und das ist keine Station. Wie stark ein Treffer ist,
    steht dabei: bei einem Byte sind es 256 Möglichkeiten.
-3. **Klick auf eine Verbindung.** Tut heute nichts, und der Tooltip beim
-   Darüberhalten ist bei 1,25 px Strichstärke keine Bedienung — es braucht
-   einen breiteren unsichtbaren Griff und eine Tafel wie beim Knoten: seit wann
-   belegt, aus wie vielen Paketen, gemessene Güte, Richtung.
+3. [x] **Klick auf eine Verbindung.** Unsichtbarer Griff von 16 px über jeder
+   Linie, dazu eine Tafel: seit wann belegt, aus wie vielen Paketen, gemessene
+   Güte — **und die Richtung**, getrennt je Richtung. Damit ist auch der
+   Einfall unten erledigt, dass die Karte beide Richtungen zusammenwirft: Die
+   Linie tut es weiterhin, die Tafel nicht.
 4. **Nachbarn auf der Knotenseite.** Aus zwei Quellen, die sich ergänzen: was
    sich aus gehörten Paketen ergibt (kostenlos, ungenau bei kurzen Präfixen)
    und was eine Nachbarabfrage misst (genau, kostet Sendezeit). Beide gehören
@@ -412,15 +413,10 @@ aufgeschrieben. Reihenfolge wie hier.
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
 
-- **Die Karte wirft beide Richtungen einer Verbindung zusammen.** Gespeichert
-  wird gerichtet — `traffic_links` hält fest, wer wen gehört hat —, gezeichnet
-  wird eine Linie je Paar, egal aus welcher Richtung sie belegt ist. Bei LoRa
-  ist das eine echte Auslassung: Verbindungen sind oft unsymmetrisch, A hört B
-  und B hört A nicht, und genau das ist der Befund, den ein Betreiber sucht.
-  Sichtbar wären zwei Pfeile statt einer Linie, oder eine Linie mit dem
-  Vermerk „nur in eine Richtung belegt". Aufgefallen am 2026-08-28, als
-  dieselbe Verwechslung in einem Bericht passiert ist: Die Richtung stand in
-  den Daten und nirgends daneben.
+- **Die gezeichnete Linie wirft beide Richtungen weiterhin zusammen.** Die
+  Tafel beim Klick zeigt sie seit dem 2026-08-29 getrennt, die Linie selbst
+  nicht. Zwei Pfeile statt einer Linie wären die nächste Stufe — offen ist, ob
+  das eine dichte Karte lesbarer oder unruhiger macht.
 - **Serielle Ports auflisten — ginge ohne `libudev`.** Heute muss der Gerätepfad
   in die Konfiguration geschrieben werden, weil `tokio-serial` bewusst ohne
   dessen `libudev`-Merkmal eingebunden ist (Begründung in

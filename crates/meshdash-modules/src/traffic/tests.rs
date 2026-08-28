@@ -83,7 +83,7 @@ async fn writes_down_what_it_heard() {
 
     feed(&context, heard(&[0xAA, 0xBB])).await;
 
-    let log = read_packets(&context, &everything()).await.unwrap();
+    let log = read_packets(&context, None, &everything()).await.unwrap();
     assert_eq!(log.len(), 1);
     let entry = &log[0];
     assert_eq!(entry.route_type, 1, "flood");
@@ -103,7 +103,7 @@ async fn never_keeps_the_payload() {
 
     feed(&context, heard(&[0xAA])).await;
 
-    let log = read_packets(&context, &everything()).await.unwrap();
+    let log = read_packets(&context, None, &everything()).await.unwrap();
     let answer = serde_json::to_string(&log).unwrap();
     assert!(!answer.contains("dead"), "{answer}");
     assert!(!answer.contains("beef"), "{answer}");
@@ -143,7 +143,10 @@ async fn a_packet_with_no_station_proves_nothing_about_a_pair() {
     assert_eq!(read_links(&context).await.unwrap(), vec![]);
     // The packet itself is still worth keeping.
     assert_eq!(
-        read_packets(&context, &everything()).await.unwrap().len(),
+        read_packets(&context, None, &everything())
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -169,7 +172,10 @@ async fn keeps_the_summary_when_the_log_is_switched_off() {
 
     feed(&context, heard(&[0xAA, 0xBB])).await;
 
-    assert_eq!(read_packets(&context, &everything()).await.unwrap(), vec![]);
+    assert_eq!(
+        read_packets(&context, None, &everything()).await.unwrap(),
+        vec![]
+    );
     assert_eq!(read_links(&context).await.unwrap().len(), 2);
 }
 
@@ -191,7 +197,10 @@ async fn sweeps_what_is_past_the_deadline_and_nothing_else() {
 
     assert_eq!(sweep(&context, 30).await.unwrap(), 1);
     assert_eq!(
-        read_packets(&context, &everything()).await.unwrap().len(),
+        read_packets(&context, None, &everything())
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -205,7 +214,10 @@ async fn a_deadline_of_zero_does_not_mean_delete_everything() {
     assert_eq!(sweep(&context, 0).await.unwrap(), 0);
     assert_eq!(sweep(&context, -5).await.unwrap(), 0);
     assert_eq!(
-        read_packets(&context, &everything()).await.unwrap().len(),
+        read_packets(&context, None, &everything())
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -224,7 +236,10 @@ async fn a_packet_it_cannot_read_is_not_a_reason_to_stop() {
 
     // The good one after it still landed.
     assert_eq!(
-        read_packets(&context, &everything()).await.unwrap().len(),
+        read_packets(&context, None, &everything())
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -274,4 +289,74 @@ async fn still_announces_when_the_log_is_switched_off() {
     };
 
     assert_eq!(announced["stations"], serde_json::json!(["cc"]));
+}
+
+#[tokio::test]
+async fn finds_every_packet_a_node_touched() {
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard(&[0xAA, 0xBB])).await;
+    feed(&context, heard(&[0xCC])).await;
+
+    let key = format!("bb{}", "11".repeat(31));
+    let touched = read_packets(&context, Some(&key), &everything())
+        .await
+        .unwrap();
+
+    assert_eq!(touched.len(), 1);
+    assert_eq!(touched[0].path, "aabb");
+}
+
+#[tokio::test]
+async fn matches_at_station_boundaries_and_not_across_them() {
+    // 'aabb' contains 'ab', which is no station at all. A substring search
+    // over concatenated prefixes would find it; matching per station does not.
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard(&[0xAA, 0xBB])).await;
+
+    let across = format!("ab{}", "11".repeat(31));
+    assert_eq!(
+        read_packets(&context, Some(&across), &everything())
+            .await
+            .unwrap(),
+        vec![]
+    );
+}
+
+#[tokio::test]
+async fn a_packet_with_no_station_belongs_to_nobody() {
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard(&[])).await;
+
+    let anyone = "aa".repeat(32);
+    assert_eq!(
+        read_packets(&context, Some(&anyone), &everything())
+            .await
+            .unwrap(),
+        vec![]
+    );
+}
+
+#[tokio::test]
+async fn the_sweep_takes_the_stations_with_the_packets() {
+    // Otherwise the station rows outlive their packets and the table grows
+    // without bound behind the retention period.
+    let context = context_with(serde_json::json!({})).await;
+    feed(&context, heard(&[0xAA])).await;
+
+    sqlx::query("UPDATE traffic_packets SET heard_at = ?")
+        .bind((Utc::now() - chrono::Duration::days(90)).to_rfc3339())
+        .execute(context.db.pool())
+        .await
+        .unwrap();
+
+    sweep(&context, 30).await.unwrap();
+
+    let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM traffic_packet_stations")
+        .fetch_one(context.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(left.0, 0);
 }

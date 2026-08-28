@@ -12,6 +12,16 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Gehörte Pakete auf der Knotenseite.** Was über einen Knoten lief, steht
+  jetzt bei ihm: Art, Route, Weg, Empfangsqualität, Größe. Der Weg zeigt die
+  Stationen einzeln, die passende hervorgehoben.
+
+  Gefiltert wird an Stationsgrenzen und nicht als Teilzeichenkette — `aabb`
+  enthält `ab`, und das ist keine Station. Und die Liste sagt, wie stark die
+  Zuordnung ist: Wer seine Stationen mit einem Byte schreibt, lässt 256
+  Möglichkeiten offen, und bei einigen Dutzend Knoten kann ein Eintrag auch
+  einen anderen meinen.
+
 - **Pakete laufen über die Karte.** Jedes Paket, das der Node hört, wandert als
   Punkt seinen Weg entlang — von Station zu Station bis hierher. Der Dienst
   gibt dafür jedes gelesene Paket als Ereignis heraus; die Oberfläche deutet

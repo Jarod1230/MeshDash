@@ -7,6 +7,7 @@ import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
 import { More } from '../../ui/More';
 import { PresenceBand, type Presence } from '../../ui/PresenceBand';
+import { PacketList } from './PacketList';
 import { TracePanel } from './TracePanel';
 import { RangePicker } from '../../ui/RangePicker';
 import { useLiveReload, type AppEvent } from '../../lib/events';
@@ -251,6 +252,10 @@ export function NodePage() {
             )}
           </>
         )}
+      </Panel>
+
+      <Panel title="Gehörte Pakete" hint="was über diesen Knoten lief">
+        <PacketList publicKey={key} now={now} />
       </Panel>
 
       <Panel title="Nachrichten" hint="Verlauf mit diesem Knoten">

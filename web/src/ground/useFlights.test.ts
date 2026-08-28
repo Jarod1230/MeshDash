@@ -92,3 +92,24 @@ describe('positionOf', () => {
     expect(positionOf(flight, NOW + 5_000)).toBeNull();
   });
 });
+
+describe('das Ablaufen eines Fluges', () => {
+  const flight: Flight = {
+    id: 1,
+    legs: [toWorld(54.0, 13.0), toWorld(54.0, 13.02)],
+    startedAt: NOW,
+    duration: 700,
+    payloadType: 2,
+  };
+
+  it('is gone by wall clock, not by how often the drawing ran', () => {
+    // A browser freezes requestAnimationFrame in a hidden tab. If arrival
+    // depended on frames, a map in a background tab would collect packets
+    // standing still and show them again on return — traffic that is long
+    // past. Observed on 2026-08-28 with eight dots frozen on the map.
+    expect(positionOf(flight, NOW + 699)).not.toBeNull();
+    expect(positionOf(flight, NOW + 701)).toBeNull();
+    // Half an hour later it is still gone, not wrapped around.
+    expect(positionOf(flight, NOW + 1_800_000)).toBeNull();
+  });
+});

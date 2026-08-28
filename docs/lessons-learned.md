@@ -848,3 +848,33 @@ Browser — und dann daran, die Fragen einzeln zu stellen, statt zu raten:
 Kommt die Anfrage an? Steht das Element da? Ist es sichtbar? Lässt sich das
 Bild hinter der URL noch laden? Erst die letzte Frage war mit Nein zu
 beantworten.
+
+
+## 2026-08-28 — `requestAnimationFrame` steht still, wenn niemand hinsieht
+
+**Was passierte.** Pakete sollten als Punkt über die Karte laufen. Am echten
+Mesh erschien der Punkt an der richtigen Stelle und **bewegte sich nicht** —
+sechsundzwanzig Messungen, immer dieselbe Koordinate. Schlimmer noch: Acht
+Punkte standen später immer noch da, lange nach ihrer Ankunft.
+
+**Die Ursache.** Die Uhr der Animation hing allein an
+`requestAnimationFrame`. Ein Browser friert das in einem Tab ein, der nicht
+sichtbar ist — und in diesem Fall war das Browserfenster verborgen. Damit lief
+nicht nur die Bewegung nicht: Der Ablauf eines Fluges hing an derselben
+Schleife, also lief **nichts** ab und die Flüge stapelten sich.
+
+**Warum das kein Laborproblem ist.** Eine Karte liegt in einem Hintergrundtab —
+das ist der Normalfall, nicht die Ausnahme. Wer zurückkommt, sähe eingefrorene
+Pakete, die längst durch sind: eine Zeichnung, die Verkehr behauptet, den es
+nicht mehr gibt.
+
+**Was daraus folgt.** `requestAnimationFrame` beantwortet genau eine Frage —
+*wo* ist etwas gerade. *Ob* es noch da ist, gehört an eine Uhr, die
+weiterläuft, wenn niemand hinsieht; ein Timer wird im verborgenen Tab
+gedrosselt, aber er feuert. Wer beides an dieselbe Schleife hängt, koppelt die
+Richtigkeit einer Anzeige an ihre Sichtbarkeit.
+
+**Woran es auffiel.** Nicht am Test: jsdom zeichnet nicht, und ein Test, der
+Frames zählt, hätte denselben Fehler gemacht wie der Code. Aufgefallen ist es
+beim Zusehen am echten Mesh — und zwar daran, dass die *Koordinate* über
+sechsundzwanzig Messungen identisch blieb, nicht daran, dass etwas fehlte.

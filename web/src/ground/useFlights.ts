@@ -105,10 +105,14 @@ export function useFlights(nodes: readonly GroundNode[]): {
       if (legs.length < 2) return;
 
       nextId.current += 1;
+      const startedAt = Date.now();
+      // The clock is set here too, so the first frame draws the packet where
+      // it actually is rather than at the stale moment of the last one.
+      setFrame(startedAt);
       const flight: Flight = {
         id: nextId.current,
         legs,
-        startedAt: Date.now(),
+        startedAt,
         duration: Math.max((legs.length - 1) * PER_LEG, SHORTEST),
         payloadType: announced.payload_type,
       };
@@ -117,30 +121,50 @@ export function useFlights(nodes: readonly GroundNode[]): {
     },
   );
 
-  // One animation loop for however many are in the air, and none at all when
-  // the mesh is quiet: a map that repaints sixty times a second while nothing
-  // happens is a map that empties a battery for nothing.
+  // Movement, and only movement.
   //
   // The clock is state rather than something the drawing reads for itself.
   // Reading the time while rendering makes a component impure — React may
   // render at any moment or not at all, and the dots would move in steps
-  // rather than smoothly.
+  // rather than smoothly. The loop runs only while something is in the air: a
+  // map that repaints sixty times a second while nothing happens is a map that
+  // empties a battery for nothing.
   useEffect(() => {
     if (flights.length === 0) return;
 
     let handle = 0;
     const step = () => {
-      const now = Date.now();
-      setFrame(now);
-      setFlights((current) => {
-        const alive = current.filter((flight) => now - flight.startedAt < flight.duration);
-        return alive.length === current.length ? current : alive;
-      });
+      setFrame(Date.now());
       handle = window.requestAnimationFrame(step);
     };
     handle = window.requestAnimationFrame(step);
 
     return () => window.cancelAnimationFrame(handle);
+  }, [flights.length]);
+
+  // Arrival, on a clock that keeps running when nobody is looking.
+  //
+  // A browser freezes `requestAnimationFrame` in a tab that is not visible.
+  // Left to it alone, flights never expire while the map sits in a background
+  // tab: they pile up, and the operator comes back to packets frozen on the
+  // map that arrived half an hour ago — a drawing that claims traffic which is
+  // long past. Observed at 2026-08-28 with eight dots standing still.
+  //
+  // A timer is throttled in a hidden tab but it does keep firing, so this
+  // sweeps up either way. Coarse on purpose: it decides when something is
+  // gone, not where it is.
+  useEffect(() => {
+    if (flights.length === 0) return;
+
+    const sweep = window.setInterval(() => {
+      const now = Date.now();
+      setFlights((current) => {
+        const alive = current.filter((flight) => now - flight.startedAt < flight.duration);
+        return alive.length === current.length ? current : alive;
+      });
+    }, 200);
+
+    return () => window.clearInterval(sweep);
   }, [flights.length]);
 
   return { flights, frame };

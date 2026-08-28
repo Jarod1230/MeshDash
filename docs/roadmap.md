@@ -389,6 +389,15 @@ selbst hat.
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
 
+- **Die Karte wirft beide Richtungen einer Verbindung zusammen.** Gespeichert
+  wird gerichtet — `traffic_links` hält fest, wer wen gehört hat —, gezeichnet
+  wird eine Linie je Paar, egal aus welcher Richtung sie belegt ist. Bei LoRa
+  ist das eine echte Auslassung: Verbindungen sind oft unsymmetrisch, A hört B
+  und B hört A nicht, und genau das ist der Befund, den ein Betreiber sucht.
+  Sichtbar wären zwei Pfeile statt einer Linie, oder eine Linie mit dem
+  Vermerk „nur in eine Richtung belegt". Aufgefallen am 2026-08-28, als
+  dieselbe Verwechslung in einem Bericht passiert ist: Die Richtung stand in
+  den Daten und nirgends daneben.
 - **Serielle Ports auflisten — ginge ohne `libudev`.** Heute muss der Gerätepfad
   in die Konfiguration geschrieben werden, weil `tokio-serial` bewusst ohne
   dessen `libudev`-Merkmal eingebunden ist (Begründung in

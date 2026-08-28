@@ -12,6 +12,17 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Pakete laufen über die Karte.** Jedes Paket, das der Node hört, wandert als
+  Punkt seinen Weg entlang — von Station zu Station bis hierher. Der Dienst
+  gibt dafür jedes gelesene Paket als Ereignis heraus; die Oberfläche deutet
+  keine Nutzlast selbst.
+
+  Gezeichnet wird nur der Teil des Weges, der sich zuordnen **und** verorten
+  lässt und bei diesem Node endet. Ein Präfix, auf das mehrere Knoten passen,
+  bricht die Kette — davor wird nichts geraten. Ein Paket, das direkt vom
+  Absender kam, hat gar keinen Weg: Wer es geschickt hat, steht nur in der
+  verschlüsselten Nutzlast.
+
 - **Mitgehörte Verbindungen auf der Karte.** Was das Modul `traffic` aus den
   Pfaden gehörter Pakete verdichtet, wird jetzt gezeichnet: Linien für Paare,
   die einander nachweislich hören — ohne dass jemand etwas senden musste. Ein

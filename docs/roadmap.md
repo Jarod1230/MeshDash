@@ -352,10 +352,11 @@ selbst hat.
   Paketen belegt, ohne dass jemand etwas gesendet hat. Dazu eine
   Live-Anzeige, wie viel gerade läuft.
 
-  **Offen bleibt die Bahn eines einzelnen Pakets.** Dafür müsste `traffic`
-  jedes gelesene Paket als Ereignis veröffentlichen
-  ([ADR-0007](decisions/0007-modul-ereignisse.md)) — die Oberfläche darf
-  Nutzlasten nicht selbst deuten, das ist Sache des Dienstes.
+  [x] **Die Bahn eines einzelnen Pakets.** `traffic` veröffentlicht jedes
+  gelesene Paket als Ereignis ([ADR-0007](decisions/0007-modul-ereignisse.md)),
+  und die Karte lässt es seinen Weg ablaufen. Gezeichnet wird nur der Teil der
+  Kette, der sich zuordnen und verorten lässt und bei diesem Node endet — was
+  davor liegt, wird nicht geraten.
 - **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel, und
   von dort führt ein Schritt zur vollen Knotenseite: **erledigt**, die Auswahl
   steht als `?knoten=` in der Adresse. Offen bleibt dasselbe für die anderen

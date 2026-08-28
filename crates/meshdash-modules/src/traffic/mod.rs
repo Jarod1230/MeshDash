@@ -19,6 +19,20 @@
 //! last one was heard by this node. That is a measurement, not an inference —
 //! and it is the only one that arrives without anybody transmitting for it.
 //!
+//! # What this module publishes
+//!
+//! Every packet it manages to read goes on the bus as
+//! `AppEvent::Module { module: "traffic", kind: "packet" }`:
+//!
+//! ```json
+//! { "route_type": 1, "payload_type": 2, "stations": ["fb07", "d795"],
+//!   "width": 2, "snr": 12.5, "rssi": -7, "size": 23 }
+//! ```
+//!
+//! Decoded here rather than in the browser: reading a packet means knowing the
+//! protocol, and that knowledge belongs on this side. What a listener does
+//! with it — draw it, count it, ignore it — is not this module's business.
+//!
 //! # The payload is not stored
 //!
 //! It is encrypted and none of MeshDash's business. It is not written down at
@@ -262,6 +276,36 @@ async fn handle_push(context: &AppContext, payload: &[u8], recording: bool) {
             tracing::error!(%error, "could not record a heard packet");
         }
     }
+
+    announce(context, &parsed, packet.len(), snr, rssi);
+}
+
+/// Puts one read packet on the bus for whoever wants to watch it travel.
+///
+/// Published whether or not it was recorded: watching what is happening now
+/// and keeping a history are two different wishes, and switching off the
+/// second should not switch off the first.
+fn announce(context: &AppContext, packet: &Packet<'_>, size: usize, snr: f32, rssi: i8) {
+    context.events.publish(AppEvent::Module {
+        module: "traffic".to_owned(),
+        kind: "packet".to_owned(),
+        data: serde_json::json!({
+            "route_type": route_byte(packet.route),
+            "payload_type": payload_byte(packet.payload_type),
+            // In travel order, and as prefixes — resolving them to nodes is a
+            // guess whenever more than one key starts the same way, and the
+            // reader is the one who knows how many candidates it has.
+            "stations": packet
+                .path
+                .iter()
+                .map(|station| to_hex(station.key_prefix))
+                .collect::<Vec<_>>(),
+            "width": packet.shape.bytes_per_station,
+            "snr": snr,
+            "rssi": rssi,
+            "size": size,
+        }),
+    });
 }
 
 /// Writes one packet into the log.

@@ -7,6 +7,7 @@ import { useResource } from '../lib/useResource';
 import type { KnownContact, Trace } from '../modules/nodes/types';
 import { links, strokeFor, type HeardBy, type MeshLink } from './links';
 import { NodePanel } from './NodePanel';
+import { useFlights, positionOf, type Flight } from './useFlights';
 import { useHeardRate } from './useHeardRate';
 import { useSize } from './useSize';
 import { useTiles, tileKey } from './useTiles';
@@ -101,6 +102,7 @@ export function Ground() {
     [contacts.data, status.data],
   );
   const geo = useMemo(() => geography(nodes, now), [nodes, now]);
+  const { flights, frame } = useFlights(nodes);
   const mesh = useMemo(
     () => links(nodes, traces.data ?? [], overheard.data ?? [], now),
     [nodes, traces.data, overheard.data, now],
@@ -148,6 +150,8 @@ export function Ground() {
             mesh={showLinks ? mesh : []}
             linksOn={showLinks}
             onToggleLinks={toggleLinks}
+            flights={flights}
+            frame={frame}
           />
         ))}
 
@@ -202,6 +206,8 @@ function Geography({
   mesh,
   linksOn,
   onToggleLinks,
+  flights,
+  frame,
 }: {
   readonly geo: GeographyOf;
   readonly nodes: readonly GroundNode[];
@@ -213,6 +219,8 @@ function Geography({
   readonly mesh: readonly MeshLink[];
   readonly linksOn: boolean;
   readonly onToggleLinks: () => void;
+  readonly flights: readonly Flight[];
+  readonly frame: number;
 }) {
   // Null means "whatever fits". Once the reader has moved, their view is kept
   // as it is — including across a resize, which is what a map does.
@@ -348,6 +356,13 @@ function Geography({
             onOpen={() => open(one.node.key)}
           />
         ))}
+
+        {/* Drawn last, so a packet passes over the nodes rather than under
+            them. It is the only thing on this surface that moves, and the
+            eye should be allowed to follow it. */}
+        {flights.map((flight) => (
+          <Packet key={flight.id} flight={flight} now={frame} view={view} size={size} />
+        ))}
       </svg>
 
       {/* The layer switch sits above the scale, in the corner ADR-0011 gives
@@ -443,6 +458,45 @@ function Geography({
         </button>
       )}
     </>
+  );
+}
+
+/**
+ * One packet, where it has got to.
+ *
+ * Drawn as a dot with a halo rather than a trail: a trail would suggest the
+ * packet is spread over the leg, and what is known is that it left one station
+ * and arrived at the next. The dot's position between them is an even
+ * interpolation and nothing more — no timing was measured along the way.
+ */
+function Packet({
+  flight,
+  now,
+  view,
+  size,
+}: {
+  readonly flight: Flight;
+  readonly now: number;
+  readonly view: View;
+  readonly size: { readonly width: number; readonly height: number };
+}) {
+  const world = positionOf(flight, now);
+  if (world === null) return null;
+
+  const at = onScreen(world, view, size.width, size.height);
+
+  return (
+    <g pointerEvents="none">
+      <circle cx={at.x} cy={at.y} r={7} className="fill-mesh-accent" opacity={0.22} />
+      <circle
+        cx={at.x}
+        cy={at.y}
+        r={3}
+        className="fill-mesh-accent"
+        stroke="rgba(0,0,0,0.55)"
+        strokeWidth={0.75}
+      />
+    </g>
   );
 }
 

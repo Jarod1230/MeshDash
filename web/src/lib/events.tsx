@@ -128,6 +128,20 @@ export function useStreamLive(): boolean {
  * contact list.
  */
 export function useLiveReload(matches: (event: AppEvent) => boolean, onEvent: () => void): void {
+  useLiveEvent(matches, onEvent);
+}
+
+/**
+ * The same subscription, for a listener that needs the event itself.
+ *
+ * `useLiveReload` covers the common case — something changed, fetch it again.
+ * This one is for the rarer one where the event *is* the data: a packet on its
+ * way across the map exists for a second and is never fetched.
+ */
+export function useLiveEvent(
+  matches: (event: AppEvent) => boolean,
+  onEvent: (event: AppEvent) => void,
+): void {
   const { subscribe } = useContext(StreamContext);
   const matchRef = useRef(matches);
   const actionRef = useRef(onEvent);
@@ -143,7 +157,7 @@ export function useLiveReload(matches: (event: AppEvent) => boolean, onEvent: ()
   useEffect(
     () =>
       subscribe((event) => {
-        if (matchRef.current(event)) actionRef.current();
+        if (matchRef.current(event)) actionRef.current(event);
       }),
     [subscribe],
   );

@@ -20,6 +20,13 @@ jedem Minor-Release ändern.
 
 ### Changed
 
+- **Agenten-Workflow: größere, kohärente PRs erlaubt.** Am Repo arbeiten die
+  vier Agenten Stabschef, Backend, Frontend und Protokoll gemeinsam; externe
+  KI-Systeme nicht. Pro Strom weiterhin ein Branch/PR von und gegen `main`,
+  offene PRs und Hotspots vorher prüfen — aber zusammenhängende Änderungen
+  dürfen in einem größeren PR landen. Details in `CLAUDE.md` /
+  `AGENTS.md` / `docs/roadmap.md`.
+
 - **Nachrichtenseite neu geschnitten.** Statt drei Reitern (Gespräche / Direkt / Kanäle) und einem Sendeformular oben gibt es zwei Bereiche — **Direkt** und **Kanäle** — jeweils als Fäden aus Empfangenem und Gesendetem. Geschrieben wird im offenen Faden, nicht in einem globalen Formular; die Suche steht über den Listen. Die flachen Empfangslisten sind aus der Oberfläche, die API dafür bleibt für Auswertung. Auswahl in der Adresse (`?bereich=`, `?faden=`, `?neu=`). Entscheidung 2026-09-06: getrennte Bereiche, kein einheitlicher Gesprächsstream („Gespräche only“).
 
 ### Added

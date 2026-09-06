@@ -4,8 +4,8 @@ Reihenfolge der Umsetzung. Kein Terminplan — eine Abhängigkeitskette.
 
 ## Wie diese Liste zu benutzen ist
 
-Sie ist die **Warteschlange**, und seit dem 2026-09-06 arbeitet mehr als ein
-Agent daran. Die Reihenfolge, in der genommen wird:
+Sie ist die **Warteschlange** für die vier Agenten am Repo (Stabschef,
+Backend, Frontend, Protokoll). Die Reihenfolge, in der genommen wird:
 
 1. **„Aus der Benutzung gemeldet"** — was beim Betrieb aufgefallen ist. Hat
    Vorrang: Es ist geprüft, dass jemand es vermisst.
@@ -16,8 +16,10 @@ Agent daran. Die Reihenfolge, in der genommen wird:
    aber nie als Grund für einen eigenen PR neben einem größeren.
 
 **Vor dem Anfangen `gh pr list` und `git branch -r`.** Was schon läuft, wird
-nicht doppelt gebaut. Beim Abhaken: den Punkt hier abhaken *und* im selben PR
-den Stand nachziehen, den `CLAUDE.md` unter „Pflegepflichten" auflistet.
+nicht doppelt gebaut. **Zusammenhängende Punkte dürfen in einem größeren,
+kohärenten PR** landen — siehe `CLAUDE.md`, „Wenn mehrere Agenten gleichzeitig
+arbeiten". Beim Abhaken: den Punkt hier abhaken *und* im selben PR den Stand
+nachziehen, den `CLAUDE.md` unter „Pflegepflichten" auflistet.
 
 Grundsatz: **Von unten nach oben.** Erst das Protokoll, dann der Transport, dann
 der Kern, dann Module. Umgekehrt baut man eine Oberfläche für Daten, die man

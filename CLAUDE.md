@@ -116,9 +116,10 @@ Nach einer Änderung mitziehen — das ist Teil der Aufgabe, nicht optional:
 
 ## Wenn mehrere Agenten gleichzeitig arbeiten
 
-Seit dem 2026-09-06 arbeitet mehr als ein KI-System an diesem Repository. Das
-ändert nichts an den Regeln oben, fügt aber welche hinzu. Sie stammen alle aus
-Fehlern, die hier schon passiert sind.
+Am Repo arbeiten gemeinsam **vier Agenten**: Stabschef, MeshDash Backend,
+MeshDash Frontend und Protokoll — kein externes KI-System daneben. Das ändert
+nichts an den Regeln oben, fügt aber welche für paralleles Arbeiten hinzu. Sie
+stammen alle aus Fehlern, die hier schon passiert sind.
 
 ### Was du dir nimmst
 
@@ -129,9 +130,14 @@ Fehlern, die hier schon passiert sind.
 arbeitet, erkennst du am offenen PR oder am Zweig. Nimm dir nichts, was dort
 schon läuft — auch nicht „nur den Backend-Teil davon".
 
-**Ein Punkt, ein Zweig, ein PR.** Kein Sammel-PR über drei Punkte: Wer
-gleichzeitig arbeitet, braucht kleine, schnell mergende Änderungen, sonst
-kollidiert alles mit allem.
+**Ein Strom, ein Zweig, ein PR.** Pro Arbeitsstrom ein Branch und ein PR —
+immer von `main`, immer gegen `main`. **Größere, zusammenhängende PRs sind
+erlaubt**, wenn die Änderungen thematisch kohärent sind (ein Feature mit
+seiner Pflege, ein klarer Schnitt). Kein Sammel-PR über unzusammenhängende
+Punkte nur weil sie „auch noch offen" sind — aber auch kein Zwang zu
+minimalen Ein-Punkt-PRs, wenn mehrere Schritte zusammengehören und gemeinsam
+reviewbar bleiben. Kollisionen vermeidest du, indem du Hotspots prüfst
+(siehe unten), nicht indem jeder Diff winzig bleibt.
 
 ### Die vier Stellen, an denen es wirklich knallt
 

@@ -1,233 +1,236 @@
-import { useState } from 'react';
-import { SignalBars, SignalValue } from '../../ui/Signal';
-import { Empty, Failed, Loading } from '../../ui/States';
-import { Conversations } from './Conversations';
-import { SendForm } from './SendForm';
-import type { Channel, ChannelMessage, Conversation, DirectMessage } from './types';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Failed, Loading } from '../../ui/States';
+import { NewDirectThread, ThreadList, ThreadView } from './Conversations';
+import {
+  channelThreads,
+  conversationsForArea,
+  findThread,
+  matchingThreads,
+  parseArea,
+  type Area,
+} from './threads';
+import type { Channel, Conversation } from './types';
 import { useLiveReload, type AppEvent } from '../../lib/events';
 import { useNow } from '../../lib/useNow';
-import { usePagedResource } from '../../lib/usePagedResource';
 import { useResource } from '../../lib/useResource';
-import { More } from '../../ui/More';
 import { SearchBox } from '../../ui/SearchBox';
 import { useDebounced } from '../../lib/useDebounced';
-import { exactTime, relativeTime } from '../../lib/time';
 import { isMessageWaiting } from '../../lib/pushes';
 
-/** How many messages one page holds. Big enough that most sessions never page. */
-const PAGE = 100;
-
 /**
- * What came in over the air, and what goes out.
+ * Direct messages and channel messages as two areas of threads.
  *
- * Direct messages and channel messages are kept apart rather than merged into
- * one stream: a channel message has no sender the interface could name — the
- * sending firmware writes the name into the text — so a combined list would
- * have a column that is empty for half its rows.
+ * # Why not one unified list
+ *
+ * Decided 2026-09-06: Direkt and Kanäle stay separate. A channel message has
+ * no sender the interface could name — the sending firmware writes the name
+ * into the text — so a combined list would have a column that is empty for
+ * half its rows. Each area shows threads that interleave sent and received
+ * for that peer or channel; compose lives inside the open thread, not in a
+ * global form at the top.
+ *
+ * Flat receive lists (`/messages/received`, `/messages/channel-received`) are
+ * no longer shown here. The API keeps them for analysis; the UI regroups via
+ * `/messages/conversations` and `/messages/conversation`.
+ *
+ * Selection lives in the address (`?bereich=`, `?faden=`, `?neu=`), so a link
+ * opens the same view a click opens.
  */
 export function MessagesPage() {
   const now = useNow();
+  const [params, setParams] = useSearchParams();
+  const area = parseArea(params.get('bereich'));
+  const threadId = params.get('faden');
+  const isNew = params.get('neu') === '1' && area === 'direkt';
+
   const [search, setSearch] = useState('');
   const query = useDebounced(search.trim());
-  const suffix = query === '' ? '' : `?q=${encodeURIComponent(query)}`;
-  const direct = usePagedResource<DirectMessage>(`/messages/received${suffix}`, PAGE);
-  const channel = usePagedResource<ChannelMessage>(`/messages/channel-received${suffix}`, PAGE);
+
+  const conversations = useResource<Conversation[]>('/messages/conversations?limit=100');
   const channels = useResource<Channel[]>('/messages/channels');
-  const [tab, setTab] = useState<'gespräche' | 'direkt' | 'kanäle'>('gespräche');
-  const [openConversation, setOpenConversation] = useState<Conversation | null>(null);
-  // Remounts the conversation view when live events arrive; it reads its own
-  // resources, and remounting is simpler than threading a reload through two
-  // levels of component.
+  // Remounts the open thread when live events arrive; it reads its own
+  // resources, and remounting is simpler than threading a reload through.
   const [reloadKey, setReloadKey] = useState(0);
 
-  // The node rings the bell; the backend fetches, then we reload.
   useLiveReload(
     (event: AppEvent) => event.type === 'push' && isMessageWaiting(event.payload),
     () => {
-      direct.reload();
-      channel.reload();
+      conversations.reload();
+      channels.reload();
       setReloadKey((value) => value + 1);
     },
   );
 
-  const reloadAll = () => {
-    direct.reload();
-    channel.reload();
+  const setArea = (next: Area) => {
+    const nextParams = new URLSearchParams(params);
+    if (next === 'direkt') nextParams.delete('bereich');
+    else nextParams.set('bereich', next);
+    nextParams.delete('faden');
+    nextParams.delete('neu');
+    setParams(nextParams, { replace: true });
   };
 
-  if (direct.error !== null && direct.items === null) {
+  const openThread = (conversation: Conversation) => {
+    const nextParams = new URLSearchParams(params);
+    nextParams.set('faden', conversation.id);
+    nextParams.delete('neu');
+    setParams(nextParams, { replace: true });
+  };
+
+  const openNew = () => {
+    const nextParams = new URLSearchParams(params);
+    nextParams.delete('faden');
+    nextParams.set('neu', '1');
+    setParams(nextParams, { replace: true });
+  };
+
+  const closeThread = () => {
+    const nextParams = new URLSearchParams(params);
+    nextParams.delete('faden');
+    nextParams.delete('neu');
+    setParams(nextParams, { replace: true });
+  };
+
+  const afterSent = (opened?: { partner: 'contact' | 'channel'; id: string }) => {
+    conversations.reload();
+    channels.reload();
+    setReloadKey((value) => value + 1);
+    if (opened !== undefined) {
+      const nextParams = new URLSearchParams(params);
+      nextParams.set('faden', opened.id);
+      nextParams.delete('neu');
+      if (opened.partner === 'channel') nextParams.set('bereich', 'kanaele');
+      else nextParams.delete('bereich');
+      setParams(nextParams, { replace: true });
+    }
+  };
+
+  const areaThreads = useMemo(() => {
+    if (conversations.data === null) return null;
+    if (area === 'kanaele') {
+      return channelThreads(conversations.data, channels.data ?? []);
+    }
+    return conversationsForArea(conversations.data, 'direkt');
+  }, [conversations.data, channels.data, area]);
+
+  const shown = useMemo(() => {
+    if (areaThreads === null) return null;
+    return matchingThreads(areaThreads, query);
+  }, [areaThreads, query]);
+
+  const selected =
+    isNew || shown === null ? null : findThread(shown, threadId) ?? findThread(areaThreads ?? [], threadId);
+
+  if (conversations.error !== null && conversations.data === null) {
     return (
       <div className="rounded-lg border border-mesh-border bg-mesh-surface">
-        <Failed error={direct.error} onRetry={direct.reload} />
+        <Failed error={conversations.error} onRetry={conversations.reload} />
       </div>
     );
   }
 
+  if (conversations.data === null || shown === null) {
+    return (
+      <div className="rounded-lg border border-mesh-border bg-mesh-surface">
+        <Loading what="Die Nachrichten" />
+      </div>
+    );
+  }
+
+  const backLabel = area === 'direkt' ? 'Alle Direktnachrichten' : 'Alle Kanäle';
+
   return (
     <div className="space-y-4">
-      <section className="rounded-lg border border-mesh-border bg-mesh-surface">
-        <header className="border-b border-mesh-border px-4 py-2.5">
-          <h2 className="text-sm text-mesh-text">Senden</h2>
-        </header>
-        <SendForm channels={channels.data ?? []} onSent={reloadAll} />
-      </section>
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1" role="tablist" aria-label="Art der Nachrichten">
-        {(['gespräche', 'direkt', 'kanäle'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            role="tab"
-            aria-selected={tab === option}
-            onClick={() => setTab(option)}
-            className={`rounded-md border px-3 py-1 text-sm capitalize focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
-              tab === option
-                ? 'border-mesh-accent text-mesh-text'
-                : 'border-mesh-border text-mesh-muted hover:text-mesh-text'
-            }`}
-          >
-            {option}
-          </button>
+          {(
+            [
+              { id: 'direkt' as const, label: 'Direkt' },
+              { id: 'kanaele' as const, label: 'Kanäle' },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="tab"
+              aria-selected={area === option.id}
+              onClick={() => setArea(option.id)}
+              className={`rounded-md border px-3 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+                area === option.id
+                  ? 'border-mesh-accent text-mesh-text'
+                  : 'border-mesh-border text-mesh-muted hover:text-mesh-text'
+              }`}
+            >
+              {option.label}
+            </button>
           ))}
         </div>
 
-        {tab !== 'gespräche' && (
+        {selected === null && !isNew && (
           <SearchBox
             value={search}
             onChange={setSearch}
-            label="Nachrichten durchsuchen"
-            placeholder="Text oder Absenderpräfix"
+            label="Fäden durchsuchen"
+            placeholder={
+              area === 'direkt' ? 'Name, Präfix oder Text' : 'Kanalname oder Text'
+            }
           />
         )}
       </div>
 
       <section className="rounded-lg border border-mesh-border bg-mesh-surface">
-        {tab === 'gespräche' ? (
-          <Conversations
-            key={reloadKey}
+        {isNew ? (
+          <NewDirectThread key={reloadKey} onBack={closeThread} onSent={afterSent} />
+        ) : selected !== null ? (
+          <ThreadView
+            key={`${reloadKey}-${selected.partner}-${selected.id}`}
+            conversation={selected}
             now={now}
-            selected={openConversation}
-            onSelect={setOpenConversation}
+            onBack={closeThread}
+            onSent={() => afterSent()}
+            backLabel={backLabel}
           />
-        ) : tab === 'direkt' ? (
-          direct.items === null ? (
-            <Loading what="Die Nachrichten" />
-          ) : direct.items.length === 0 ? (
-            <Empty>
-              Noch keine Direktnachricht empfangen. Was hereinkommt, bleibt hier stehen — auch
-              nachdem der Node seine eigene Warteschlange geleert hat.
-            </Empty>
-          ) : (
-            <>
-              <ul className="divide-y divide-mesh-border">
-                {direct.items.map((message) => (
-                <li key={message.id} className="px-4 py-3">
-                  <div className="flex items-baseline justify-between gap-4">
-                    {/* Foreign text, rendered as text and never as markup. */}
-                    <p className="min-w-0 text-mesh-text">{message.text}</p>
-                    <span
-                      className="tabular shrink-0 text-xs text-mesh-muted"
-                      title={exactTime(message.received_at)}
-                    >
-                      {relativeTime(message.received_at, new Date(now))}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mesh-faint">
-                    <SignalBars snr={message.snr} />
-                    <SignalValue snr={message.snr} />
-                    <Sender message={message} />
-                    <span>
-                      {message.path_len === null
-                        ? 'direkt empfangen'
-                        : `über ${message.path_len} ${message.path_len === 1 ? 'Station' : 'Stationen'}`}
-                    </span>
-                  </div>
-                  </li>
-                ))}
-              </ul>
-              {direct.hasMore && (
-                <More onClick={direct.loadMore} loading={direct.loadingMore} what="Nachrichten" />
-              )}
-            </>
-          )
-        ) : channel.items === null ? (
-          <Loading what="Die Kanalnachrichten" />
-        ) : channel.items.length === 0 ? (
-          <Empty>
-            In den Kanälen war es bisher still. Kanalnachrichten kommen über dieselbe Warteschlange
-            wie Direktnachrichten herein.
-          </Empty>
         ) : (
           <>
-            <ul className="divide-y divide-mesh-border">
-              {channel.items.map((message) => (
-              <li key={message.id} className="px-4 py-3">
-                <div className="flex items-baseline justify-between gap-4">
-                  <p className="min-w-0 text-mesh-text">{message.text}</p>
-                  <span
-                    className="tabular shrink-0 text-xs text-mesh-muted"
-                    title={exactTime(message.received_at)}
-                  >
-                    {relativeTime(message.received_at, new Date(now))}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-3 text-xs text-mesh-faint">
-                  <SignalBars snr={message.snr} />
-                  <SignalValue snr={message.snr} />
-                  <span>
-                    {channelName(channels.data, message.channel_index)}
-                  </span>
-                  {/* No sender: the sending firmware puts the name into the
-                      text itself, so there is nothing here to attribute. */}
-                  <span>Absender steht im Text</span>
-                </div>
-                </li>
-              ))}
-            </ul>
-            {channel.hasMore && (
-              <More onClick={channel.loadMore} loading={channel.loadingMore} what="Kanalnachrichten" />
+            {area === 'direkt' && (
+              <div className="flex justify-end border-b border-mesh-border px-4 py-2">
+                <button
+                  type="button"
+                  onClick={openNew}
+                  className="text-sm text-mesh-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+                >
+                  Neue Direktnachricht
+                </button>
+              </div>
             )}
+            <ThreadList
+              threads={shown}
+              now={now}
+              onSelect={openThread}
+              empty={
+                area === 'direkt' ? (
+                  <>
+                    Noch keine Direktnachrichten. Sobald etwas hereinkommt oder Sie etwas senden,
+                    steht es hier als Faden — Empfangenes und Gesendetes zusammen. Über „Neue
+                    Direktnachricht“ schreiben Sie jemanden an, der noch nicht in der Liste steht.
+                  </>
+                ) : (
+                  <>
+                    Noch keine Kanalnachrichten, und der Node meldet keine Kanäle. Kanäle erscheinen
+                    hier, sobald der Node welche kennt oder etwas über einen Kanal läuft.
+                  </>
+                )
+              }
+              noMatch={
+                query === ''
+                  ? null
+                  : `Kein Faden passt zu „${query}".`
+              }
+            />
           </>
         )}
       </section>
     </div>
   );
-}
-
-/**
- * Who sent a message, as far as that can be said.
- *
- * Six bytes of a key are not an identity: two contacts can share them. Where
- * that happens no name is shown and the interface says why — a guess presented
- * as fact is worse than a hex prefix, especially where messages carry
- * instructions.
- */
-function Sender({ message }: { readonly message: DirectMessage }) {
-  if (message.sender_name !== null) {
-    return (
-      <span>
-        von <span className="text-mesh-muted">{message.sender_name}</span>
-        <span className="tabular ml-1.5 text-mesh-faint">{message.sender_prefix}</span>
-      </span>
-    );
-  }
-
-  if (message.sender_candidates > 1) {
-    return (
-      <span
-        className="tabular"
-        title={`${message.sender_candidates} bekannte Knoten teilen sich dieses Schlüsselpräfix`}
-      >
-        von {message.sender_prefix} — mehrdeutig
-      </span>
-    );
-  }
-
-  return <span className="tabular">von {message.sender_prefix}</span>;
-}
-
-function channelName(channels: readonly Channel[] | null, index: number): string {
-  const found = channels?.find((channel) => channel.channel_index === index);
-  return found?.name !== undefined && found.name !== '' ? found.name : `Kanal ${index}`;
 }

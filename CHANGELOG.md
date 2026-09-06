@@ -12,6 +12,20 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Nachbarn auf der Knotenseite.** Wer diesen Knoten hört und wen er hört,
+  aus zwei Quellen, die nebeneinander stehen statt verrechnet zu werden:
+
+  **Mitgehört** entsteht von selbst — jedes gehörte Paket trägt seinen Weg, und
+  daraus folgt, wer wen direkt gehört hat. Niemand muss dafür senden. Schwach
+  ist daran die Benennung: Bei einem Byte je Station passen mehrere Knoten.
+
+  **Gemessen** kommt aus einer Wegmessung, der einzigen Quelle für die Güte
+  zwischen zwei *fremden* Stationen. Sie kostet Sendezeit.
+
+  Beide Richtungen werden getrennt geführt, und eine nie beobachtete Richtung
+  steht ausdrücklich da — sie wegzulassen ließe sie wie eine Aussage über das
+  Mesh aussehen statt wie eine Lücke im Beobachteten.
+
 - **Verbindungen lassen sich anklicken.** Über jeder Linie liegt jetzt ein
   unsichtbarer Griff von 16 px — die gezeichnete Linie ist ein bis vier Pixel
   breit, und die trifft niemand. Die Tafel dazu zeigt, was die Linie nicht

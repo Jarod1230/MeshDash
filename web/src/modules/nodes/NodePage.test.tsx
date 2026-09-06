@@ -40,6 +40,10 @@ function answers(overrides: Record<string, unknown> = {}) {
               ? (overrides['readings'] ?? [])
               : path.includes('/traffic/packets')
                 ? (overrides['packets'] ?? [])
+              : path.includes('/traffic/links')
+                ? (overrides['overheard'] ?? [])
+              : path.includes('/system/status')
+                ? (overrides['status'] ?? { node_self: null })
               : (overrides['thread'] ?? []);
     return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
   });
@@ -294,5 +298,70 @@ describe('Gehörte Pakete auf der Knotenseite', () => {
     show();
 
     expect(await screen.findByText(/verschlüsselten Nutzlast/)).toBeInTheDocument();
+  });
+});
+
+describe('Nachbarn auf der Knotenseite', () => {
+  const OTHER = 'bb'.repeat(32);
+  const SELF = { node_self: { public_key: 'cc'.repeat(32), name: 'eigener' } };
+
+  function overheard(overrides: Record<string, unknown> = {}) {
+    return {
+      talker: 'aa',
+      listener: '',
+      width: 1,
+      first_seen: new Date(Date.now() - 7_200_000).toISOString(),
+      last_seen: new Date(Date.now() - 60_000).toISOString(),
+      heard: 12,
+      ...overrides,
+    };
+  }
+
+  it('names both directions, and the one that was never seen', async () => {
+    // A missing direction is a gap in what was observed. Leaving the line off
+    // would let it read as a statement about the mesh.
+    vi.stubGlobal('fetch', answers({ status: SELF, overheard: [overheard()] }));
+    show();
+
+    expect(await screen.findByText(/wird gehört von eigener/)).toBeInTheDocument();
+    expect(screen.getByText(/nichts beobachtet/)).toBeInTheDocument();
+  });
+
+  it('keeps a measurement apart from a count of sightings', async () => {
+    vi.stubGlobal(
+      'fetch',
+      answers({
+        status: SELF,
+        overheard: [overheard()],
+        traces: [
+          {
+            id: 1,
+            public_key: OTHER,
+            asked_at: new Date().toISOString(),
+            answered_at: new Date().toISOString(),
+            final_snr: 2,
+            hops: [{ key_prefix: 'aa', snr: -6 }],
+          },
+        ],
+      }),
+    );
+    show();
+
+    expect(await screen.findByText('gemessen')).toBeInTheDocument();
+    expect(screen.getByText(/12 Pakete/)).toBeInTheDocument();
+  });
+
+  it('says how weak a one-byte naming is', async () => {
+    vi.stubGlobal('fetch', answers({ status: SELF, overheard: [overheard()] }));
+    show();
+
+    expect(await screen.findByText(/256 Möglichkeiten/)).toBeInTheDocument();
+  });
+
+  it('does not claim there are no neighbours when nothing was observed', async () => {
+    vi.stubGlobal('fetch', answers({ status: SELF, overheard: [] }));
+    show();
+
+    expect(await screen.findByText(/keine Hörbeziehung belegt/)).toBeInTheDocument();
   });
 });

@@ -88,6 +88,51 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
 Was hier durchfällt, wird nicht gemergt.
 
+## Gegen ein echtes Gegenüber laufen lassen
+
+**Das ist die wirksamste Prüfung in diesem Projekt**, und keine automatisierte
+ersetzt sie. Die Liste dessen, was hier ausschließlich so gefunden wurde, steht
+in [`lessons-learned.md`](lessons-learned.md) und ist lang: eine
+Ereignisschleife, die auf den Node wartete (zweimal), ein Kommando, das ohne
+Node ewig hängt, ein leerer Zeitparameter, der 400 auslöst, eine falsch
+dokumentierte Pfadbreite, ein Text, der sich selbst widersprach, abgebrochene
+Kachelabrufe, eingefrorene Pakete auf der Karte, ein Zoom, der am Trackpad
+fliegt.
+
+Alle diese Fehler hatten grüne Tests.
+
+### Warum Mocks sie nicht finden
+
+Ein Mock-Transport antwortet in Mikrosekunden. Genau das versteckt jeden
+Fehler, dessen Bedingung **Wartezeit** ist — eine blockierte Schleife fällt
+nur auf, wenn das Gegenüber sich Zeit lässt. Dasselbe gilt für alles, was von
+Darstellung abhängt: jsdom zeichnet nicht, hat kein Layout und keine Frames.
+
+### Die Werkzeuge, die sich bewährt haben
+
+- **Ein selbstgebauter Node aus dreißig Zeilen Python**, der genau ein Kommando
+  beantwortet — und zwar langsam. Damit wurde der Sitzungsstart-Fehler gefunden.
+- **Ein Mitleser am Ereignisstrom**, der Pushes zählt und rohe Pakete
+  dekodiert. Damit wurde Stufe A gegen echten Funkverkehr bestätigt.
+- **Ein lokaler Kachelserver**, der nummerierte Testkacheln ausliefert. Prüft
+  die ganze Kette, ohne die Position eines echten Mesh an einen Fremden zu
+  schicken.
+- **Der Blick in den Browser**, mit gezielten Fragen statt Raten: Kommt die
+  Anfrage an? Steht das Element da? Ist es sichtbar? Lässt sich das Bild
+  dahinter noch laden? Der letzte Schritt war einmal die Antwort.
+
+Die Skripte dazu gehören nicht ins Repository — sie sind Wegwerfware für einen
+Befund. Was bleibt, ist der Befund in `lessons-learned.md`.
+
+### Was dabei zu sagen ist
+
+**Sag, was du nicht geprüft hast.** „Am Gerät ausprobiert" und „die Rechnung
+ist getestet" sind zwei verschiedene Aussagen, und die zweite als die erste zu
+verkaufen ist die einzige Form von Unehrlichkeit, die in diesem Projekt teuer
+wird. Ein PR, der sagt „die Bewegung ist reine Interpolation und an drei
+Punkten getestet, gesehen habe ich sie nicht", ist mehr wert als einer, der
+„funktioniert" behauptet.
+
 ## Was bewusst ungetestet bleibt
 
 Ehrlichkeit an dieser Stelle ist besser als Scheinabdeckung:

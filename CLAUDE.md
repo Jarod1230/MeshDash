@@ -10,20 +10,25 @@ spricht über Serial oder TCP mit einem MeshCore-Companion-Node, persistiert des
 Ereignisse und stellt sie einem React-Frontend als REST-API und WebSocket-Stream
 bereit. Ausgeliefert wird ein einzelnes Binary mit eingebettetem Frontend.
 
-**Projektstand: Dienst und Oberfläche laufen (Schritte 1 bis 7 erledigt).**
-Protokoll-Codec, Transport mit Reconnect, Kern mit Datenbank und Event-Bus,
-HTTP-Server mit Authentifizierung und WebSocket sowie vier Module — `system`,
-`nodes`, `messages`, `telemetry`. Der Dienst läuft und liefert Daten unter
-`/api/v1/`.
+**Projektstand (2026-09-06): Dienst und Oberfläche laufen.** Protokoll-Codec,
+Transport mit Reconnect, Kern mit Datenbank, Event-Bus und zur Laufzeit
+änderbaren Einstellungen, HTTP-Server mit Authentifizierung und WebSocket sowie
+**sechs Module** — `system`, `nodes`, `messages`, `telemetry`, `tiles`,
+`traffic`.
 
 **Die Karte ist die Leitansicht.** MeshDash öffnet auf der Fläche mit den
 Knoten darauf; die Seiten liegen als Blende darüber und die Fläche wird nie
-neu aufgebaut. Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`,
-die Adresse dazu in `0014-die-adresse-bleibt-ein-pfad.md`; der Weg steht als
-Stufen A bis D in `docs/roadmap.md`. Stufen A und B sind erledigt, C hat mit
-Hülle und Grundfläche begonnen. Wer an der Oberfläche baut, liest das Zielbild
-zuerst — sonst entsteht eine weitere Seite neben der Karte statt einer Ebene
-auf ihr.
+neu aufgebaut. Sie zeichnet in Web-Mercator selbst, mit Kacheln über den
+Dienst, Knoten- und Verbindungsebene, laufenden Paketen und Kontexttafeln für
+Knoten und Verbindungen.
+
+Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`, die Adresse in
+`0014`, der Verzicht auf Leaflet in `0015`. Der Weg steht als **Stufen A bis D**
+in `docs/roadmap.md`: A und B sind erledigt, C fast — offen ist dort nur noch
+die Zeit (Zeitraumwähler und Abspielen). D ist unangetastet.
+
+Wer an der Oberfläche baut, liest **`docs/frontend.md`** zuerst — sonst
+entsteht eine weitere Seite neben der Karte statt einer Ebene auf ihr.
 
 **Zum Protokoll:** Framing, sämtliche Opcodes und die bisher benötigten
 Nutzlasten sind am Firmware-Quellcode verifiziert (Commit `d929643`) —
@@ -45,6 +50,7 @@ unverändert — auch dann, wenn danebenliegende Werte längst belegt sind.
 | Was ist schon schiefgegangen? | `docs/lessons-learned.md` |
 | Was bedeutet dieser MeshCore-Begriff? | `docs/glossary.md` |
 | Was weiß ich über das Protokoll? | `docs/research/meshcore-companion-protocol.md` |
+| Wie ist die Oberfläche geschnitten? | `docs/frontend.md` |
 | Was ist als Nächstes dran? | `docs/roadmap.md` |
 
 Lies bei Architektur- oder Protokollarbeit **immer zuerst** die passende Datei
@@ -107,6 +113,72 @@ Nach einer Änderung mitziehen — das ist Teil der Aufgabe, nicht optional:
 - **Roadmap-Schritt abgeschlossen?** → Standangaben mitziehen: der Abschnitt
   „Projektstand" oben, der Statusblock in `README.md` und der Kopfkommentar
   jedes berührten Crates. Die veralten still — niemand merkt es beim Bauen.
+
+## Wenn mehrere Agenten gleichzeitig arbeiten
+
+Seit dem 2026-09-06 arbeitet mehr als ein KI-System an diesem Repository. Das
+ändert nichts an den Regeln oben, fügt aber welche hinzu. Sie stammen alle aus
+Fehlern, die hier schon passiert sind.
+
+### Was du dir nimmst
+
+`docs/roadmap.md` ist die Warteschlange. Vorne stehen die Punkte unter
+**„Aus der Benutzung gemeldet"**, danach der Rest von Stufe C, dann Stufe D.
+
+**Bevor du anfängst: `gh pr list` und `git branch -r`.** Woran schon jemand
+arbeitet, erkennst du am offenen PR oder am Zweig. Nimm dir nichts, was dort
+schon läuft — auch nicht „nur den Backend-Teil davon".
+
+**Ein Punkt, ein Zweig, ein PR.** Kein Sammel-PR über drei Punkte: Wer
+gleichzeitig arbeitet, braucht kleine, schnell mergende Änderungen, sonst
+kollidiert alles mit allem.
+
+### Die vier Stellen, an denen es wirklich knallt
+
+1. **Migrationsnummern.** Zwei Module-Migrationen mit derselben Version sind
+   die teuerste Kollision hier — sie fällt erst auf, wenn eine Datenbank die
+   eine schon angewandt hat und die andere still übersprungen wird. Das ist
+   genau einmal passiert und steht in `lessons-learned.md`. **Vor jeder neuen
+   Migration: offene PRs auf dasselbe Modul prüfen.** Migrationen werden nach
+   dem Merge nie geändert.
+2. **ADR-Nummern.** Zwei ADRs mit derselben Nummer. Vor dem Anlegen einmal in
+   `docs/decisions/README.md` und in die offenen PRs schauen.
+3. **Die Registrierungslisten.** `crates/meshdash-server/src/main.rs`,
+   `web/src/modules/index.ts`, die Tabelle in `docs/module-system.md`, der
+   Index in `docs/decisions/README.md`. Jeweils eine Zeile, aber alle am selben
+   Fleck — hier entstehen Konflikte, und sie sind harmlos, solange man sie
+   auflöst statt zu überschreiben.
+4. **`CHANGELOG.md` und `docs/roadmap.md`.** Dasselbe: viele kleine
+   Ergänzungen an derselben Stelle.
+
+### Zweige und PRs
+
+- **Immer von `main` abzweigen, immer gegen `main` mergen.** Ein PR gegen einen
+  anderen Feature-Zweig ist hier schon einmal ins Leere gelaufen: Der Basiszweig
+  war zum Merge-Zeitpunkt bereits in `main`, und die Commits landeten gemergt
+  daneben statt drin (PR #71).
+- **Nach dem Öffnen eines PR nichts mehr auf den Zweig schieben, ohne zu
+  prüfen, ob er noch offen ist.** Auch das ist passiert (PR #81): gemergt,
+  danach noch ein Commit, der liegenblieb.
+- Vor dem Melden von Fertigstellung `git pull` auf `main` und neu prüfen, wenn
+  in der Zwischenzeit etwas gemergt wurde.
+
+### Was du dem anderen schuldest
+
+- **Schreib auf, was du gelernt hast** — `lessons-learned.md`, nicht erst wenn
+  es „wichtig genug" wirkt. Der andere Agent hat deinen Verlauf nicht.
+- **Sag im PR, was du nicht geprüft hast.** Siehe `docs/testing.md`, Abschnitt
+  „Gegen ein echtes Gegenüber laufen lassen".
+- **Fass die laufende Arbeit des anderen nicht an.** Fällt dir in seinem Bereich
+  etwas auf, notiere es in `roadmap.md` unter „Gesammelte Einfälle" statt es
+  nebenbei zu reparieren. Regel 2 gilt hier doppelt.
+
+### Hardware
+
+Es gibt **einen** Companion-Node am USB, und nur ein Prozess kann den seriellen
+Port halten. Wer den Dienst gegen echte Hardware laufen lässt, sagt es und
+räumt ihn wieder ab. Ohne Hardware bleibt der Mock-Transport — siehe
+`docs/testing.md`.
 
 ## Arbeitsweise
 

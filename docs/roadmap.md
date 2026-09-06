@@ -2,6 +2,23 @@
 
 Reihenfolge der Umsetzung. Kein Terminplan — eine Abhängigkeitskette.
 
+## Wie diese Liste zu benutzen ist
+
+Sie ist die **Warteschlange**, und seit dem 2026-09-06 arbeitet mehr als ein
+Agent daran. Die Reihenfolge, in der genommen wird:
+
+1. **„Aus der Benutzung gemeldet"** — was beim Betrieb aufgefallen ist. Hat
+   Vorrang: Es ist geprüft, dass jemand es vermisst.
+2. **Der Rest der laufenden Stufe.** Zurzeit Stufe C; offen ist dort nur noch
+   die Zeit.
+3. **Stufe D** und die Punkte unter „Danach".
+4. **„Gesammelte Einfälle"** — Kleinkram, jederzeit als Beiwerk mitnehmbar,
+   aber nie als Grund für einen eigenen PR neben einem größeren.
+
+**Vor dem Anfangen `gh pr list` und `git branch -r`.** Was schon läuft, wird
+nicht doppelt gebaut. Beim Abhaken: den Punkt hier abhaken *und* im selben PR
+den Stand nachziehen, den `CLAUDE.md` unter „Pflegepflichten" auflistet.
+
 Grundsatz: **Von unten nach oben.** Erst das Protokoll, dann der Transport, dann
 der Kern, dann Module. Umgekehrt baut man eine Oberfläche für Daten, die man
 noch nicht zuverlässig lesen kann.
@@ -345,25 +362,34 @@ selbst hat.
   das statt zu schweigen. Was sie füllen würde, ist die Verkehrsebene — jedes
   gehörte Paket trägt seinen Pfad, und daraus wird ablesbar, wer wen direkt
   hört.
-- **Verkehrsebene** — Modul `traffic` schreibt jedes gehörte Paket mit Frist
-  mit und verdichtet daraus „wer hört wen direkt"
+- [x] **Verkehrsebene** — Modul `traffic` schreibt jedes gehörte Paket mit
+  Frist mit und verdichtet daraus „wer hört wen direkt"
   ([ADR-0016](decisions/0016-verkehr-aufbewahren.md)). Die Verdichtung speist
   die Verbindungsebene: Am 2026-08-27 wurden so acht Paare aus 67 gehörten
-  Paketen belegt, ohne dass jemand etwas gesendet hat. Dazu eine
-  Live-Anzeige, wie viel gerade läuft.
+  Paketen belegt, ohne dass jemand etwas gesendet hat. Dazu eine Live-Anzeige,
+  wie viel gerade läuft.
 
-  [x] **Die Bahn eines einzelnen Pakets.** `traffic` veröffentlicht jedes
+  Und die **Bahn eines einzelnen Pakets**: `traffic` veröffentlicht jedes
   gelesene Paket als Ereignis ([ADR-0007](decisions/0007-modul-ereignisse.md)),
-  und die Karte lässt es seinen Weg ablaufen. Gezeichnet wird nur der Teil der
+  die Karte lässt es seinen Weg ablaufen. Gezeichnet wird nur der Teil der
   Kette, der sich zuordnen und verorten lässt und bei diesem Node endet — was
   davor liegt, wird nicht geraten.
-- **Tiefer eintreten** — Klick auf einen Knoten öffnet das Kontextpanel, und
-  von dort führt ein Schritt zur vollen Knotenseite: **erledigt**, die Auswahl
-  steht als `?knoten=` in der Adresse. Offen bleibt dasselbe für die anderen
-  Gegenstände: Klick auf eine Verbindung zeigt ihre Geschichte, Klick auf ein
-  Paket seinen Weg. Beides wartet auf die Ebenen darüber.
+- [x] **Tiefer eintreten** — Klick auf einen Knoten öffnet seine Tafel, Klick
+  auf eine Verbindung ihre; von beiden führt ein Schritt zur vollen Seite. Die
+  Auswahl steht als `?knoten=` beziehungsweise `?verbindung=` in der Adresse.
+
+  Offen bleibt der Klick auf ein **einzelnes laufendes Paket**. Es ist eine
+  Sekunde lang da und wird nie abgerufen — was eine Tafel dazu zeigen würde und
+  wie man einen Punkt trifft, der sich bewegt, ist ungeklärt.
 - **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
-  Abspielen: dieselbe Region vor einer Woche.
+  Abspielen: dieselbe Region vor einer Woche. **Der letzte offene Punkt der
+  Stufe C.**
+
+  Die Daten dafür liegen: `traffic_packets` hält den Verlauf mit Frist,
+  `nodes_adverts` die Sichtungen, `nodes_route_changes` die Wegwechsel. Was
+  fehlt, ist die Frage, was „vor einer Woche" für die Verdichtung heißt —
+  `traffic_links` kennt nur erste und letzte Sichtung, keinen Verlauf. Wer das
+  angeht, klärt das zuerst und schreibt einen ADR dazu.
 
 ### Stufe D — handeln, wo man es sieht
 
@@ -412,7 +438,28 @@ aufgeschrieben. Reihenfolge wie hier.
    was ein Knoten über **sich** meldet — Batterie, Speicher —, nicht wie gut
    eine Strecke trägt. Das misst nur `CMD_SEND_TRACE_PATH`. Deshalb ist sie
    hier nicht als Quelle geführt.
-5. **Nachrichtenseite neu bauen.**
+5. **Nachrichtenseite neu bauen.** Der Auftrag lautete „die ist Mist, die
+   müsste man mal neu machen", ohne weitere Angabe. Was beim Ansehen auffällt —
+   **meine Lesart, nicht die des Betreibers**, also vor dem Bauen abzustimmen:
+
+   - **Drei Reiter über denselben Daten.** „Gespräche" ist die brauchbare
+     Ansicht; „Direkt" und „Kanäle" sind flache Listen des Empfangenen. Sie
+     zeigen weniger und trennen dabei Gesendetes von Empfangenem, das der
+     Gesprächsfaden längst zusammenführt. Zwei davon sind eine Debug-Ansicht,
+     die es in die Oberfläche geschafft hat.
+   - **Das Senden hängt oben und gehört nirgendwohin.** Man wählt den Empfänger
+     in einem Formular, statt in einem Gespräch zu schreiben. Das ist die
+     Umkehrung dessen, was jeder Messenger tut, und der Grund, warum die Seite
+     sich falsch anfühlt.
+   - **Die Suche wirkt nur auf den flachen Reitern.** Wer sucht, muss die
+     nützliche Ansicht verlassen.
+
+   Der Umbau wäre: Gespräche als einzige Ansicht, Senden im Gespräch, Suche
+   darüber. Die flachen Listen entfallen — die API dafür (`/messages/received`,
+   `/messages/channel`) bleibt, sie ist für Auswertung weiter richtig.
+
+   **Vorher fragen.** Es ist die einzige Seite, für die es keine
+   ADR-gestützte Vorgabe gibt, und Geschmack ist hier ein legitimes Argument.
 
 ## Gesammelte Einfälle
 

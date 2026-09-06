@@ -1,5 +1,6 @@
-//! The parts every module needs: configuration, SQLite storage, the event bus,
-//! the `Link` to the node, and the module registry.
+//! The parts every module needs: configuration and the settings a running
+//! service can change, SQLite storage, the event bus, the `Link` to the node,
+//! and the module registry.
 //!
 //! # Rule for this crate
 //!

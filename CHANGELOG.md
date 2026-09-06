@@ -12,6 +12,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Zeitraumwähler und Abspielen auf der Verbindungsebene.** Auf der Karte
+  wählt man denselben Preset-Zeitraum wie in der Telemetrie (1 Stunde bis
+  30 Tage) oder bleibt bei der zeitlosen Verdichtung. **Abspielen** verschiebt
+  dasselbe Fenster in die Vergangenheit (jetzt, vor 1 Tag, vor 1 Woche, vor
+  2 Wochen) — ohne Scrubber. Die Adresse trägt den Zustand (`?zeit=`,
+  `?abspielen=`). Bei `clamped` sagt die Fläche, dass die Aufbewahrung gekürzt
+  hat. API-Vertrag aus PR #90 / [ADR-0018](docs/decisions/0018-zeit-fuer-verkehrsverdichtung.md).
+
 - **Historische Verbindungen für einen Zeitraum.** `GET /api/v1/traffic/links`
   bleibt ohne Parameter die zeitlose Verdichtung aus `traffic_links` (bares
   Array). Mit `?since=` und/oder `?until=` leitet MeshDash die Paare neu aus

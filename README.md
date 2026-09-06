@@ -12,7 +12,8 @@ Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 >
 > Die Oberfläche liegt auf einer Karte mit Kacheln, den Knoten darauf und
 > ihrem Zustand an Form und Farbe. Linien zeigen Wege, die tatsächlich
-> beobachtet wurden; jedes gehörte Paket läuft seinen Weg live darüber ab. Ein
+> beobachtet wurden — wahlweise zeitlos oder für einen gewählten Zeitraum;
+> jedes gehörte Paket läuft seinen Weg live darüber ab. Ein
 > Klick auf einen Knoten oder eine Verbindung öffnet eine Tafel, ein Schritt
 > weiter die volle Seite — Verbindung, Knoten, Gespräche, Telemetrie und
 > Einstellungen liegen als Blende darüber, die Karte darunter bleibt stehen.
@@ -23,8 +24,11 @@ Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 > durchblättern, durchsuchen und auf einen Zeitraum eingrenzen, Einstellungen
 > im Betrieb ändern. Live-Ereignisse laufen über WebSocket.
 >
-> **Wohin es geht:** Zeit auf der Karte — derselbe Ausschnitt vor einer Woche —,
-> danach Warnungen und Fernadministration
+> Die Verbindungsebene kennt jetzt denselben Zeitraumwähler wie die Telemetrie
+> und ein Abspielen in die Vergangenheit — ohne Scrubber
+> ([ADR-0018](docs/decisions/0018-zeit-fuer-verkehrsverdichtung.md)).
+>
+> **Wohin es geht:** Warnungen und Fernadministration (Stufe D)
 > ([ADR-0011](docs/decisions/0011-karte-als-leitansicht.md)). Der Stand und
 > der Weg dorthin: [`docs/roadmap.md`](docs/roadmap.md).
 

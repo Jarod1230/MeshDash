@@ -6,6 +6,17 @@ import { useNow } from '../lib/useNow';
 import { useResource } from '../lib/useResource';
 import type { KnownContact, Trace } from '../modules/nodes/types';
 import { links, strokeFor, type HeardBy, type MeshLink } from './links';
+import { LinksTimeBar } from './LinksTimeBar';
+import {
+  clampReason,
+  parseTrafficLinksResponse,
+  readLinksTime,
+  trafficLinksPath,
+  writeLinksTime,
+  type LinksTimeChoice,
+  type TimedLinksBody,
+  type TrafficLinksView,
+} from './linksTime';
 import { LinkPanel } from './LinkPanel';
 import { NodePanel } from './NodePanel';
 import { facts as pairFacts } from './pair';
@@ -84,20 +95,58 @@ export function Ground() {
   // Every trace ever measured, because each one is a statement about a leg
   // that stays true until something contradicts it.
   const traces = useResource<Trace[]>('/nodes/traces?limit=200');
-  // What the node overheard: who forwarded to whom, accumulated from packets
-  // nobody had to send for us. Bounded by the number of prefixes, so it can be
-  // asked for whole.
-  const overheard = useResource<HeardBy[]>('/traffic/links');
+  // The selection and the time filter live in the address — see ADR-0014.
+  const [params, setParams] = useSearchParams();
+  const chosen = params.get('knoten');
+  const chosenLink = params.get('verbindung');
+  // Layers refine this view rather than being another view, so they ride in
+  // the query string — see ADR-0014. Only the deviation is written down; an
+  // address without it means the layer is on.
+  const showLinks = params.get('verbindungen') !== 'aus';
+  const timeChoice = useMemo(() => readLinksTime(params), [params]);
+  // Minute-floored path so a rolling window does not refetch every render.
+  const linksPath = useMemo(
+    () => trafficLinksPath(timeChoice, now),
+    [timeChoice, now],
+  );
+
+  // Timeless: bare HeardBy[]. Timed (since/until): wrap with clamp signal.
+  const overheardRaw = useResource<HeardBy[] | TimedLinksBody>(linksPath);
+  const traffic = useMemo((): TrafficLinksView | null => {
+    if (overheardRaw.data === null) return null;
+    try {
+      return parseTrafficLinksResponse(overheardRaw.data, timeChoice.range !== null);
+    } catch {
+      // Shape mismatch is a server/contract bug — treat like empty rather than
+      // inventing pairs. The failed load path still surfaces via error.
+      return timeChoice.range === null
+        ? { mode: 'timeless', links: [] }
+        : {
+            mode: 'timed',
+            clamped: false,
+            keep_days: 0,
+            effective_since: '',
+            effective_until: '',
+            links: [],
+          };
+    }
+  }, [overheardRaw.data, timeChoice.range]);
+  const overheardLinks = traffic?.links ?? [];
+  const clampNote = traffic === null ? null : clampReason(traffic);
 
   useLiveReload(
     (event: AppEvent) => event.type === 'push' && isAdvert(event.payload),
     () => contacts.reload(),
   );
-  // A heard packet can name a pair nobody had seen before, so the summary is
-  // asked for again. Cheap: it is a handful of rows, not the packet log.
+  // A heard packet can name a pair nobody had seen before. For a window that
+  // still ends at "now", reload; a past playback window does not move.
   useLiveReload(
     (event: AppEvent) => event.type === 'push' && isReceivedPacket(event.payload),
-    () => overheard.reload(),
+    () => {
+      if (timeChoice.range === null || timeChoice.playback === 'jetzt') {
+        overheardRaw.reload();
+      }
+    },
   );
 
   const nodes = useMemo(
@@ -106,29 +155,32 @@ export function Ground() {
   );
   const geo = useMemo(() => geography(nodes, now), [nodes, now]);
   const { flights, frame } = useFlights(nodes);
-  const mesh = useMemo(
-    () => links(nodes, traces.data ?? [], overheard.data ?? [], now),
-    [nodes, traces.data, overheard.data, now],
-  );
+  // Timed view: only pairs proven inside the window (ADR-0018). Mixing in
+  // today's neighbours or traces would lie about "vor einer Woche".
+  const mesh = useMemo(() => {
+    if (traffic?.mode === 'timed') {
+      return links(nodes, [], overheardLinks, now);
+    }
+    return links(nodes, traces.data ?? [], overheardLinks, now);
+  }, [nodes, traces.data, overheardLinks, now, traffic?.mode]);
 
-  // The selection lives in the address, so a link to a dot opens the same
-  // thing a click on it does. A path would say "another view"; this is the
-  // same view with something picked out — see ADR-0014.
-  const [params, setParams] = useSearchParams();
-  const chosen = params.get('knoten');
-  const chosenLink = params.get('verbindung');
-  // Layers refine this view rather than being another view, so they ride in
-  // the query string — see ADR-0014. Only the deviation is written down; an
-  // address without it means the layer is on.
-  const showLinks = params.get('verbindungen') !== 'aus';
   const selected = nodes.find((node) => node.key === chosen) ?? null;
   const selectedLink = useMemo(
     () =>
       chosenLink === null
         ? null
-        : pairFacts(chosenLink, nodes, traces.data ?? [], overheard.data ?? []),
-    [chosenLink, nodes, traces.data, overheard.data],
+        : pairFacts(
+            chosenLink,
+            nodes,
+            traffic?.mode === 'timed' ? [] : (traces.data ?? []),
+            overheardLinks,
+          ),
+    [chosenLink, nodes, traces.data, overheardLinks, traffic?.mode],
   );
+
+  const setTimeChoice = (next: LinksTimeChoice) => {
+    setParams(writeLinksTime(params, next), { replace: true });
+  };
 
   // One thing at a time: picking a node clears a chosen link and the other
   // way round. Two panels over the same map would cover it between them.
@@ -176,6 +228,10 @@ export function Ground() {
             onSelectLink={selectLink}
             flights={flights}
             frame={frame}
+            timeChoice={timeChoice}
+            onTimeChoice={setTimeChoice}
+            timed={traffic?.mode === 'timed'}
+            clampNote={clampNote}
           />
         ))}
 
@@ -238,6 +294,10 @@ function Geography({
   onSelectLink,
   flights,
   frame,
+  timeChoice,
+  onTimeChoice,
+  timed,
+  clampNote,
 }: {
   readonly geo: GeographyOf;
   readonly nodes: readonly GroundNode[];
@@ -253,6 +313,10 @@ function Geography({
   readonly onSelectLink: (id: string | null) => void;
   readonly flights: readonly Flight[];
   readonly frame: number;
+  readonly timeChoice: LinksTimeChoice;
+  readonly onTimeChoice: (next: LinksTimeChoice) => void;
+  readonly timed: boolean;
+  readonly clampNote: string | null;
 }) {
   // Null means "whatever fits". Once the reader has moved, their view is kept
   // as it is — including across a resize, which is what a map does.
@@ -449,22 +513,25 @@ function Geography({
         ))}
       </svg>
 
-      {/* The layer switch sits above the scale, in the corner ADR-0011 gives
-          it. One switch today; the traffic layer joins it. */}
-      <div className="absolute bottom-12 left-4 flex items-center gap-2">
-        <HeardRate />
-        <button
-          type="button"
-          onClick={onToggleLinks}
-          aria-pressed={linksOn}
-          className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
-            linksOn
-              ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
-              : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
-          }`}
-        >
-          Verbindungen
-        </button>
+      {/* Layer switch and time controls share the bottom-left corner ADR-0011
+          gives them — time only refines the link layer, never a separate page. */}
+      <div className="absolute bottom-12 left-4 flex flex-col items-start gap-2">
+        <LinksTimeBar choice={timeChoice} onChange={onTimeChoice} />
+        <div className="flex items-center gap-2">
+          <HeardRate />
+          <button
+            type="button"
+            onClick={onToggleLinks}
+            aria-pressed={linksOn}
+            className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+              linksOn
+                ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
+                : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
+            }`}
+          >
+            Verbindungen
+          </button>
+        </div>
       </div>
 
       {/* Scale and credit share the bottom left, in that order. Kept in one
@@ -506,15 +573,20 @@ function Geography({
         {linksOn && drawable.length > 0 && (
           <span>Linie heißt: dieser Weg wurde beobachtet · dicker heißt besser gehört</span>
         )}
+        {linksOn && clampNote !== null && <span>{clampNote}</span>}
         {linksOn && mesh.length === 0 && (
           // An empty layer without a reason reads as "there are no
           // connections", which would be a claim about the mesh. The claim
           // here is about what has been observed, and that is a different
           // sentence.
           <span>
-            Noch kein Weg belegt. Ein Weg entsteht, sobald der Node eine Route zu einem Kontakt
-            kennt oder ein „Weg messen" ihn abläuft.
+            {timed
+              ? 'In diesem Zeitraum wurde keine Verbindung mitgehört.'
+              : 'Noch kein Weg belegt. Ein Weg entsteht, sobald der Node eine Route zu einem Kontakt kennt oder ein „Weg messen“ ihn abläuft.'}
           </span>
+        )}
+        {linksOn && timed && mesh.length > 0 && (
+          <span>Verbindungen nur aus dem gewählten Zeitraum (mitgehörte Pakete).</span>
         )}
         {linksOn && mesh.length > drawable.length && (
           <span>

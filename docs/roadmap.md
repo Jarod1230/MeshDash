@@ -9,8 +9,8 @@ Agent daran. Die Reihenfolge, in der genommen wird:
 
 1. **„Aus der Benutzung gemeldet"** — was beim Betrieb aufgefallen ist. Hat
    Vorrang: Es ist geprüft, dass jemand es vermisst.
-2. **Der Rest der laufenden Stufe.** Zurzeit Stufe C; offen ist dort nur noch
-   die Zeit.
+2. **Der Rest der laufenden Stufe.** Stufe C ist erledigt; als Nächstes
+   Stufe D.
 3. **Stufe D** und die Punkte unter „Danach".
 4. **„Gesammelte Einfälle"** — Kleinkram, jederzeit als Beiwerk mitnehmbar,
    aber nie als Grund für einen eigenen PR neben einem größeren.
@@ -381,16 +381,11 @@ selbst hat.
   Offen bleibt der Klick auf ein **einzelnes laufendes Paket**. Es ist eine
   Sekunde lang da und wird nie abgerufen — was eine Tafel dazu zeigen würde und
   wie man einen Punkt trifft, der sich bewegt, ist ungeklärt.
-- **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
-  Abspielen: dieselbe Region vor einer Woche. **Der letzte offene Punkt der
-  Stufe C** — die Oberfläche fehlt noch.
-
-  Die Bedeutung ist geklärt
-  ([ADR-0018](decisions/0018-zeit-fuer-verkehrsverdichtung.md)): historische
-  Verbindungen kommen aus `traffic_packets` für `[since, until]`, nicht aus
-  First/Last in `traffic_links`. Der Endpunkt
-  `GET /api/v1/traffic/links?since=&until=` liefert das schon; offen sind
-  Zeitraumwähler und Abspielen auf der Karte.
+- [x] **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
+  Abspielen: dieselbe Region vor einer Woche. Zeitraum und Abspielen-Presets
+  stehen auf der Karte; die Verbindungsebene folgt dem Fenster aus
+  `GET /api/v1/traffic/links?since=&until=` ([ADR-0018](decisions/0018-zeit-fuer-verkehrsverdichtung.md)).
+  **Stufe C ist damit erledigt.**
 
 ### Stufe D — handeln, wo man es sieht
 

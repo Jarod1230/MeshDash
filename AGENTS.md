@@ -8,10 +8,10 @@ arbeitet — bitte dort lesen, bevor du etwas änderst.
 Protokoll) — kein externes KI-System. Der Abschnitt „Wenn mehrere Agenten
 gleichzeitig arbeiten" in `CLAUDE.md` ist deshalb keine Formalie: Er erlaubt
 größere, kohärente PRs, verlangt aber weiter `gh pr list` / Remote-Zweige vor
-dem Start, und er nennt die Hotspots, an denen paralleles Arbeiten hier schon
-schiefgegangen ist — Migrationsnummern, ADR-Nummern, Registrierungslisten,
-`CHANGELOG`/`roadmap` und Zweige, die gegen einen anderen Feature-Zweig
-gemergt wurden.
+dem Start, und er nennt die **vier Hotspots**, an denen paralleles Arbeiten hier
+schon schiefgegangen ist — Migrationsnummern, ADR-Nummern, Registrierungslisten
+sowie `CHANGELOG.md` / `docs/roadmap.md`. Zweige immer von `main` und gegen
+`main` mergen (nie gegen einen anderen Feature-Zweig).
 
 Die drei Punkte, an denen dieses Projekt am ehesten Schaden nimmt:
 

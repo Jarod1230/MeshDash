@@ -383,13 +383,14 @@ selbst hat.
   wie man einen Punkt trifft, der sich bewegt, ist ungeklärt.
 - **Zeit** — derselbe Zeitraumwähler wie in der Telemetrie, dazu ein
   Abspielen: dieselbe Region vor einer Woche. **Der letzte offene Punkt der
-  Stufe C.**
+  Stufe C** — die Oberfläche fehlt noch.
 
-  Die Daten dafür liegen: `traffic_packets` hält den Verlauf mit Frist,
-  `nodes_adverts` die Sichtungen, `nodes_route_changes` die Wegwechsel. Was
-  fehlt, ist die Frage, was „vor einer Woche" für die Verdichtung heißt —
-  `traffic_links` kennt nur erste und letzte Sichtung, keinen Verlauf. Wer das
-  angeht, klärt das zuerst und schreibt einen ADR dazu.
+  Die Bedeutung ist geklärt
+  ([ADR-0018](decisions/0018-zeit-fuer-verkehrsverdichtung.md)): historische
+  Verbindungen kommen aus `traffic_packets` für `[since, until]`, nicht aus
+  First/Last in `traffic_links`. Der Endpunkt
+  `GET /api/v1/traffic/links?since=&until=` liefert das schon; offen sind
+  Zeitraumwähler und Abspielen auf der Karte.
 
 ### Stufe D — handeln, wo man es sieht
 

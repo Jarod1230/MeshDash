@@ -12,6 +12,15 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Historische Verbindungen für einen Zeitraum.** `GET /api/v1/traffic/links`
+  bleibt ohne Parameter die zeitlose Verdichtung aus `traffic_links` (bares
+  Array). Mit `?since=` und/oder `?until=` leitet MeshDash die Paare neu aus
+  `traffic_packets` ab — dieselbe Pfadlogik wie beim Schreiben der Verdichtung —
+  und zählt nur für das Fenster. Liegt die Anfrage außerhalb von `keep_days`,
+  wird gekappt und die Antwort sagt das mit `clamped`, `keep_days`,
+  `effective_since` und `effective_until`. Begründung in
+  [ADR-0018](docs/decisions/0018-zeit-fuer-verkehrsverdichtung.md).
+
 - **Nachbarn auf der Knotenseite.** Wer diesen Knoten hört und wen er hört,
   aus zwei Quellen, die nebeneinander stehen statt verrechnet zu werden:
 

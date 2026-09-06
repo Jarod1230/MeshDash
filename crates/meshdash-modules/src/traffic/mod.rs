@@ -11,6 +11,11 @@
 //! count, and stays. Traffic grows with the operating hours; the summary grows
 //! with the number of prefixes, which is small. See ADR-0016.
 //!
+//! A time window on `GET /links` does **not** filter that summary by
+//! first/last. It re-derives the pairs from the packet log for `[since, until]`
+//! — same path proof as writing the summary — and says honestly when the
+//! window had to be clamped to `keep_days`. See ADR-0018.
+//!
 //! # What the path proves
 //!
 //! A forwarding station appends its own prefix to the end of the path
@@ -38,7 +43,7 @@
 //! It is encrypted and none of MeshDash's business. It is not written down at
 //! all: what is never stored cannot leak.
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use axum::{
@@ -223,6 +228,137 @@ pub struct HeardBy {
     pub last_seen: DateTime<Utc>,
     /// How many packets showed it.
     pub heard: i64,
+}
+
+/// Historical links for a time window, with an honest clamp signal.
+///
+/// Returned only when `since` and/or `until` are set on `GET /links`. Without
+/// those parameters the timeless summary stays a bare array — the map already
+/// expects that. See ADR-0018.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct TimedLinks {
+    /// Whether the requested window was narrowed to fit `keep_days`.
+    pub clamped: bool,
+    /// Retention of the packet log, in days — the ceiling for any window.
+    pub keep_days: i64,
+    /// Oldest moment actually queried, after clamping.
+    pub effective_since: DateTime<Utc>,
+    /// Newest moment actually queried, after clamping.
+    pub effective_until: DateTime<Utc>,
+    /// Pairs proven by packets inside the effective window. Counts are for
+    /// that window only; `first_seen` / `last_seen` too.
+    pub links: Vec<HeardBy>,
+}
+
+/// Which stretch of time a links request covers.
+///
+/// Absent entirely → the timeless summary from `traffic_links`. Either end
+/// present → pairs re-derived from the packet log for that window.
+#[derive(Debug, Deserialize, Default)]
+pub struct LinkQuery {
+    #[serde(flatten)]
+    range: TimeRange,
+}
+
+/// What `GET /links` answers: bare array timeless, or a wrapped window.
+#[derive(Debug, PartialEq)]
+enum LinksAnswer {
+    Timeless(Vec<HeardBy>),
+    Timed(TimedLinks),
+}
+
+impl axum::response::IntoResponse for LinksAnswer {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::Timeless(links) => Json(links).into_response(),
+            Self::Timed(body) => Json(body).into_response(),
+        }
+    }
+}
+
+/// The window after retention has been applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveRange {
+    /// Oldest moment to include.
+    pub since: DateTime<Utc>,
+    /// Newest moment to include.
+    pub until: DateTime<Utc>,
+    /// Whether either end was moved to fit `keep_days`.
+    pub clamped: bool,
+    /// Retention used for the clamp, echoed for the UI.
+    pub keep_days: i64,
+}
+
+/// Narrows a requested window so it fits inside packet retention.
+///
+/// - Missing `until` becomes `now`.
+/// - Missing `since` becomes the start of retention (`now - keep_days`), or
+///   `until` when retention is disabled (`keep_days <= 0`).
+/// - A `since` older than retention, or a span longer than `keep_days`, is
+///   pulled forward — `until` stays put so a rolling "last N days" keeps its
+///   recent end. Retention is never raised silently (ADR-0018).
+pub fn clamp_range(
+    requested_since: Option<DateTime<Utc>>,
+    requested_until: Option<DateTime<Utc>>,
+    keep_days: i64,
+    now: DateTime<Utc>,
+) -> EffectiveRange {
+    let until = requested_until.unwrap_or(now);
+    let mut clamped = false;
+
+    let mut since = match requested_since {
+        Some(since) => since,
+        None if keep_days > 0 => now - chrono::Duration::days(keep_days),
+        // No retention deadline: open the past as far as timestamps go. The
+        // effective bound is still named so the UI can show what was queried.
+        None => DateTime::from_timestamp(0, 0).unwrap_or(until),
+    };
+
+    if keep_days > 0 {
+        let retention_start = now - chrono::Duration::days(keep_days);
+        let max_span = chrono::Duration::days(keep_days);
+
+        if since < retention_start {
+            since = retention_start;
+            clamped = true;
+        }
+
+        if until.signed_duration_since(since) > max_span {
+            since = until - max_span;
+            clamped = true;
+        }
+    }
+
+    // Echo what was configured even when we did not clamp on it.
+    EffectiveRange {
+        since,
+        until,
+        clamped,
+        keep_days,
+    }
+}
+
+/// Every direct "heard" pair a path proves — same rules as `record_hearing`.
+///
+/// Station `n + 1` heard station `n`; this node heard the last one (empty
+/// listener). An empty path proves nothing.
+pub fn pairs_from_path(stations: &[String], width: u8) -> Vec<(String, String, u8)> {
+    let mut pairs = Vec::with_capacity(
+        stations
+            .len()
+            .saturating_sub(1)
+            .saturating_add(usize::from(!stations.is_empty())),
+    );
+
+    for pair in stations.windows(2) {
+        pairs.push((pair[0].clone(), pair[1].clone(), width));
+    }
+
+    if let Some(last) = stations.last() {
+        pairs.push((last.clone(), String::new(), width));
+    }
+
+    pairs
 }
 
 #[async_trait]
@@ -588,8 +724,31 @@ async fn list_packets(
     ))
 }
 
-async fn list_links(State(context): State<AppContext>) -> Result<Json<Vec<HeardBy>>, TrafficError> {
-    Ok(Json(read_links(&context).await?))
+async fn list_links(
+    State(context): State<AppContext>,
+    Query(query): Query<LinkQuery>,
+) -> Result<LinksAnswer, TrafficError> {
+    let times = query.range.times()?;
+    if times.since.is_none() && times.until.is_none() {
+        return Ok(LinksAnswer::Timeless(read_links(&context).await?));
+    }
+
+    let keep_days = context
+        .settings
+        .get::<Settings>("traffic")
+        .map(|settings| settings.keep_days)
+        .unwrap_or_else(|_| Settings::default().keep_days);
+
+    let effective = clamp_range(times.since, times.until, keep_days, Utc::now());
+    let links = read_links_in_window(&context, &effective.since, &effective.until).await?;
+
+    Ok(LinksAnswer::Timed(TimedLinks {
+        clamped: effective.clamped,
+        keep_days: effective.keep_days,
+        effective_since: effective.since,
+        effective_until: effective.until,
+        links,
+    }))
 }
 
 type PacketRow = (
@@ -674,6 +833,116 @@ pub async fn read_links(context: &AppContext) -> Result<Vec<HeardBy>, sqlx::Erro
             })
         })
         .collect())
+}
+
+/// Derives who-heard-whom from packets inside `[since, until]` (inclusive).
+///
+/// Same path proof as `record_hearing`. Does **not** read `traffic_links` —
+/// first/last there would lie about gaps (ADR-0018). Counts and timestamps
+/// cover only this window.
+pub async fn read_links_in_window(
+    context: &AppContext,
+    since: &DateTime<Utc>,
+    until: &DateTime<Utc>,
+) -> Result<Vec<HeardBy>, sqlx::Error> {
+    let since = since.to_rfc3339();
+    let until = until.to_rfc3339();
+
+    // Packets in the window, then their stations in travel order. The split
+    // table is the only searchable form of the path — see migration 2.
+    let rows: Vec<(i64, String, i64, i64, String)> = sqlx::query_as(
+        "SELECT p.id, p.heard_at, p.path_width, s.position, s.prefix
+         FROM traffic_packets p
+         INNER JOIN traffic_packet_stations s ON s.packet_id = p.id
+         WHERE p.heard_at >= ?1 AND p.heard_at <= ?2
+         ORDER BY p.id ASC, s.position ASC",
+    )
+    .bind(&since)
+    .bind(&until)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(aggregate_heard_pairs(rows))
+}
+
+/// Turns ordered station rows into window-scoped `HeardBy` entries.
+fn aggregate_heard_pairs(rows: Vec<(i64, String, i64, i64, String)>) -> Vec<HeardBy> {
+    struct Packet {
+        heard_at: DateTime<Utc>,
+        width: u8,
+        stations: Vec<String>,
+    }
+
+    let mut packets: Vec<Packet> = Vec::new();
+    let mut current_id: Option<i64> = None;
+
+    for (packet_id, heard_at, path_width, _position, prefix) in rows {
+        if current_id != Some(packet_id) {
+            let Some(when) = parse_time(&heard_at) else {
+                // Skip a packet whose timestamp we cannot read — same policy
+                // as the other readers: leave it out, keep the rest.
+                current_id = None;
+                continue;
+            };
+            packets.push(Packet {
+                heard_at: when,
+                width: path_width as u8,
+                stations: Vec::new(),
+            });
+            current_id = Some(packet_id);
+        }
+
+        if current_id != Some(packet_id) {
+            continue;
+        }
+
+        if let Some(packet) = packets.last_mut() {
+            packet.stations.push(prefix);
+        }
+    }
+
+    #[derive(Default)]
+    struct Tally {
+        first_seen: Option<DateTime<Utc>>,
+        last_seen: Option<DateTime<Utc>>,
+        heard: i64,
+    }
+
+    type PairKey = (String, String, u8);
+    let mut totals: HashMap<PairKey, Tally> = HashMap::new();
+
+    for packet in &packets {
+        for (talker, listener, width) in pairs_from_path(&packet.stations, packet.width) {
+            let tally = totals.entry((talker, listener, width)).or_default();
+            match tally.first_seen {
+                Some(first) if packet.heard_at >= first => {}
+                _ => tally.first_seen = Some(packet.heard_at),
+            }
+            match tally.last_seen {
+                Some(last) if packet.heard_at <= last => {}
+                _ => tally.last_seen = Some(packet.heard_at),
+            }
+            tally.heard += 1;
+        }
+    }
+
+    let mut links: Vec<HeardBy> = totals
+        .into_iter()
+        .filter_map(|((talker, listener, width), tally)| {
+            Some(HeardBy {
+                talker,
+                listener,
+                width,
+                first_seen: tally.first_seen?,
+                last_seen: tally.last_seen?,
+                heard: tally.heard,
+            })
+        })
+        .collect();
+
+    // Same order as the timeless summary: most recently seen first.
+    links.sort_by_key(|link| std::cmp::Reverse(link.last_seen));
+    links
 }
 
 /// Reads a stored timestamp back.

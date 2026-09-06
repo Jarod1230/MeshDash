@@ -48,5 +48,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0015](0015-eigene-zeichnung-statt-leaflet.md) | Die Karte zeichnet MeshDash selbst, in Web-Mercator, ohne Leaflet | Angenommen |
 | [0016](0016-verkehr-aufbewahren.md) | Rohverkehr mit Frist, „wer hört wen" verdichtet und bleibend | Angenommen |
 | [0017](0017-einstellungen-zur-laufzeit.md) | Modul-Einstellungen im Betrieb änderbar, Datei bleibt der Grund | Angenommen |
+| [0018](0018-zeit-fuer-verkehrsverdichtung.md) | Was „vor einer Woche" für die Verkehrsverdichtung heißt | Angenommen |
 
 Vorlage: [`template.md`](template.md).

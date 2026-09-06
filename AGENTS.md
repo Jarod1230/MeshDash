@@ -4,11 +4,14 @@ Die Arbeitsanweisung für KI-Agenten in diesem Repository steht vollständig in
 **[`CLAUDE.md`](CLAUDE.md)**. Sie gilt unabhängig davon, welcher Agent gerade
 arbeitet — bitte dort lesen, bevor du etwas änderst.
 
-**Es arbeitet mehr als ein Agent an diesem Repository.** Der Abschnitt „Wenn
-mehrere Agenten gleichzeitig arbeiten" in `CLAUDE.md` ist deshalb keine
-Formalie: Er nennt die vier Stellen, an denen paralleles Arbeiten hier schon
-schiefgegangen ist — Migrationsnummern, ADR-Nummern, Registrierungslisten und
-Zweige, die gegen einen anderen Feature-Zweig gemergt wurden.
+**Am Repo arbeiten gemeinsam vier Agenten** (Stabschef, Backend, Frontend,
+Protokoll) — kein externes KI-System. Der Abschnitt „Wenn mehrere Agenten
+gleichzeitig arbeiten" in `CLAUDE.md` ist deshalb keine Formalie: Er erlaubt
+größere, kohärente PRs, verlangt aber weiter `gh pr list` / Remote-Zweige vor
+dem Start, und er nennt die Hotspots, an denen paralleles Arbeiten hier schon
+schiefgegangen ist — Migrationsnummern, ADR-Nummern, Registrierungslisten,
+`CHANGELOG`/`roadmap` und Zweige, die gegen einen anderen Feature-Zweig
+gemergt wurden.
 
 Die drei Punkte, an denen dieses Projekt am ehesten Schaden nimmt:
 

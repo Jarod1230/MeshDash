@@ -10,6 +10,14 @@ jedem Minor-Release ändern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Schreibende Anfragen ohne Node hängen nicht mehr.** War kein
+  Companion verbunden, parkte der Link die Anfrage bis zum Reconnect —
+  und bei dauerhaft fehlendem Node ewig. Jetzt lehnt der Link sofort mit
+  `NotConnected` ab; Nachricht senden und Wegmessung antworten mit
+  `503` / `node_unreachable`.
+
 ### Added
 
 - **Zeitraumwähler und Abspielen auf der Verbindungsebene.** Auf der Karte

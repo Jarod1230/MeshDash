@@ -474,14 +474,14 @@ Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
   Verzeichnislisting. Festgehalten, damit die Frage später nicht auf
   „`libudev` einbinden oder keine Portliste" verengt wird — es gibt einen
   dritten Weg.
-- **Ein Kommando ohne Node hängt unbegrenzt.** Wer etwas sendet, während kein
-  Node verbunden ist, wartet ewig: Der Antwort-Timeout im Link greift erst,
+- [x] **Ein Kommando ohne Node hängt unbegrenzt.** Wer etwas sendet, während kein
+  Node verbunden ist, wartete ewig: Der Antwort-Timeout im Link greift erst,
   *nachdem* ein Kommando hinausgegangen ist, und ohne Verbindung geht es gar
   nicht erst hinaus. Betrifft jeden schreibenden Endpunkt gleichermaßen —
-  Nachricht senden, Weg messen, später Fernadministration. Am laufenden Dienst
-  beobachtet: beide Aufrufe antworten nach zehn Sekunden noch immer nicht. Der
-  saubere Weg wäre, eine Anfrage ohne Verbindung sofort abzulehnen, statt sie
-  in die Warteschlange zu legen.
+  Nachricht senden, Weg messen, später Fernadministration. Behoben im Link:
+  ohne Verbindung kommt `LinkError::NotConnected` sofort — die schreibenden
+  Endpunkte antworten mit `503` / `node_unreachable`, statt die Anfrage über
+  den Reconnect zu parken.
 - **Beschriftungen auf der Karte überlagern sich** — vorerst gelöst, indem die
   Fläche einen Namen weglässt, sobald er auf einem schon gezeichneten läge, und
   darunter schreibt, wie viele sie weggelassen hat. Offen bleibt das Bessere:

@@ -4,7 +4,7 @@ import { MessagesPage } from './MessagesPage';
 export const messagesModule: UiModule = {
   id: 'messages',
   title: 'Nachrichten',
-  summary: 'Was hereinkam, und was hinausgeht',
+  summary: 'Direkt und Kanäle als Fäden — lesen und schreiben im Gespräch',
   path: '/nachrichten',
   component: MessagesPage,
 };

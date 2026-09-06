@@ -1,9 +1,21 @@
 import { useState, type FormEvent } from 'react';
 import { apiPost, describeError, type ApiError } from '../../lib/api';
-import type { Channel, SendResult } from './types';
+import type { SendResult } from './types';
 
 /**
- * Sending, which is the first thing this interface does *to* the mesh.
+ * Where a reply goes — fixed by the open thread, never chosen from a global form.
+ *
+ * A brand-new direct message is the one exception: there is no peer yet, so the
+ * compose field has to ask for a key prefix. Once it has been sent, the thread
+ * list owns that peer like any other.
+ */
+export type ComposeTarget =
+  | { kind: 'contact'; prefix: string }
+  | { kind: 'contact-new' }
+  | { kind: 'channel'; index: number };
+
+/**
+ * Sending from inside an open thread.
  *
  * Two things are said plainly rather than hidden, because both surprise
  * people who expect a chat app:
@@ -16,16 +28,14 @@ import type { Channel, SendResult } from './types';
  * so there is nothing to wait for, and pretending otherwise would leave a
  * spinner running forever.
  */
-export function SendForm({
-  channels,
+export function ThreadCompose({
+  target,
   onSent,
 }: {
-  readonly channels: readonly Channel[];
-  readonly onSent: () => void;
+  readonly target: ComposeTarget;
+  readonly onSent: (opened: { partner: 'contact' | 'channel'; id: string }) => void;
 }) {
-  const [target, setTarget] = useState<'kontakt' | 'kanal'>('kanal');
   const [recipient, setRecipient] = useState('');
-  const [channelIndex, setChannelIndex] = useState(channels[0]?.channel_index ?? 0);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,23 +43,36 @@ export function SendForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
     setError(null);
     setReceipt(null);
 
+    setBusy(true);
     try {
-      if (target === 'kanal') {
-        await apiPost('/messages/channel-send', { channel_index: channelIndex, text });
-        setReceipt('ohne Quittung');
-      } else {
-        const result = await apiPost<SendResult>('/messages/send', {
-          recipient_prefix: recipient.trim().toLowerCase(),
+      if (target.kind === 'channel') {
+        await apiPost('/messages/channel-send', {
+          channel_index: target.index,
           text,
         });
-        setReceipt(result);
+        setReceipt('ohne Quittung');
+        setText('');
+        onSent({ partner: 'channel', id: String(target.index) });
+        return;
       }
+
+      const prefix =
+        target.kind === 'contact' ? target.prefix : recipient.trim().toLowerCase();
+      if (prefix === '') {
+        setError('Ohne Schlüsselpräfix weiß der Node nicht, wohin die Nachricht soll.');
+        return;
+      }
+
+      const result = await apiPost<SendResult>('/messages/send', {
+        recipient_prefix: prefix,
+        text,
+      });
+      setReceipt(result);
       setText('');
-      onSent();
+      onSent({ partner: 'contact', id: prefix });
     } catch (cause) {
       setError(describeError(cause as ApiError));
     } finally {
@@ -57,63 +80,32 @@ export function SendForm({
     }
   };
 
-  return (
-    <form onSubmit={submit} className="space-y-3 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {(['kanal', 'kontakt'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setTarget(option)}
-            className={`rounded-md border px-3 py-1 text-sm capitalize focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
-              target === option
-                ? 'border-mesh-accent text-mesh-text'
-                : 'border-mesh-border text-mesh-muted hover:text-mesh-text'
-            }`}
-          >
-            {option}
-          </button>
-        ))}
+  const needsPrefix = target.kind === 'contact-new';
+  const canSend = text.trim() !== '' && (!needsPrefix || recipient.trim() !== '');
 
-        {target === 'kanal' ? (
-          <select
-            aria-label="Kanal"
-            value={channelIndex}
-            onChange={(event) => setChannelIndex(Number(event.target.value))}
-            className="rounded-md border border-mesh-border bg-mesh-bg px-2 py-1 text-sm text-mesh-text"
-          >
-            {channels.length === 0 ? (
-              <option value={0}>Kanal 0</option>
-            ) : (
-              channels.map((channel) => (
-                <option key={channel.channel_index} value={channel.channel_index}>
-                  {channel.name || `Kanal ${channel.channel_index}`}
-                </option>
-              ))
-            )}
-          </select>
-        ) : (
-          <input
-            aria-label="Schlüsselpräfix des Empfängers"
-            value={recipient}
-            onChange={(event) => setRecipient(event.target.value)}
-            placeholder="Schlüsselpräfix, 12 Hex-Zeichen"
-            className="tabular w-56 rounded-md border border-mesh-border bg-mesh-bg px-2 py-1 text-sm text-mesh-text placeholder:text-mesh-faint"
-          />
-        )}
-      </div>
+  return (
+    <form onSubmit={submit} className="space-y-2 border-t border-mesh-border p-4">
+      {needsPrefix && (
+        <input
+          aria-label="Schlüsselpräfix des Empfängers"
+          value={recipient}
+          onChange={(event) => setRecipient(event.target.value)}
+          placeholder="Schlüsselpräfix, 12 Hex-Zeichen"
+          className="tabular w-full rounded-md border border-mesh-border bg-mesh-bg px-2 py-1.5 text-sm text-mesh-text placeholder:text-mesh-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+        />
+      )}
 
       <div className="flex gap-2">
         <input
           aria-label="Nachricht"
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="Nachricht"
+          placeholder="Nachricht schreiben …"
           className="flex-1 rounded-md border border-mesh-border bg-mesh-bg px-3 py-2 text-sm text-mesh-text placeholder:text-mesh-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
         />
         <button
           type="submit"
-          disabled={busy || text.trim() === ''}
+          disabled={busy || !canSend}
           className="rounded-md bg-mesh-accent px-4 py-2 text-sm text-mesh-bg disabled:opacity-50"
         >
           {busy ? 'Sendet …' : 'Senden'}
@@ -133,7 +125,7 @@ export function SendForm({
               In den Kanal gegeben. Eine Rundsendung wird von niemandem bestätigt — ob sie jemand
               gehört hat, sagt der Node nicht.
             </>
-          ) : receipt === null ? null : (
+          ) : (
             <>
               Der Node hat die Nachricht übernommen
               {receipt.flooded ? ', als Flood ausgesendet' : ', über den bekannten Weg'}

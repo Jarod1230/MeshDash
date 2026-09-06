@@ -18,6 +18,10 @@ jedem Minor-Release ändern.
   `NotConnected` ab; Nachricht senden und Wegmessung antworten mit
   `503` / `node_unreachable`.
 
+### Changed
+
+- **Nachrichtenseite neu geschnitten.** Statt drei Reitern (Gespräche / Direkt / Kanäle) und einem Sendeformular oben gibt es zwei Bereiche — **Direkt** und **Kanäle** — jeweils als Fäden aus Empfangenem und Gesendetem. Geschrieben wird im offenen Faden, nicht in einem globalen Formular; die Suche steht über den Listen. Die flachen Empfangslisten sind aus der Oberfläche, die API dafür bleibt für Auswertung. Auswahl in der Adresse (`?bereich=`, `?faden=`, `?neu=`). Entscheidung 2026-09-06: getrennte Bereiche, kein einheitlicher Gesprächsstream („Gespräche only“).
+
 ### Added
 
 - **Zeitraumwähler und Abspielen auf der Verbindungsebene.** Auf der Karte

@@ -434,28 +434,11 @@ aufgeschrieben. Reihenfolge wie hier.
    was ein Knoten über **sich** meldet — Batterie, Speicher —, nicht wie gut
    eine Strecke trägt. Das misst nur `CMD_SEND_TRACE_PATH`. Deshalb ist sie
    hier nicht als Quelle geführt.
-5. **Nachrichtenseite neu bauen.** Der Auftrag lautete „die ist Mist, die
-   müsste man mal neu machen", ohne weitere Angabe. Was beim Ansehen auffällt —
-   **meine Lesart, nicht die des Betreibers**, also vor dem Bauen abzustimmen:
-
-   - **Drei Reiter über denselben Daten.** „Gespräche" ist die brauchbare
-     Ansicht; „Direkt" und „Kanäle" sind flache Listen des Empfangenen. Sie
-     zeigen weniger und trennen dabei Gesendetes von Empfangenem, das der
-     Gesprächsfaden längst zusammenführt. Zwei davon sind eine Debug-Ansicht,
-     die es in die Oberfläche geschafft hat.
-   - **Das Senden hängt oben und gehört nirgendwohin.** Man wählt den Empfänger
-     in einem Formular, statt in einem Gespräch zu schreiben. Das ist die
-     Umkehrung dessen, was jeder Messenger tut, und der Grund, warum die Seite
-     sich falsch anfühlt.
-   - **Die Suche wirkt nur auf den flachen Reitern.** Wer sucht, muss die
-     nützliche Ansicht verlassen.
-
-   Der Umbau wäre: Gespräche als einzige Ansicht, Senden im Gespräch, Suche
-   darüber. Die flachen Listen entfallen — die API dafür (`/messages/received`,
-   `/messages/channel`) bleibt, sie ist für Auswertung weiter richtig.
-
-   **Vorher fragen.** Es ist die einzige Seite, für die es keine
-   ADR-gestützte Vorgabe gibt, und Geschmack ist hier ein legitimes Argument.
+5. [x] **Nachrichtenseite neu bauen.** Entscheidung 2026-09-06: **Direkt** und
+   **Kanäle** bleiben getrennt — jeweils Fäden aus Empfangenem und Gesendetem,
+   Schreiben im offenen Faden, Suche über den Listen. Flache Empfangslisten und
+   globales Sendeformular oben entfallen. Nicht „Gespräche only“. Die API
+   (`/messages/received`, `/messages/channel`) bleibt für Auswertung.
 
 ## Gesammelte Einfälle
 

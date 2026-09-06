@@ -360,3 +360,236 @@ async fn the_sweep_takes_the_stations_with_the_packets() {
         .unwrap();
     assert_eq!(left.0, 0);
 }
+
+/// Inserts one packet at a chosen time with its stations split out.
+async fn insert_packet_at(
+    context: &AppContext,
+    heard_at: DateTime<Utc>,
+    stations: &[&str],
+    width: u8,
+) {
+    let path: String = stations.iter().copied().collect();
+    let id = sqlx::query(
+        "INSERT INTO traffic_packets
+            (heard_at, route_type, payload_type, version, stations, path, path_width, size)
+         VALUES (?, 1, 2, 0, ?, ?, ?, 7)",
+    )
+    .bind(heard_at.to_rfc3339())
+    .bind(stations.len() as i64)
+    .bind(&path)
+    .bind(i64::from(width))
+    .execute(context.db.pool())
+    .await
+    .unwrap()
+    .last_insert_rowid();
+
+    for (position, prefix) in stations.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO traffic_packet_stations (packet_id, position, prefix) VALUES (?, ?, ?)",
+        )
+        .bind(id)
+        .bind(position as i64)
+        .bind(prefix)
+        .execute(context.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+fn moment(text: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(text)
+        .unwrap()
+        .with_timezone(&Utc)
+}
+
+#[test]
+fn path_pairs_match_what_record_hearing_writes() {
+    // aa → bb → (this node): bb heard aa; this node heard bb.
+    let stations = vec!["aa".into(), "bb".into()];
+    assert_eq!(
+        pairs_from_path(&stations, 1),
+        vec![
+            ("aa".into(), "bb".into(), 1),
+            ("bb".into(), String::new(), 1),
+        ]
+    );
+}
+
+#[test]
+fn an_empty_path_proves_no_pair() {
+    assert_eq!(pairs_from_path(&[], 1), vec![]);
+}
+
+#[test]
+fn a_single_station_is_only_heard_by_this_node() {
+    assert_eq!(
+        pairs_from_path(&["cc".into()], 2),
+        vec![("cc".into(), String::new(), 2)]
+    );
+}
+
+#[test]
+fn clamp_leaves_a_fitting_window_alone() {
+    let now = moment("2026-09-06T12:00:00Z");
+    let since = moment("2026-09-01T12:00:00Z");
+    let until = moment("2026-09-06T12:00:00Z");
+
+    let effective = clamp_range(Some(since), Some(until), 30, now);
+    assert_eq!(effective.since, since);
+    assert_eq!(effective.until, until);
+    assert!(!effective.clamped);
+    assert_eq!(effective.keep_days, 30);
+}
+
+#[test]
+fn clamp_pulls_since_up_to_retention() {
+    let now = moment("2026-09-06T12:00:00Z");
+    let since = moment("2026-07-01T12:00:00Z");
+    let until = now;
+
+    let effective = clamp_range(Some(since), Some(until), 30, now);
+    assert_eq!(effective.since, moment("2026-08-07T12:00:00Z"));
+    assert_eq!(effective.until, until);
+    assert!(effective.clamped);
+}
+
+#[test]
+fn clamp_shortens_a_span_longer_than_keep_days() {
+    // Retention alone cannot shorten this: since sits on the retention floor,
+    // until lies past "now", so the span is 40 days while keep_days is 30.
+    // until stays; since moves forward.
+    let now = moment("2026-09-06T12:00:00Z");
+    let since = moment("2026-08-07T12:00:00Z");
+    let until = moment("2026-09-16T12:00:00Z");
+
+    let effective = clamp_range(Some(since), Some(until), 30, now);
+    assert_eq!(effective.since, moment("2026-08-17T12:00:00Z"));
+    assert_eq!(effective.until, until);
+    assert!(effective.clamped);
+}
+
+#[test]
+fn clamp_defaults_until_to_now_and_since_to_retention() {
+    let now = moment("2026-09-06T12:00:00Z");
+    let effective = clamp_range(None, None, 30, now);
+    // Both missing still goes through clamp when the handler asks — the
+    // handler itself only calls clamp when at least one end was set. Here we
+    // check the defaults themselves.
+    assert_eq!(effective.until, now);
+    assert_eq!(effective.since, moment("2026-08-07T12:00:00Z"));
+    assert!(!effective.clamped);
+}
+
+#[test]
+fn clamp_does_not_invent_retention_when_keep_days_is_disabled() {
+    let now = moment("2026-09-06T12:00:00Z");
+    let since = moment("2020-01-01T00:00:00Z");
+    let effective = clamp_range(Some(since), Some(now), 0, now);
+    assert_eq!(effective.since, since);
+    assert!(!effective.clamped);
+}
+
+#[tokio::test]
+async fn timed_links_count_only_packets_inside_the_window() {
+    let context = context_with(serde_json::json!({ "keep_days": 30 })).await;
+
+    // Outside the window — must not count.
+    insert_packet_at(&context, moment("2026-08-01T12:00:00Z"), &["aa", "bb"], 1).await;
+    // Inside.
+    insert_packet_at(&context, moment("2026-09-01T12:00:00Z"), &["aa", "bb"], 1).await;
+    insert_packet_at(&context, moment("2026-09-02T12:00:00Z"), &["aa", "bb"], 1).await;
+    // Different pair, also inside.
+    insert_packet_at(&context, moment("2026-09-03T12:00:00Z"), &["cc"], 1).await;
+
+    let links = read_links_in_window(
+        &context,
+        &moment("2026-09-01T00:00:00Z"),
+        &moment("2026-09-05T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(links.len(), 3);
+    let aa_bb = links
+        .iter()
+        .find(|link| link.talker == "aa" && link.listener == "bb")
+        .unwrap();
+    assert_eq!(aa_bb.heard, 2);
+    assert_eq!(aa_bb.first_seen, moment("2026-09-01T12:00:00Z"));
+    assert_eq!(aa_bb.last_seen, moment("2026-09-02T12:00:00Z"));
+
+    let bb_here = links
+        .iter()
+        .find(|link| link.talker == "bb" && link.listener.is_empty())
+        .unwrap();
+    assert_eq!(bb_here.heard, 2);
+
+    let cc_here = links
+        .iter()
+        .find(|link| link.talker == "cc" && link.listener.is_empty())
+        .unwrap();
+    assert_eq!(cc_here.heard, 1);
+}
+
+#[tokio::test]
+async fn timed_links_ignore_the_timeless_summary() {
+    // A pair only in traffic_links (no packet in the window) must not appear.
+    let context = context_with(serde_json::json!({})).await;
+
+    sqlx::query(
+        "INSERT INTO traffic_links (talker, listener, width, first_seen, last_seen, heard)
+         VALUES ('ee', 'ff', 1, ?, ?, 99)",
+    )
+    .bind(moment("2026-09-01T12:00:00Z").to_rfc3339())
+    .bind(moment("2026-09-05T12:00:00Z").to_rfc3339())
+    .execute(context.db.pool())
+    .await
+    .unwrap();
+
+    insert_packet_at(&context, moment("2026-09-02T12:00:00Z"), &["aa"], 1).await;
+
+    let links = read_links_in_window(
+        &context,
+        &moment("2026-09-01T00:00:00Z"),
+        &moment("2026-09-05T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].talker, "aa");
+    assert!(links[0].listener.is_empty());
+    assert_eq!(links[0].heard, 1);
+}
+
+#[tokio::test]
+async fn timeless_links_stay_a_bare_array_shape() {
+    // The map loads `/traffic/links` as HeardBy[]. Timed answers wrap; the
+    // default must not suddenly become an object.
+    let context = context_with(serde_json::json!({})).await;
+    feed(&context, heard(&[0xAA])).await;
+
+    let body = serde_json::to_value(read_links(&context).await.unwrap()).unwrap();
+    assert!(body.is_array(), "{body}");
+}
+
+#[test]
+fn timed_links_json_names_the_clamp() {
+    let body = TimedLinks {
+        clamped: true,
+        keep_days: 30,
+        effective_since: moment("2026-08-07T12:00:00Z"),
+        effective_until: moment("2026-09-06T12:00:00Z"),
+        links: vec![],
+    };
+    let json = serde_json::to_value(&body).unwrap();
+    assert_eq!(json["clamped"], true);
+    assert_eq!(json["keep_days"], 30);
+    assert!(json["links"].is_array());
+    assert!(
+        json["effective_since"]
+            .as_str()
+            .unwrap()
+            .starts_with("2026-08-07")
+    );
+}

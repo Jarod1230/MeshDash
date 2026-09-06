@@ -878,3 +878,17 @@ Richtigkeit einer Anzeige an ihre Sichtbarkeit.
 Frames zählt, hätte denselben Fehler gemacht wie der Code. Aufgefallen ist es
 beim Zusehen am echten Mesh — und zwar daran, dass die *Koordinate* über
 sechsundzwanzig Messungen identisch blieb, nicht daran, dass etwas fehlte.
+
+## 2026-09-06 — Ein Kommando ohne Verbindung darf nicht in der Warteschlange warten
+
+**Kontext:** Der Link parkte eine Anfrage über den Reconnect (`pending`), damit
+ein kurzes Abziehen des Kabels keinen Fehler produziert.
+
+**Problem:** Ohne Node blieb die Anfrage ewig stehen. Der Antwort-Timeout greift
+erst *nach* dem Senden — und ohne Verbindung wird nie gesendet. Nachricht senden
+und Wegmessung hingen in der API.
+
+**Konsequenz:** Während der Link unten ist, Anfragen sofort mit
+`LinkError::NotConnected` ablehnen. Wer kurz warten will, hört auf
+`NodeConnected` und versucht es erneut — nicht der Link.
+

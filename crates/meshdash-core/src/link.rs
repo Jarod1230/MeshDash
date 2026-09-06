@@ -114,6 +114,14 @@ pub enum LinkError {
     #[error("link transport failed")]
     Transport(#[from] TransportError),
 
+    /// Nothing is connected, so the command was not queued.
+    ///
+    /// A brief outage used to park one request until the link came back; that
+    /// hung forever when the node stayed away. Callers get a clear refusal
+    /// instead and can retry once the bus reports [`AppEvent::NodeConnected`].
+    #[error("no connection to the node")]
+    NotConnected,
+
     /// The actor is gone, so no further command can be served.
     #[error("link is closed")]
     Closed,
@@ -219,7 +227,6 @@ where
         commands: commands_rx,
         events,
         config,
-        pending: None,
     };
 
     (handle, PreparedLink { actor })
@@ -262,9 +269,6 @@ struct Actor<T> {
     commands: mpsc::Receiver<Request>,
     events: EventBus,
     config: LinkConfig,
-    /// A command that arrived while the link was down. Held rather than
-    /// rejected, so a brief unplug does not turn into a failed request.
-    pending: Option<Request>,
 }
 
 /// Why the serving loop stopped.
@@ -344,14 +348,6 @@ where
     async fn serve_until_disconnected(&mut self) -> Interruption {
         let mut made_progress = false;
 
-        // A command that waited out the outage goes first.
-        if let Some(request) = self.pending.take() {
-            match self.serve(request).await {
-                Ok(()) => made_progress = true,
-                Err(()) => return Interruption::Disconnected { made_progress },
-            }
-        }
-
         loop {
             tokio::select! {
                 // Prefer serving a caller over reading, so a queued command
@@ -388,9 +384,10 @@ where
 
     /// Waits out the backoff. Returns `false` if nobody is left to serve.
     ///
-    /// Keeps listening while waiting, for two reasons: a command that arrives
-    /// now should be served after reconnecting rather than rejected, and an
-    /// actor whose handles are all gone must stop instead of retrying forever.
+    /// Keeps listening while waiting so an actor whose handles are all gone
+    /// stops instead of retrying forever. A command that arrives now is
+    /// refused at once: without a connection it would never leave, and the
+    /// response timeout only starts after a send.
     async fn wait_before_retry(&mut self, delay: Duration) -> bool {
         let deadline = tokio::time::sleep(delay);
         tokio::pin!(deadline);
@@ -399,11 +396,11 @@ where
             tokio::select! {
                 () = &mut deadline => return true,
 
-                // Only take a command while no other one is held; further
-                // commands stay queued until this one has been served.
-                command = self.commands.recv(), if self.pending.is_none() => {
+                command = self.commands.recv() => {
                     match command {
-                        Some(request) => self.pending = Some(request),
+                        Some(request) => {
+                            let _ = request.reply.send(Err(LinkError::NotConnected));
+                        }
                         None => return false,
                     }
                 }
@@ -915,20 +912,52 @@ mod tests {
     #[tokio::test]
     async fn carries_on_after_the_cable_is_pulled() {
         // Drops once, then serves again — as after replugging.
-        let transport = MockTransport::new(idle_after(vec![
-            Step::Drop("cable pulled".into()),
-            // Every connection starts a session, the second one included.
+        // The first command is queued before serving starts so the drop hits
+        // it in flight. AwaitSent holds the recovery reply until that command
+        // is on the wire — an idle read would otherwise swallow it.
+        let transport = MockTransport::new(vec![
             Step::Emit(session_answer()),
+            // Wait until the caller's command is on the wire, then drop so the
+            // failure is "in flight" rather than an idle disconnect that races
+            // the test task.
+            Step::AwaitSent(2),
+            Step::Drop("cable pulled".into()),
+            Step::Emit(session_answer()),
+            // Sends: session #1, failed command, session #2, recovery command.
+            Step::AwaitSent(4),
             emit(u8::from(Response::Ok)),
-        ]));
-        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
+            Step::Drop("script finished".into()),
+        ]);
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+        let (link, _task) = spawn(transport, brisk_reconnect(), bus);
 
-        let answer = link.request(frame(u8::from(Command::AppStart))).await;
+        // Spawn so the future is polled and the command sits in the queue
+        // across session start — otherwise an idle read consumes the drop
+        // before anyone is waiting for an answer.
+        let link_for_flight = link.clone();
+        let in_flight = tokio::spawn(async move {
+            link_for_flight
+                .request(frame(u8::from(Command::AppStart)))
+                .await
+        });
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
 
         // The command in flight when the link died still fails...
-        assert!(answer.is_err());
+        assert!(in_flight.await.unwrap().is_err());
+        assert!(matches!(
+            next_event(&mut events).await,
+            AppEvent::NodeDisconnected { .. }
+        ));
 
-        // ...but the link itself recovers and serves the next one.
+        // ...and a command sent while still down is refused at once...
+        assert!(matches!(
+            link.request(frame(u8::from(Command::GetDeviceTime))).await,
+            Err(LinkError::NotConnected)
+        ));
+
+        // ...but once the link is back, the next one is served.
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         let answer = link
             .request(frame(u8::from(Command::GetDeviceTime)))
             .await
@@ -939,18 +968,17 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn backs_off_further_with_every_failed_attempt() {
         // Three refusals, so two delays are applied before success.
-        let transport =
-            MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))])).failing_connects(3);
-        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
+        // Backoff is observed on the bus; a command sent while down would be
+        // refused rather than parked across the wait.
+        let transport = MockTransport::new(idle_after(vec![])).failing_connects(3);
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+        let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
 
         let started = tokio::time::Instant::now();
-        let answer = link
-            .request(frame(u8::from(Command::AppStart)))
-            .await
-            .unwrap();
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         let waited = started.elapsed();
 
-        assert_eq!(Response::from(answer[0]), Response::Ok);
         // 10 + 20 + 40 ms of backoff, rather than 3 × 10 ms.
         assert!(
             waited >= Duration::from_millis(70),
@@ -961,14 +989,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn never_waits_longer_than_the_cap() {
         // Enough refusals that an uncapped backoff would run away.
-        let transport =
-            MockTransport::new(idle_after(vec![emit(u8::from(Response::Ok))])).failing_connects(6);
-        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
+        let transport = MockTransport::new(idle_after(vec![])).failing_connects(6);
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+        let (_link, _task) = spawn(transport, brisk_reconnect(), bus);
 
         let started = tokio::time::Instant::now();
-        link.request(frame(u8::from(Command::AppStart)))
-            .await
-            .unwrap();
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
         let waited = started.elapsed();
 
         // Capped at 80 ms: 10+20+40+80+80+80 = 310 ms. Doubling unchecked
@@ -1007,6 +1034,58 @@ mod tests {
             link.request(frame(u8::from(Command::AppStart))).await,
             Err(LinkError::Closed)
         ));
+    }
+
+    #[tokio::test]
+    async fn rejects_a_command_while_no_node_is_connected() {
+        // Connect never succeeds: the command must not sit in a queue forever.
+        let transport = MockTransport::new(vec![]).failing_connects(usize::MAX);
+        let (link, _task) = spawn(transport, brisk_reconnect(), EventBus::new());
+
+        let error = tokio::time::timeout(
+            Duration::from_secs(1),
+            link.request(frame(u8::from(Command::AppStart))),
+        )
+        .await
+        .expect("a command without a connection must return at once");
+
+        assert!(
+            matches!(error, Err(LinkError::NotConnected)),
+            "expected NotConnected, got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn serves_again_after_refusing_while_disconnected() {
+        // One refusal while down, then a successful command once up — proves
+        // the connected path still works after NotConnected answers.
+        let transport = MockTransport::new(vec![
+            Step::Emit(session_answer()),
+            // Sends: session start, then the caller's command.
+            Step::AwaitSent(2),
+            emit(u8::from(Response::Ok)),
+            Step::Drop("script finished".into()),
+        ])
+        .failing_connects(2);
+        let bus = EventBus::new();
+        let mut events = bus.subscribe();
+        let (link, _task) = spawn(transport, brisk_reconnect(), bus);
+
+        let refused = tokio::time::timeout(
+            Duration::from_secs(1),
+            link.request(frame(u8::from(Command::GetDeviceTime))),
+        )
+        .await
+        .expect("refusal must not hang");
+        assert!(matches!(refused, Err(LinkError::NotConnected)));
+
+        assert_eq!(next_event(&mut events).await, AppEvent::NodeConnected);
+
+        let answer = link
+            .request(frame(u8::from(Command::GetDeviceTime)))
+            .await
+            .unwrap();
+        assert_eq!(Response::from(answer[0]), Response::Ok);
     }
 
     #[tokio::test]

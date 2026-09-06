@@ -734,9 +734,18 @@ fn sent_receipt() -> Vec<u8> {
 #[tokio::test]
 async fn a_conversation_interleaves_what_came_and_what_went() {
     // Two separate lists cannot show that an answer followed a question.
-    let mut script = queue(vec!["Frage von draußen"]);
-    script.push(Step::AwaitSent(3));
-    script.push(Step::Emit(sent_receipt()));
+    // Built without `queue`'s trailing Drop: that would tear the link down
+    // after the drain, and send_message would then see NotConnected instead
+    // of being held across a reconnect.
+    let script = vec![
+        Step::AwaitSent(1),
+        Step::Emit(message_frame("Frage von draußen")),
+        Step::AwaitSent(2),
+        Step::Emit(no_more()),
+        Step::AwaitSent(3),
+        Step::Emit(sent_receipt()),
+        Step::Drop("script finished".into()),
+    ];
     let context = context_with(script).await;
 
     drain_messages(&context).await.unwrap();

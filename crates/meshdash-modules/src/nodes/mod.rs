@@ -46,6 +46,7 @@ use chrono::{DateTime, Utc};
 use meshdash_core::{
     db::Migration,
     event::AppEvent,
+    link::LinkError,
     module::{AppContext, Module},
 };
 use meshdash_proto::{
@@ -1033,6 +1034,8 @@ pub enum TraceError {
     NoRoute,
     /// The key is not 64 hex characters.
     BadKey,
+    /// Nothing is connected to send the trace through.
+    NoNode,
     /// The node refused or did not answer.
     Link(String),
     /// The database could not be read or written.
@@ -1065,6 +1068,11 @@ impl axum::response::IntoResponse for TraceError {
                 axum::http::StatusCode::BAD_REQUEST,
                 "invalid_parameter",
                 "public_key must be 64 hex characters".to_owned(),
+            ),
+            Self::NoNode => (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "node_unreachable",
+                "no connection to the node".to_owned(),
             ),
             Self::Link(error) => {
                 tracing::warn!(%error, "the node would not send a trace");
@@ -1203,6 +1211,7 @@ pub async fn start_trace(
     let receipt = match context.link.request(frame).await {
         Ok(answer) => SendReceipt::parse(&answer)
             .map_err(|error| TraceError::Link(format!("unreadable receipt: {error}"))),
+        Err(LinkError::NotConnected) => Err(TraceError::NoNode),
         Err(error) => Err(TraceError::Link(error.to_string())),
     };
 

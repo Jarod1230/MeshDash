@@ -70,6 +70,18 @@ Das ist der Lackmustest für den Schnitt.
   kein stiller Rückfall — eine verschriebene Option, die wirkungslos bleibt,
   fällt sonst niemandem auf.
 
+  **Einstellungen können sich im Betrieb ändern**
+  ([ADR-0017](decisions/0017-einstellungen-zur-laufzeit.md)). Deshalb gilt:
+  **lies eine Option, wenn du sie benutzt, statt sie beim Start festzuhalten.**
+  Wer sie doch festhalten muss — ein Client, der einmal gebaut wird —, hört auf
+  `AppEvent::SettingsChanged`. Ein Schalter, der erst nach einem Neustart
+  wirkt, ist kein Schalter.
+
+  Soll eine Option über die Oberfläche änderbar sein, gehört sie zusätzlich in
+  `crates/meshdash-server/src/settings.rs` und in die Liste auf der
+  Einstellungsseite — dort mit einem Satz dazu, **was sie kostet**. Siehe
+  [`configuration.md`](configuration.md).
+
 **Darf nicht:**
 
 - in die Tabellen eines anderen Moduls schreiben oder lesen

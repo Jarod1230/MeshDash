@@ -6,18 +6,25 @@ MeshDash verbindet sich mit einem MeshCore-Companion-Node und macht daraus eine
 Web-App: Nodes und Nachbarn im Blick, Nachrichtenverlauf, Telemetrie über die Zeit,
 Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 
-> **Status: MeshDash öffnet auf der Karte.**
+> **Status: MeshDash öffnet auf der Karte, und die Karte lebt.**
 > Der Dienst spricht über Serial oder TCP mit einem Companion-Node, verbindet
-> sich nach einem Abriss selbsttätig neu und speichert nach SQLite. Die
-> Oberfläche liegt auf der Fläche mit den Knoten darauf; Verbindung, Knoten,
-> Gespräche je Kontakt und Kanal sowie Telemetrie über die Zeit öffnen sich
-> als Blende darüber. Nachrichten lassen sich senden, Wege messen, der eigene
-> Node verorten und dem Mesh vorstellen; Listen lassen sich durchblättern,
-> durchsuchen und auf einen Zeitraum eingrenzen. Live-Ereignisse laufen über
-> WebSocket.
+> sich nach einem Abriss selbsttätig neu und speichert nach SQLite.
 >
-> **Wohin es geht:** Kartenkacheln über den Dienst, dazu die Ebenen für
-> Verbindungen und Verkehr
+> Die Oberfläche liegt auf einer Karte mit Kacheln, den Knoten darauf und
+> ihrem Zustand an Form und Farbe. Linien zeigen Wege, die tatsächlich
+> beobachtet wurden; jedes gehörte Paket läuft seinen Weg live darüber ab. Ein
+> Klick auf einen Knoten oder eine Verbindung öffnet eine Tafel, ein Schritt
+> weiter die volle Seite — Verbindung, Knoten, Gespräche, Telemetrie und
+> Einstellungen liegen als Blende darüber, die Karte darunter bleibt stehen.
+>
+> Nachrichten lassen sich senden, Wege messen, der eigene Node verorten und dem
+> Mesh vorstellen. Jedes gehörte Paket wird mitgeschrieben und ist je Knoten
+> abrufbar; daraus folgt ohne Zutun, wer wen direkt hört. Listen lassen sich
+> durchblättern, durchsuchen und auf einen Zeitraum eingrenzen, Einstellungen
+> im Betrieb ändern. Live-Ereignisse laufen über WebSocket.
+>
+> **Wohin es geht:** Zeit auf der Karte — derselbe Ausschnitt vor einer Woche —,
+> danach Warnungen und Fernadministration
 > ([ADR-0011](docs/decisions/0011-karte-als-leitansicht.md)). Der Stand und
 > der Weg dorthin: [`docs/roadmap.md`](docs/roadmap.md).
 

@@ -13,7 +13,9 @@ Wer das ändern möchte: über ein Issue, nicht per Pull Request.
 ## Bevor du anfängst
 
 1. Lies [`docs/architecture.md`](docs/architecture.md) — vor allem den Abschnitt
-   „Was MeshDash *nicht* ist".
+   „Was MeshDash *nicht* ist". Für Arbeit an der Oberfläche zusätzlich
+   [`docs/frontend.md`](docs/frontend.md): Die Karte ist die Leitansicht, und
+   wer das nicht weiß, baut eine Seite neben sie statt einer Ebene auf ihr.
 2. Wenn du ein Feature bauen willst: öffne zuerst ein Issue mit der Vorlage
    *Modul-Vorschlag*. Features werden in MeshDash als Module gebaut, und die
    Zuschnittsfrage klärt man besser vorher als im Review.
@@ -28,8 +30,10 @@ Wer das ändern möchte: über ein Issue, nicht per Pull Request.
    **Das gilt ausnahmslos**, auch für Doku-Änderungen und Einzeiler: Die PRs sind
    die Übersicht darüber, was im Projekt passiert ist. Ein lokal durchgereichter
    Commit taucht dort nicht auf.
-4. Was in `main` landet, muss bauen und die Tests bestehen. Sobald es CI gibt,
-   ist das Pflicht-Gate.
+4. Was in `main` landet, muss bauen und die Tests bestehen. Die CI prüft
+   genau das, was `just check` lokal fährt — Format, Clippy, Rust-Tests,
+   Frontend-Lint, Typen, Tests und Build sowie die internen Doku-Links. Was
+   dort durchfällt, wird nicht gemergt.
 
 ## Was in einen Pull Request gehört
 

@@ -22,6 +22,7 @@ Der Umsetzungsstand steht in [`roadmap.md`](roadmap.md).
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Browser — React + Vite + TypeScript                         │
+│  Karte als Grundfläche, Seiten als Blende darüber             │
 │  Modul-Registry: jedes Modul bringt Routen und Navigation mit │
 └───────────────┬──────────────────────────┬───────────────────┘
                 │ REST /api/v1             │ WebSocket /api/v1/events
@@ -31,13 +32,14 @@ Der Umsetzungsstand steht in [`roadmap.md`](roadmap.md).
 └───────────────┬──────────────────────────────────────────────┘
                 │
 ┌───────────────▼──────────────────────────────────────────────┐
-│  meshdash-modules — nodes │ messages │ telemetry │ system │ …  │
+│  meshdash-modules — system │ nodes │ messages │ telemetry │      │
+│                     tiles │ traffic │ …                       │
 │  je Modul: Migrationen, Routen, Event-Handler, Hintergrundjobs│
 └───────────────┬──────────────────────────────────────────────┘
                 │  Module-Trait, Event-Bus, AppContext
 ┌───────────────▼──────────────────────────────────────────────┐
-│  meshdash-core — Konfiguration, SQLite, Event-Bus,            │
-│                  Modul-Registry, Fehlertypen                  │
+│  meshdash-core — Konfiguration und Einstellungen, SQLite,     │
+│                  Event-Bus, Modul-Registry, Fehlertypen       │
 └───────────────┬──────────────────────────────────────────────┘
                 │  Link: Request/Response + Push-Stream
 ┌───────────────▼──────────────────────────────────────────────┐
@@ -65,6 +67,9 @@ Der Umsetzungsstand steht in [`roadmap.md`](roadmap.md).
   und genau das soll die Modularität verhindern.
 - **`meshdash-modules` als Ort für alles Fachliche.** Siehe
   [`module-system.md`](module-system.md).
+- **Der Browser als Karte, nicht als Seitensammlung.** Wie die Oberfläche
+  geschnitten ist, steht in [`frontend.md`](frontend.md); warum sie so
+  geschnitten ist, in [ADR-0011](decisions/0011-karte-als-leitansicht.md).
 
 ## Datenfluss
 

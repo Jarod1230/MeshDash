@@ -9,6 +9,7 @@ wenn du nicht weißt, wo etwas hingehört, ist die Antwort meistens hier.
 | --- | --- |
 | [`architecture.md`](architecture.md) | Zielarchitektur, Schichten, Datenfluss, Abgrenzung |
 | [`module-system.md`](module-system.md) | Was ein Modul ist, was es darf, wie man eins baut |
+| [`frontend.md`](frontend.md) | Wie die Oberfläche geschnitten ist und wo Neues hingehört |
 | [`glossary.md`](glossary.md) | MeshCore- und Projektbegriffe |
 
 ## Mitarbeiten

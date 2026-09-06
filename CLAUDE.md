@@ -19,13 +19,13 @@ Transport mit Reconnect, Kern mit Datenbank, Event-Bus und zur Laufzeit
 **Die Karte ist die Leitansicht.** MeshDash öffnet auf der Fläche mit den
 Knoten darauf; die Seiten liegen als Blende darüber und die Fläche wird nie
 neu aufgebaut. Sie zeichnet in Web-Mercator selbst, mit Kacheln über den
-Dienst, Knoten- und Verbindungsebene, laufenden Paketen und Kontexttafeln für
-Knoten und Verbindungen.
+Dienst, Knoten- und Verbindungsebene, laufenden Paketen, Zeitraumwähler und
+Abspielen für Verbindungen sowie Kontexttafeln für Knoten und Verbindungen.
 
 Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`, die Adresse in
-`0014`, der Verzicht auf Leaflet in `0015`. Der Weg steht als **Stufen A bis D**
-in `docs/roadmap.md`: A und B sind erledigt, C fast — offen ist dort nur noch
-die Zeit (Zeitraumwähler und Abspielen). D ist unangetastet.
+`0014`, der Verzicht auf Leaflet in `0015`, die Zeitbedeutung in `0018`. Der
+Weg steht als **Stufen A bis D** in `docs/roadmap.md`: A, B und C sind
+erledigt. D ist unangetastet.
 
 Wer an der Oberfläche baut, liest **`docs/frontend.md`** zuerst — sonst
 entsteht eine weitere Seite neben der Karte statt einer Ebene auf ihr.

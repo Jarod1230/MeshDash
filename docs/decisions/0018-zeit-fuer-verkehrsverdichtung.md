@@ -1,6 +1,6 @@
 # ADR-0018: Was „vor einer Woche“ für die Verkehrsverdichtung heißt
 
-- **Status:** Vorschlag
+- **Status:** Angenommen
 - **Datum:** 2026-09-06
 - **Betrifft:** Modul `traffic`, Verbindungsebene der Karte, Stufe C „Zeit“
 - **Ergänzt:** [ADR-0016](0016-verkehr-aufbewahren.md) — Rohverlauf mit Frist und
@@ -41,7 +41,9 @@ Zeichenfläche.
 
 ## Entscheidung
 
-**(Vorschlag — Jarod bestätigt oder korrigiert.)**
+**Angenommen am 2026-09-06.** Jarod hat die Empfehlung angenommen (Stabschef
+zugestimmt; Frontend ohne Einwand). Die vier offenen Fragen sind damit
+geschlossen — siehe unten.
 
 1. **„Vor einer Woche“ heißt: relativer rollierender Zeitraum**, nicht
    Kalenderwoche. Ein Fenster endet „jetzt“ (bzw. am gewählten `until`) und
@@ -58,6 +60,18 @@ Zeichenfläche.
    erst**, wenn Abspielen über `keep_days` hinaus oder billige Abfragen ohne
    Rohscan nötig werden. Bis dahin reicht der Rohverlauf als Quelle der Wahrheit
    für Zeiträume.
+
+### Geschlossene Fragen (2026-09-06)
+
+1. **v1 = Ableitung aus `traffic_packets`.** Solange das Fenster ≤ `keep_days`
+   ist, werden historische Verbindungen aus dem Rohverlauf abgeleitet. Buckets
+   kommen **nicht** von Anfang an mit.
+2. **Zeitlose `/links` bleibt der Default.** Der Zeitraum greift nur, wenn der
+   Zeitraumwähler oder das Abspielen aktiv ist.
+3. **Abspielen v1 = festes Fenster (Presets).** Kein Scrubber-Zwischenstand pro
+   Frame; die Verbindungsebene folgt dem gewählten Preset-Fenster.
+4. **Fenster > `keep_days` → kappen und ehrlich sagen.** Die Aufbewahrung wird
+   nicht stillschweigend angehoben.
 
 ## Begründung
 
@@ -128,19 +142,6 @@ Flackern ohne belegte Wege. Unterbietet Stufe C.
   nicht die Hülle. UI-Vorbild bleibt der Telemetrie-Zeitraumwähler.
 - Wenn Buckets kommen: eigene Migration, eigene Tabelle oder erweiterte PK —
   nicht `traffic_links` still umbiegen.
-
-## Offene Fragen an Jarod
-
-1. **Reicht Ableitung aus `traffic_packets` für v1**, solange das Fenster ≤
-   `keep_days` ist — oder sollen Buckets (welche Größe: Stunde / Tag?) von
-   Anfang an mitkommen?
-2. Soll die **zeitlose** `/links`-Ansicht auf der Karte der Default bleiben,
-   und der Zeitraum nur bei aktivem Wähler/Abspielen greifen?
-3. Soll „Abspielen“ die Verbindungsebene **pro Frame neu** aus dem Fenster
-   ableiten, oder reicht ein festes Fenster (z. B. rollierende 7 Tage) ohne
-   Scrubber-Zwischenstände?
-4. Wenn `keep_days` unter das gewünschte Abspiel-Fenster fällt: **Fenster
-   kappen und sagen**, oder Aufbewahrung anheben?
 
 ## Wann diese Entscheidung neu zu prüfen ist
 

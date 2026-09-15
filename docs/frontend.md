@@ -99,7 +99,7 @@ Aussage über das Mesh; „noch kein Weg belegt, und so entsteht einer" ist eine
 
 **Der Zustand steht in der Adresse.** Ansicht als Pfad, Auswahl und
 Verfeinerung als Abfrageparameter — `?knoten=`, `?verbindung=`,
-`?verbindungen=aus`. Ein Link muss öffnen, was ein Klick öffnet.
+`?verbindungen=aus`, `?bereiche=an`. Ein Link muss öffnen, was ein Klick öffnet.
 
 **Kein Zeitlesen im Rendern.** `Date.now()` während des Renderns macht eine
 Komponente unrein; dafür gibt es `lib/useNow.ts`, und für Animationen eine Uhr

@@ -49,5 +49,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0016](0016-verkehr-aufbewahren.md) | Rohverkehr mit Frist, „wer hört wen" verdichtet und bleibend | Angenommen |
 | [0017](0017-einstellungen-zur-laufzeit.md) | Modul-Einstellungen im Betrieb änderbar, Datei bleibt der Grund | Angenommen |
 | [0018](0018-zeit-fuer-verkehrsverdichtung.md) | Was „vor einer Woche" für die Verkehrsverdichtung heißt | Angenommen |
+| [0019](0019-verortung-statt-triangulation.md) | Bereiche aus Hörbeziehungen statt geschätzter Punkte | Angenommen |
 
 Vorlage: [`template.md`](template.md).

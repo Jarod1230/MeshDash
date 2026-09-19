@@ -20,6 +20,12 @@ import {
 import { LinkPanel } from './LinkPanel';
 import { NodePanel } from './NodePanel';
 import { facts as pairFacts } from './pair';
+import {
+  reach as locateReach,
+  regions as locateRegions,
+  type Placed as PlacedNode,
+  type Region,
+} from '../lib/locate';
 import { useFlights, positionOf, type Flight } from './useFlights';
 import { useHeardRate } from './useHeardRate';
 import { useSize } from './useSize';
@@ -103,6 +109,9 @@ export function Ground() {
   // the query string — see ADR-0014. Only the deviation is written down; an
   // address without it means the layer is on.
   const showLinks = params.get('verbindungen') !== 'aus';
+  // Aus, solange niemand sie einschaltet: Die Bereiche sind groß, und eine
+  // Fläche über der halben Karte soll nicht ständig im Weg sein — ADR-0019.
+  const showRegions = params.get('bereiche') === 'an';
   const timeChoice = useMemo(() => readLinksTime(params), [params]);
   // Minute-floored path so a rolling window does not refetch every render.
   const linksPath = useMemo(
@@ -131,7 +140,9 @@ export function Ground() {
           };
     }
   }, [overheardRaw.data, timeChoice.range]);
-  const overheardLinks = traffic?.links ?? [];
+  // Stable identity: three memos below depend on it, and `?? []` alone would
+  // hand them a fresh array on every render.
+  const overheardLinks = useMemo(() => traffic?.links ?? [], [traffic]);
   const clampNote = traffic === null ? null : clampReason(traffic);
 
   useLiveReload(
@@ -157,6 +168,28 @@ export function Ground() {
   const { flights, frame } = useFlights(nodes);
   // Timed view: only pairs proven inside the window (ADR-0018). Mixing in
   // today's neighbours or traces would lie about "vor einer Woche".
+  // Wo ein Knoten liegen *muss*, wenn er nicht sagt, wo er liegt. Bereiche aus
+  // Hörbeziehungen, keine geschätzten Punkte — ADR-0019.
+  const bounded = useMemo((): Bounded => {
+    if (!showRegions) return { span: null, regions: [] };
+
+    const placed = nodes.filter(
+      (node): node is GroundNode & PlacedNode =>
+        node.latitude !== null &&
+        node.longitude !== null &&
+        !(node.latitude === 0 && node.longitude === 0),
+    );
+
+    return {
+      span: locateReach(placed, overheardLinks),
+      regions: locateRegions(
+        nodes.filter((node) => !isPlaceable(node)),
+        placed,
+        overheardLinks,
+      ),
+    };
+  }, [showRegions, nodes, overheardLinks]);
+
   const mesh = useMemo(() => {
     if (traffic?.mode === 'timed') {
       return links(nodes, [], overheardLinks, now);
@@ -200,6 +233,13 @@ export function Ground() {
     setParams(next, { replace: true });
   };
 
+  const toggleRegions = () => {
+    const next = new URLSearchParams(params);
+    if (showRegions) next.delete('bereiche');
+    else next.set('bereiche', 'an');
+    setParams(next, { replace: true });
+  };
+
   const toggleLinks = () => {
     const next = new URLSearchParams(params);
     if (showLinks) next.set('verbindungen', 'aus');
@@ -226,6 +266,9 @@ export function Ground() {
             onToggleLinks={toggleLinks}
             selectedLink={chosenLink}
             onSelectLink={selectLink}
+            bounded={bounded}
+            regionsOn={showRegions}
+            onToggleRegions={toggleRegions}
             flights={flights}
             frame={frame}
             timeChoice={timeChoice}
@@ -292,6 +335,9 @@ function Geography({
   onToggleLinks,
   selectedLink,
   onSelectLink,
+  bounded,
+  regionsOn,
+  onToggleRegions,
   flights,
   frame,
   timeChoice,
@@ -311,6 +357,9 @@ function Geography({
   readonly onToggleLinks: () => void;
   readonly selectedLink: string | null;
   readonly onSelectLink: (id: string | null) => void;
+  readonly bounded: Bounded;
+  readonly regionsOn: boolean;
+  readonly onToggleRegions: () => void;
   readonly flights: readonly Flight[];
   readonly frame: number;
   readonly timeChoice: LinksTimeChoice;
@@ -446,6 +495,29 @@ function Geography({
           );
         })}
 
+        {/* Zuunterst: Wo ein Knoten liegen muss. Überlappen sich zwei
+            Scheiben, wird die Schnittmenge von allein dichter — genau dort
+            liegt der Knoten, und genau so viel ist darüber bekannt. Der
+            Mittelpunkt einer Scheibe ist ein Anker, nicht der Knoten. */}
+        {bounded.regions.map((region) =>
+          region.anchors.map((anchor) => {
+            const at = where.get(anchor.node.key);
+            if (at === undefined) return null;
+
+            return (
+              <circle
+                key={`${region.key}-${anchor.node.key}`}
+                cx={at.x}
+                cy={at.y}
+                r={region.reach / perPixel}
+                className="fill-mesh-accent"
+                opacity={0.06}
+                pointerEvents="none"
+              />
+            );
+          }),
+        )}
+
         {drawable.map((link) => {
           const from = where.get(link.from);
           const to = where.get(link.to);
@@ -531,6 +603,18 @@ function Geography({
           >
             Verbindungen
           </button>
+          <button
+            type="button"
+            onClick={onToggleRegions}
+            aria-pressed={regionsOn}
+            className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+              regionsOn
+                ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
+                : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
+            }`}
+          >
+            Bereiche
+          </button>
         </div>
       </div>
 
@@ -596,6 +680,7 @@ function Geography({
             hier.
           </span>
         )}
+        {regionsOn && <span>{regionsNote(bounded)}</span>}
         {tiles !== null && !tiles.available && (
           <span>
             Ohne Kartenquelle. Eine lässt sich unter <span className="tabular">[modules.tiles]</span>{' '}
@@ -826,6 +911,30 @@ function Dot({ className, hollow = false }: { readonly className: string; readon
       />
     </svg>
   );
+}
+
+/** Was die Bereichsebene gerade weiß — die Reichweite auch dann, wenn nichts einzugrenzen ist. */
+interface Bounded {
+  /** Nachweisliche Reichweite in Metern, `null` solange nichts messbar ist. */
+  readonly span: number | null;
+  readonly regions: readonly Region[];
+}
+
+/**
+ * Die Legendenzeile der Bereichsebene. Eine leere Ebene braucht einen Grund,
+ * sonst liest sie sich als „alle Knoten sind verortet“.
+ */
+export function regionsNote({ span, regions }: Bounded): string {
+  if (span === null) {
+    return 'Keine Reichweite messbar: Dafür müssen zwei Knoten mit Position einander hören.';
+  }
+
+  const measured = `nachweisliche Reichweite ${formatDistance(span)}`;
+  if (regions.length === 0) {
+    return `Fläche heißt: dort muss ein Knoten liegen · ${measured} · kein Knoten ohne Position hört einen mit Position.`;
+  }
+
+  return `Fläche heißt: dort muss ein Knoten liegen · ${measured} · ${regions.length} Knoten eingegrenzt`;
 }
 
 function ScaleBar({ step, pixels }: { readonly step: number; readonly pixels: number }) {

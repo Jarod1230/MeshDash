@@ -31,6 +31,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Kartenebene „Bereiche“.** Knoten ohne Position werden nicht geschätzt,
+  sondern eingegrenzt: Um jeden verorteten Nachbarn, der sie nachweislich
+  hört, liegt eine Scheibe mit der größten gemessenen Reichweite dieses
+  Mesh; wo sich Scheiben überlagern, muss der Knoten liegen. Standardmäßig
+  aus, Schalter neben „Verbindungen“, Adresse `?bereiche=an`. Die Legende
+  nennt die Reichweite oder, warum nichts eingegrenzt werden kann
+  (ADR-0019).
+
 - **Zeitraumwähler und Abspielen auf der Verbindungsebene.** Auf der Karte
   wählt man denselben Preset-Zeitraum wie in der Telemetrie (1 Stunde bis
   30 Tage) oder bleibt bei der zeitlosen Verdichtung. **Abspielen** verschiebt

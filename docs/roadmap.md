@@ -398,7 +398,13 @@ selbst hat.
   [`../SECURITY.md`](../SECURITY.md).
 - **Kachelvorrat vorwärmen** — einen Ausschnitt einmal holen und behalten, für
   den Einsatz ohne Uplink. Nach ADR-0011 ein voller Cache, kein Umbau.
-- **Knoten triangulieren.** Der vorgesehene Weg für alle Knoten, die keine
+- [x] **Knoten eingrenzen statt triangulieren.** Umgesetzt als Ebene
+  „Bereiche“ (`?bereiche=an`) nach
+  [ADR-0019](decisions/0019-verortung-statt-triangulation.md): kein geschätzter
+  Punkt, sondern die Fläche, in der ein Knoten ohne Position liegen muss —
+  Scheiben um verortete Nachbarn, die ihn nachweislich hören, mit der größten
+  gemessenen Reichweite zwischen zwei verorteten Knoten als Radius. Der
+  ursprüngliche Plan stand so da: Der vorgesehene Weg für alle Knoten, die keine
   Position melden ([ADR-0012](decisions/0012-positionen-nur-aus-dem-mesh.md)):
   aus den Empfangsqualitäten gegenüber verorteten Nachbarn geschätzt. Kommt
   bewusst spät, weil sie auf allem davor aufsetzt — verortete Anker aus Stufe B

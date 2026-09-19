@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { describe, DISCONNECTED, forNode } from '../lib/alerts';
+import { useAlerts } from '../lib/useAlerts';
 import { useLiveReload, type AppEvent } from '../lib/events';
 import { isAdvert, isReceivedPacket } from '../lib/pushes';
 import { useNow } from '../lib/useNow';
@@ -165,6 +167,28 @@ export function Ground() {
     [contacts.data, status.data],
   );
   const geo = useMemo(() => geography(nodes, now), [nodes, now]);
+  // Warnungen gelten nur für Knoten, die jemand beobachtet (ADR-0021). Die
+  // Karte ist die Stelle, an der sie auffallen sollen.
+  const nameOf = useCallback(
+    (key: string) => nodes.find((node) => node.key === key)?.name ?? null,
+    [nodes],
+  );
+  const alerts = useAlerts(nameOf);
+  // Ein Satz je geltender Warnung, und die Knoten, an denen einer hängt.
+  const alertNotes = useMemo(
+    () =>
+      alerts.open.map((alert) =>
+        describe(alert, nameOf(alert.subject), new Date(now), alerts.everHeard(alert.subject)),
+      ),
+    [alerts, nameOf, now],
+  );
+  const warned = useMemo(
+    () =>
+      new Set(
+        alerts.open.filter((alert) => alert.kind !== DISCONNECTED).map((alert) => alert.subject),
+      ),
+    [alerts.open],
+  );
   const { flights, frame } = useFlights(nodes);
   // Timed view: only pairs proven inside the window (ADR-0018). Mixing in
   // today's neighbours or traces would lie about "vor einer Woche".
@@ -266,6 +290,8 @@ export function Ground() {
             onToggleLinks={toggleLinks}
             selectedLink={chosenLink}
             onSelectLink={selectLink}
+            alertNotes={alertNotes}
+            warned={warned}
             bounded={bounded}
             regionsOn={showRegions}
             onToggleRegions={toggleRegions}
@@ -279,7 +305,15 @@ export function Ground() {
         ))}
 
       {selected !== null && (
-        <NodePanel node={selected} now={now} onClose={() => select(null)} />
+        <NodePanel
+          node={selected}
+          now={now}
+          onClose={() => select(null)}
+          watched={alerts.watched.has(selected.key)}
+          onWatch={(on) => alerts.setWatched(selected.key, on)}
+          alert={forNode(alerts.open, selected.key)}
+          everHeard={alerts.everHeard(selected.key)}
+        />
       )}
 
       {selectedLink !== null && (
@@ -335,6 +369,8 @@ function Geography({
   onToggleLinks,
   selectedLink,
   onSelectLink,
+  alertNotes,
+  warned,
   bounded,
   regionsOn,
   onToggleRegions,
@@ -357,6 +393,10 @@ function Geography({
   readonly onToggleLinks: () => void;
   readonly selectedLink: string | null;
   readonly onSelectLink: (id: string | null) => void;
+  /** Ein Satz je geltender Warnung, für die Legende. */
+  readonly alertNotes: readonly string[];
+  /** Knoten mit einer geltenden Warnung. */
+  readonly warned: ReadonlySet<string>;
   readonly bounded: Bounded;
   readonly regionsOn: boolean;
   readonly onToggleRegions: () => void;
@@ -571,6 +611,7 @@ function Geography({
             x={at.x}
             y={at.y}
             state={heard(one.node.lastSeen, now)}
+            warned={warned.has(one.node.key)}
             label={labelled.has(index) || one.node.key === selected}
             chosen={one.node.key === selected}
             onOpen={() => open(one.node.key)}
@@ -673,7 +714,14 @@ function Geography({
               hier.
             </span>
           )}
-          {regionsOn && <span>{regionsNote(bounded)}</span>}
+          {/* Zuerst, und in der Warnfarbe: Wer auf die Karte sieht, soll das
+            hier vor allem anderen sehen. */}
+        {alertNotes.map((note) => (
+          <span key={note} className="text-mesh-warn">
+            {note}
+          </span>
+        ))}
+        {regionsOn && <span>{regionsNote(bounded)}</span>}
           {tiles !== null && !tiles.available && (
             <span>
               Ohne Kartenquelle. Eine lässt sich unter <span className="tabular">[modules.tiles]</span>{' '}
@@ -832,6 +880,7 @@ function Node({
   state,
   label,
   chosen,
+  warned,
   onOpen,
 }: {
   readonly placed: Placed;
@@ -840,6 +889,8 @@ function Node({
   readonly state: Heard;
   readonly label: boolean;
   readonly chosen: boolean;
+  /** Eine Warnung gilt für diesen Knoten — ADR-0021. */
+  readonly warned: boolean;
   readonly onOpen: () => void;
 }) {
   const { node } = placed;
@@ -857,6 +908,11 @@ function Node({
     >
       {chosen && (
         <circle cx={x} cy={y} r={13} className="fill-none stroke-mesh-accent" strokeWidth={2} />
+      )}
+      {/* Ein Ring in der Warnfarbe, außerhalb der Auswahl: Beides zugleich
+          muss lesbar bleiben, sonst verdeckt die Auswahl die Warnung. */}
+      {warned && (
+        <circle cx={x} cy={y} r={16} className="fill-none stroke-mesh-warn" strokeWidth={2} />
       )}
       {node.own && (
         <circle

@@ -396,7 +396,7 @@ selbst hat.
   nur Karte und Browser, nur für ausdrücklich beobachtete Knoten, dazu der
   getrennte eigene Node.
   - [x] Backend: Modul `alerts` mit Beobachtungsliste, Verlauf und Ereignissen
-  - [ ] Oberfläche: „Beobachten" am Knoten, Warnung auf der Karte,
+  - [x] Oberfläche: „Beobachten" am Knoten, Warnung auf der Karte,
         Browser-Benachrichtigung, Einstellungen
   - Akkustand als Warnung ist bewusst nicht Teil davon.
 - **`admin`** — Fernadministration von Repeatern, erreichbar aus der Karte.

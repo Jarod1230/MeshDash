@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { describe, type Alert } from '../lib/alerts';
 import { exactTime, relativeTime } from '../lib/time';
 import { heard, type GroundNode } from './projection';
 
@@ -20,12 +21,39 @@ export function NodePanel({
   node,
   now,
   onClose,
+  watched,
+  onWatch,
+  alert,
+  everHeard,
 }: {
   readonly node: GroundNode;
   readonly now: number;
   readonly onClose: () => void;
+  /** Ob dieser Knoten auf der Beobachtungsliste steht. */
+  readonly watched: boolean;
+  readonly onWatch: (on: boolean) => Promise<void>;
+  /** Die geltende Warnung zu ihm, falls es eine gibt. */
+  readonly alert: Alert | null;
+  /** Ob von diesem Knoten je ein Advert kam, seit er beobachtet wird. */
+  readonly everHeard: boolean;
 }) {
   const state = heard(node.lastSeen, now);
+  const [changing, setChanging] = useState(false);
+  const [refused, setRefused] = useState(false);
+
+  const toggle = async () => {
+    setChanging(true);
+    setRefused(false);
+    try {
+      await onWatch(!watched);
+    } catch {
+      // Was der Dienst nicht angenommen hat, darf die Tafel nicht als
+      // geschehen zeigen — sonst steht dort „beobachtet", und niemand warnt.
+      setRefused(true);
+    } finally {
+      setChanging(false);
+    }
+  };
 
   // Escape closes the panel, the same key that closes the shutter. Only one
   // of the two is ever open at a time, so they cannot fight over it.
@@ -63,6 +91,12 @@ export function NodePanel({
           ✕
         </button>
       </div>
+
+      {alert !== null && (
+        <p className="mt-3 rounded-md border border-mesh-warn/60 bg-mesh-warn/10 px-2.5 py-1.5 text-sm text-mesh-warn">
+          {describe(alert, node.name, new Date(now), everHeard)}
+        </p>
+      )}
 
       <dl className="mt-4 space-y-3 text-sm">
         <Fact term="Zuletzt gehört">
@@ -102,9 +136,37 @@ export function NodePanel({
         </Fact>
       </dl>
 
+      {/* Ohne Beobachtung warnt niemand — der Dienst warnt nur für Knoten,
+          die jemand ausdrücklich benannt hat (ADR-0021). Der Schalter gehört
+          deshalb dorthin, wo man den Knoten ansieht. */}
+      {!node.own && (
+        <div className="mt-5">
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={changing}
+            aria-pressed={watched}
+            className={`rounded-md border px-3 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent disabled:opacity-60 ${
+              watched
+                ? 'border-mesh-accent text-mesh-text'
+                : 'border-mesh-border text-mesh-muted hover:text-mesh-text'
+            }`}
+          >
+            {watched ? 'Wird beobachtet' : 'Beobachten'}
+          </button>
+          <p className="mt-1.5 text-xs text-mesh-faint">
+            {refused
+              ? 'Ging nicht — der Dienst hat es nicht angenommen.'
+              : watched
+                ? 'Meldet sich, wenn von hier länger kein Advert kommt.'
+                : 'Warnt, wenn dieser Knoten still wird.'}
+          </p>
+        </div>
+      )}
+
       <Link
         to={`/knoten/${node.key}`}
-        className="mt-5 inline-block rounded-md border border-mesh-accent px-3 py-1.5 text-sm text-mesh-text hover:bg-mesh-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+        className="mt-4 inline-block rounded-md border border-mesh-accent px-3 py-1.5 text-sm text-mesh-text hover:bg-mesh-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
       >
         Alles zu diesem Knoten
       </Link>

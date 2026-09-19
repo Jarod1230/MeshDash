@@ -99,6 +99,30 @@ const SECTIONS: readonly {
       },
     ],
   },
+  {
+    module: 'alerts',
+    title: 'Warnen, wenn etwas ausfällt',
+    summary:
+      'Gewarnt wird nur für Knoten, die in der Knotentafel auf „Beobachten“ stehen — sonst meldete jede Überreichweite von gestern einen Ausfall. Warnungen stehen auf der Karte und kommen als Browser-Benachrichtigung; nach außen geht nichts.',
+    options: [
+      {
+        key: 'silent_after_hours',
+        label: 'Beobachteter Knoten gilt als still nach',
+        help: 'Gezählt wird ab dem letzten Advert. Repeater senden ihres von sich aus alle paar Stunden; ein Tag lässt Luft für ein, zwei verpasste.',
+        kind: 'number',
+        range: [1, 8760],
+        unit: 'Stunden',
+      },
+      {
+        key: 'disconnected_after_minutes',
+        label: 'Eigener Node gilt als weg nach',
+        help: 'Ein Neuverbinden nach gezogenem Kabel oder Neustart dauert Sekunden. Minuten heißen, dass wirklich etwas fehlt.',
+        kind: 'number',
+        range: [1, 1440],
+        unit: 'Minuten',
+      },
+    ],
+  },
 ];
 
 export function SettingsPage() {
@@ -181,6 +205,8 @@ export function SettingsPage() {
           </section>
         );
       })}
+
+      <Notices />
 
       <p className="max-w-2xl text-xs text-mesh-faint">
         Was hier fehlt, entscheidet, wie der Dienst startet: die Adresse, an der er lauscht, der
@@ -274,3 +300,47 @@ function Field({
     </div>
   );
 }
+
+/**
+ * Die Erlaubnis für Browser-Benachrichtigungen, an der Stelle erfragt, an der
+ * sie sich erklären lässt.
+ *
+ * Ungefragt danach zu fragen, sobald jemand die Karte öffnet, führt dazu, dass
+ * es weggeklickt wird — und danach fragt der Browser nicht wieder.
+ */
+function Notices() {
+  const supported = typeof Notification !== 'undefined';
+  const [state, setState] = useState(supported ? Notification.permission : 'unsupported');
+
+  return (
+    <section className="rounded-lg border border-mesh-border bg-mesh-surface px-4 py-3">
+      <h2 className="text-sm text-mesh-text">Warnungen im Browser</h2>
+      <p className="mt-1 max-w-2xl text-xs text-mesh-muted">
+        Eine neue Warnung meldet sich dann auch, wenn MeshDash in einem anderen Reiter liegt.
+        Ohne offenen Browser meldet sich nichts — das ist so entschieden (ADR-0021).
+      </p>
+
+      {state === 'granted' ? (
+        <p className="mt-2 text-xs text-mesh-faint">Erlaubt.</p>
+      ) : state === 'denied' ? (
+        <p className="mt-2 text-xs text-mesh-faint">
+          Abgelehnt. Das lässt sich nur in den Einstellungen des Browsers zurücknehmen.
+        </p>
+      ) : state === 'unsupported' ? (
+        <p className="mt-2 text-xs text-mesh-faint">
+          Dieser Browser kennt keine Benachrichtigungen. Auf der Karte stehen die Warnungen
+          trotzdem.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void Notification.requestPermission().then(setState)}
+          className="mt-2 rounded-md border border-mesh-border px-3 py-1.5 text-sm text-mesh-muted hover:text-mesh-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent"
+        >
+          Benachrichtigungen erlauben
+        </button>
+      )}
+    </section>
+  );
+}
+

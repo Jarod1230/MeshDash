@@ -910,3 +910,25 @@ Ansicht drei zeigte.
 Minute, nicht an ihrem Anfang. Wer auf ein Raster rundet, fragt sich, auf
 welcher Seite der Gegenwart die Grenze landet.
 
+## 2026-09-19 — Ein Pfad ist nicht immer der Weg, den ein Paket kam
+
+**Kontext:** Das Modul `traffic` leitet aus jedem gehörten Paket ab, wer wen
+gehört hat: Station `n + 1` hörte `n`, dieser Node die letzte. Darauf bauen die
+Verbindungsebene, die Nachbarn am Knoten und die Bereiche (ADR-0019).
+
+**Problem:** Das gilt nur für geflutete Pakete. Bei einem direkt gerouteten ist
+der Pfad die Route, die noch vor dem Paket liegt — jeder Weiterleiter entfernt
+sich, bevor er sendet —, und bei einem Trace stehen SNR-Werte darin, keine
+Präfixe. Ausgewertet wurden trotzdem alle. Die Doku von `RouteType::is_flood()`
+im eigenen Code sagte es bereits, nur fragte niemand sie. Aufgefallen ist es
+erst beim Nachlesen der Firmware für eine andere Frage (Adverts von Companions);
+kein Test hatte je ein direktes Paket gefüttert, weil der Testhelfer nur
+geflutete baute.
+
+**Konsequenz:** Wer aus einem Protokollfeld eine Aussage ableitet, liest nach,
+unter welchen Bedingungen das Feld diese Bedeutung hat — nicht nur, wie es
+aufgebaut ist. Und ein Testhelfer, der nur eine Variante eines Werts erzeugen
+kann, ist ein Hinweis, dass die anderen nie geprüft wurden. Migration 3 von
+`traffic` nimmt zurück, was noch im Paketlog nachvollziehbar ist; was ältere
+direkte Pakete in die Verdichtung geschrieben haben, bleibt darin.
+

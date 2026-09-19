@@ -452,6 +452,17 @@ aufgeschrieben. Reihenfolge wie hier.
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
 
+- **Companions lassen sich über Pfade nie eingrenzen.** Am 2026-09-19 gegen
+  echte Hardware gesehen: Die einzige Node ohne Position war ein Companion
+  (Typ 1). Companions leiten nicht weiter, stehen also in keinem Pfad, und
+  die Ebene „Bereiche“ ([ADR-0019](decisions/0019-verortung-statt-triangulation.md))
+  findet für sie keine Hörbeziehung. Ein möglicher Weg: Bei einem Advert ist
+  der Absender bekannt — hört die erste Station im Pfad ihn (oder bei leerem
+  Pfad der eigene Node), ist das eine Hörbeziehung zum Absender.
+  **Unverifiziert:** ob die Advert-Nutzlast den Schlüssel unverschlüsselt
+  trägt oder ob sich `PUSH_CODE_ADVERT` verlässlich dem rohen Paket davor
+  zuordnen lässt. Erst recherchieren (Regel 1), dann bauen.
+
 - **Die gezeichnete Linie wirft beide Richtungen weiterhin zusammen.** Die
   Tafel beim Klick zeigt sie seit dem 2026-08-29 getrennt, die Linie selbst
   nicht. Zwei Pfeile statt einer Linie wären die nächste Stufe — offen ist, ob

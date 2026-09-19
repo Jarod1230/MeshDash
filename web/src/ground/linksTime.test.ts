@@ -52,19 +52,27 @@ describe('trafficLinksPath', () => {
     expect(trafficLinksPath({ range: null, playback: 'jetzt' }, NOW)).toBe('/traffic/links');
   });
 
-  it('floors to the minute and sends since and until', () => {
-    // 12:00:30 → 12:00:00; last 24 hours ending now.
+  it('ends the window with the running minute and sends since and until', () => {
+    // 12:00:30 → until 12:01:00. Ending at 12:00:00 hid everything heard in
+    // the running minute — on a freshly started service, all of it.
     expect(trafficLinksPath({ range: '24h', playback: 'jetzt' }, NOW)).toBe(
-      `/traffic/links?since=${encodeURIComponent('2026-09-05T12:00:00.000Z')}` +
-        `&until=${encodeURIComponent('2026-09-06T12:00:00.000Z')}`,
+      `/traffic/links?since=${encodeURIComponent('2026-09-05T12:01:00.000Z')}` +
+        `&until=${encodeURIComponent('2026-09-06T12:01:00.000Z')}`,
     );
+  });
+
+  it('keeps the path stable within a minute', () => {
+    const early = trafficLinksPath({ range: '1h', playback: 'jetzt' }, Date.parse('2026-09-06T12:00:01Z'));
+    const late = trafficLinksPath({ range: '1h', playback: 'jetzt' }, Date.parse('2026-09-06T12:00:59Z'));
+
+    expect(late).toBe(early);
   });
 
   it('shifts the whole window back for playback presets', () => {
     // Same 7-day span, ending one week earlier.
     expect(trafficLinksPath({ range: '7d', playback: '7d' }, NOW)).toBe(
-      `/traffic/links?since=${encodeURIComponent('2026-08-23T12:00:00.000Z')}` +
-        `&until=${encodeURIComponent('2026-08-30T12:00:00.000Z')}`,
+      `/traffic/links?since=${encodeURIComponent('2026-08-23T12:01:00.000Z')}` +
+        `&until=${encodeURIComponent('2026-08-30T12:01:00.000Z')}`,
     );
   });
 });

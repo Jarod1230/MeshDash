@@ -892,3 +892,21 @@ und Wegmessung hingen in der API.
 `LinkError::NotConnected` ablehnen. Wer kurz warten will, hört auf
 `NodeConnected` und versucht es erneut — nicht der Link.
 
+## 2026-09-19 — Ein auf die Minute abgerundetes Fenster verliert die Gegenwart
+
+**Kontext:** Der Pfad für die Verbindungsebene im Zeitmodus wird auf volle
+Minuten gelegt, damit er sich nur einmal pro Minute ändert und nicht bei jedem
+Rendern neu lädt.
+
+**Problem:** Abgerundet wurde auch `until`. Das Fenster „letzte Stunde“ endete
+damit am Anfang der laufenden Minute, und alles, was darin mitgehört wurde,
+fehlte. Live-Nachladen fragte dasselbe Fenster erneut ab. Die Tests prüften
+genau diese Abrundung als erwünscht; aufgefallen ist es erst an einem frisch
+gestarteten Dienst gegen echte Hardware, bei dem *aller* Verkehr in der
+laufenden Minute lag — „keine Verbindung mitgehört“, während die zeitlose
+Ansicht drei zeigte.
+
+**Konsequenz:** Ein Fenster, das „bis jetzt“ heißt, endet mit der laufenden
+Minute, nicht an ihrem Anfang. Wer auf ein Raster rundet, fragt sich, auf
+welcher Seite der Gegenwart die Grenze landet.
+

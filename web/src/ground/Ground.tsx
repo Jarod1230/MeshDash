@@ -633,8 +633,12 @@ function Geography({
 
       {/* Each line carries its own background rather than the block having
           one: over a light basemap, faint text on nothing is unreadable, and
-          a single box around them all would be a grey slab across the map. */}
-      <div className="pointer-events-none absolute right-4 bottom-14 flex max-w-[min(30rem,calc(100%-9rem))] flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
+          a single box around them all would be a grey slab across the map.
+          Below xl there is no room beside the time controls in the bottom
+          left — the legend slid over "7 Tage" at 720px — so it moves up above
+          them instead. With the playback row the controls reach 150px up;
+          bottom-44 (176px) clears that. */}
+      <div className="pointer-events-none absolute right-4 bottom-44 xl:bottom-14 flex max-w-[min(30rem,calc(100%-9rem))] flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
         <span>
           Norden ist oben · <Dot className="fill-mesh-accent" /> in der letzten Stunde gehört ·{' '}
           <Dot className="fill-mesh-muted" /> heute · <Dot className="fill-none" hollow /> länger

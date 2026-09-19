@@ -452,6 +452,10 @@ aufgeschrieben. Reihenfolge wie hier.
 
 Was auffällt, aber nicht dran ist. Landet hier statt als `TODO` im Code.
 
+- **Die Navigation läuft auf dem Telefon aus dem Bild.** Bei 400 px Breite
+  ist „Einstellungen“ abgeschnitten (gesehen am 2026-09-19); die Leiste bricht
+  nicht um und scrollt nicht sichtbar.
+
 - **Companions lassen sich über Pfade nie eingrenzen.** Am 2026-09-19 gegen
   echte Hardware gesehen: Die einzige Node ohne Position war ein Companion
   (Typ 1). Companions leiten nicht weiter, stehen also in keinem Pfad, und

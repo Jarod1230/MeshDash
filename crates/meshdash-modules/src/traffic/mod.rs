@@ -150,7 +150,71 @@ const MIGRATIONS: &[Migration] = &[
         SELECT id, pos, substr(rest, 1, width) FROM split WHERE length(rest) >= width;
     ",
     },
+    Migration {
+        version: 3,
+        description: "forget hearings that direct and trace paths never proved",
+        sql: FORGET_UNPROVEN_HEARINGS,
+    },
 ];
+
+/// Takes back what direct-routed packets wrongly added to `traffic_links`.
+///
+/// Until migration 3, every path was read as a flood path: station `n + 1`
+/// heard station `n`, and this node heard the last one. That holds only for
+/// flooded packets. A direct packet carries the route still *ahead* of it —
+/// each forwarder removes itself before sending on (`Mesh::removeSelfFromPath`
+/// in `src/Mesh.cpp`, MeshCore `d929643`) — and a trace carries SNR values in
+/// its path, not key prefixes (`Mesh::onRecvPacket`, same commit).
+///
+/// Only what is still in the packet log can be taken back: each stored direct
+/// packet contributed its pairs exactly once, so subtracting them never goes
+/// too far. What direct packets added before the retention period is gone
+/// from the log and stays in the summary. `first_seen` and `last_seen` are
+/// left alone — they cannot be recomputed from what is kept.
+///
+/// Trace stations are dropped from the station index as well: they are SNR
+/// bytes, and a node whose prefix matched one would claim the packet.
+pub const FORGET_UNPROVEN_HEARINGS: &str = "
+    WITH direct AS (
+        SELECT p.id, p.path_width AS width, s.position, s.prefix
+        FROM traffic_packets p
+        INNER JOIN traffic_packet_stations s ON s.packet_id = p.id
+        WHERE p.route_type IN (2, 3)
+    ),
+    pairs AS (
+        SELECT a.prefix AS talker, b.prefix AS listener, a.width AS width
+        FROM direct a
+        INNER JOIN direct b ON b.id = a.id AND b.position = a.position + 1
+        UNION ALL
+        SELECT a.prefix, '', a.width
+        FROM direct a
+        WHERE NOT EXISTS (
+            SELECT 1 FROM direct b WHERE b.id = a.id AND b.position = a.position + 1
+        )
+    ),
+    counted AS (
+        SELECT talker, listener, width, COUNT(*) AS times
+        FROM pairs GROUP BY talker, listener, width
+    )
+    UPDATE traffic_links
+    SET heard = heard - (
+        SELECT times FROM counted
+        WHERE counted.talker = traffic_links.talker
+          AND counted.listener = traffic_links.listener
+          AND counted.width = traffic_links.width
+    )
+    WHERE EXISTS (
+        SELECT 1 FROM counted
+        WHERE counted.talker = traffic_links.talker
+          AND counted.listener = traffic_links.listener
+          AND counted.width = traffic_links.width
+    );
+
+    DELETE FROM traffic_links WHERE heard <= 0;
+
+    DELETE FROM traffic_packet_stations
+    WHERE packet_id IN (SELECT id FROM traffic_packets WHERE payload_type = 9);
+";
 
 /// How this module may be configured, under `[modules.traffic]`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -525,6 +589,13 @@ pub async fn record_packet(
     .await?
     .last_insert_rowid();
 
+    // A trace's path holds SNR values, not prefixes (`Mesh::onRecvPacket`,
+    // MeshCore `d929643`). Indexed, a node whose prefix matched one of them
+    // would claim a packet it never touched.
+    if packet.payload_type == PayloadType::Trace {
+        return Ok(());
+    }
+
     // The path again, split at station boundaries. Only this form can be
     // searched — see the note on the table.
     for (position, station) in packet.path.iter().enumerate() {
@@ -546,7 +617,19 @@ pub async fn record_packet(
 /// Station `n + 1` heard station `n`, and this node heard the last one. An
 /// empty path proves nothing here: the sender is named only inside the
 /// payload, which is encrypted.
+///
+/// **Only a flooded path proves anything.** A flooded packet collects its
+/// path on the way: it starts empty and every forwarder appends itself
+/// (`Mesh::sendFlood`, `Mesh::routeRecvPacket`). A direct packet carries the
+/// route still ahead of it, and each forwarder removes itself before sending
+/// on (`Mesh::removeSelfFromPath`) — whoever transmitted what this node heard
+/// is no longer in it. A trace, always direct, carries SNR values in place of
+/// prefixes. All in `src/Mesh.cpp`, MeshCore `d929643`.
 pub async fn record_hearing(context: &AppContext, packet: &Packet<'_>) -> Result<(), sqlx::Error> {
+    if !packet.route.is_flood() {
+        return Ok(());
+    }
+
     let stations: Vec<String> = packet
         .path
         .iter()
@@ -855,6 +938,9 @@ pub async fn read_links_in_window(
          FROM traffic_packets p
          INNER JOIN traffic_packet_stations s ON s.packet_id = p.id
          WHERE p.heard_at >= ?1 AND p.heard_at <= ?2
+           -- Flooded only, as in record_hearing: a direct path is the route
+           -- ahead, not the one travelled.
+           AND p.route_type IN (0, 1)
          ORDER BY p.id ASC, s.position ASC",
     )
     .bind(&since)

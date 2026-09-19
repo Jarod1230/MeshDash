@@ -30,6 +30,8 @@ export interface Flight {
 
 /** What `traffic` publishes for every packet it reads. */
 interface Announced {
+  /** 0 and 1 are flooded; 2 and 3 are direct (`PH_ROUTE_MASK`, `src/Packet.h`). */
+  readonly route_type?: number;
   readonly payload_type: number;
   readonly stations: readonly string[];
 }
@@ -100,6 +102,10 @@ export function useFlights(nodes: readonly GroundNode[]): {
     (event) => {
       const announced = event.data as Announced | undefined;
       if (announced === undefined) return;
+      // Only a flooded path is the way the packet came. A direct one is the
+      // route still ahead of it, and a trace's holds SNR values — drawn, both
+      // would show a journey that never happened. See the traffic module.
+      if (announced.route_type !== 0 && announced.route_type !== 1) return;
 
       const legs = follow(announced.stations ?? [], nodesRef.current);
       if (legs.length < 2) return;

@@ -12,6 +12,15 @@ jedem Minor-Release ändern.
 
 ### Fixed
 
+- **„Wer hört wen“ nur noch aus gefluteten Pfaden.** Direkt geroutete Pakete
+  tragen die Route, die noch vor ihnen liegt, und Traces tragen SNR-Werte
+  statt Stationen. Beide wurden bisher wie ein zurückgelegter Weg gelesen
+  und erzeugten Verbindungen, Nachbarn und Paket-Animationen, die es nicht
+  gab. Eine Migration nimmt zurück, was davon noch im Paketlog steht;
+  ältere falsche Zählungen jenseits der Aufbewahrungsfrist bleiben in der
+  Verdichtung. Traces werden in der Paketliste eines Knotens nicht mehr
+  über ihre SNR-Bytes zugeordnet.
+
 - **Zeitraum „jetzt“ zeigt den neuesten Verkehr.** Das Fenster der
   Verbindungsebene endete am Anfang der laufenden Minute; was in ihr
   mitgehört wurde, fehlte — nach einem Neustart des Dienstes also alles,

@@ -56,16 +56,30 @@ fn packet_over(stations: &[u8]) -> Vec<u8> {
 
 /// That packet wrapped in the push the node sends for everything it hears.
 fn heard(stations: &[u8]) -> Vec<u8> {
+    heard_with_header(0b0000_1001, stations)
+}
+
+/// A heard packet with a chosen header byte: route in bits 0–1, payload type
+/// in bits 2–5 (`src/Packet.h`).
+fn heard_with_header(header: u8, stations: &[u8]) -> Vec<u8> {
+    let mut raw = packet_over(stations);
+    raw[0] = header;
+
     let mut frame = vec![
         0x88,
         // SNR in quarter-decibels, then RSSI.
         (-3.5_f32 * 4.0) as i8 as u8,
         -92_i8 as u8,
     ];
-    frame.extend_from_slice(&packet_over(stations));
+    frame.extend_from_slice(&raw);
 
     frame
 }
+
+/// Route 2 (direct), payload type 2 (text).
+const DIRECT_TEXT: u8 = 0b0000_1010;
+/// Route 2 (direct), payload type 9 (trace).
+const DIRECT_TRACE: u8 = 0b0010_0110;
 
 /// Feeds one push through the bus and waits for the module to have written.
 async fn feed(context: &AppContext, frame: Vec<u8>) {
@@ -361,10 +375,22 @@ async fn the_sweep_takes_the_stations_with_the_packets() {
     assert_eq!(left.0, 0);
 }
 
-/// Inserts one packet at a chosen time with its stations split out.
+/// Inserts one flooded packet at a chosen time with its stations split out.
 async fn insert_packet_at(
     context: &AppContext,
     heard_at: DateTime<Utc>,
+    stations: &[&str],
+    width: u8,
+) {
+    insert_routed_packet_at(context, heard_at, 1, 2, stations, width).await;
+}
+
+/// Inserts one packet with a chosen route and payload type.
+async fn insert_routed_packet_at(
+    context: &AppContext,
+    heard_at: DateTime<Utc>,
+    route_type: u8,
+    payload_type: u8,
     stations: &[&str],
     width: u8,
 ) {
@@ -372,9 +398,11 @@ async fn insert_packet_at(
     let id = sqlx::query(
         "INSERT INTO traffic_packets
             (heard_at, route_type, payload_type, version, stations, path, path_width, size)
-         VALUES (?, 1, 2, 0, ?, ?, ?, 7)",
+         VALUES (?, ?, ?, 0, ?, ?, ?, 7)",
     )
     .bind(heard_at.to_rfc3339())
+    .bind(i64::from(route_type))
+    .bind(i64::from(payload_type))
     .bind(stations.len() as i64)
     .bind(&path)
     .bind(i64::from(width))
@@ -591,5 +619,139 @@ fn timed_links_json_names_the_clamp() {
             .as_str()
             .unwrap()
             .starts_with("2026-08-07")
+    );
+}
+
+#[tokio::test]
+async fn a_direct_path_proves_no_pair() {
+    // The path of a direct packet is the route still ahead of it. Whoever
+    // sent what this node heard has already removed itself from it.
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard_with_header(DIRECT_TEXT, &[0xAA, 0xBB])).await;
+
+    assert!(read_links(&context).await.unwrap().is_empty());
+    // Still heard, still logged — only no statement about who heard whom.
+    let log = read_packets(&context, None, &everything()).await.unwrap();
+    assert_eq!(log.len(), 1);
+    assert_eq!(log[0].route_type, 2);
+}
+
+#[tokio::test]
+async fn a_trace_path_is_not_a_list_of_stations() {
+    // SNR values in the path, not prefixes. 0x28 is +10 dB — and it must not
+    // make the node with prefix 28 look like it touched this packet.
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard_with_header(DIRECT_TRACE, &[0x28, 0x1C])).await;
+
+    assert!(read_links(&context).await.unwrap().is_empty());
+    assert!(
+        read_packets(&context, Some("28"), &everything())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        read_packets(&context, None, &everything())
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn timed_links_leave_direct_packets_out() {
+    let context = context_with(serde_json::json!({ "keep_days": 30 })).await;
+
+    insert_packet_at(&context, moment("2026-09-01T12:00:00Z"), &["aa"], 1).await;
+    insert_routed_packet_at(
+        &context,
+        moment("2026-09-01T13:00:00Z"),
+        2,
+        2,
+        &["aa", "bb"],
+        1,
+    )
+    .await;
+    insert_routed_packet_at(&context, moment("2026-09-01T14:00:00Z"), 3, 2, &["cc"], 1).await;
+
+    let links = read_links_in_window(
+        &context,
+        &moment("2026-09-01T00:00:00Z"),
+        &moment("2026-09-02T00:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(links.len(), 1, "{links:?}");
+    assert_eq!(links[0].talker, "aa");
+    assert!(links[0].listener.is_empty());
+    assert_eq!(links[0].heard, 1);
+}
+
+/// Writes a summary row the way the module did before migration 3.
+async fn insert_link(context: &AppContext, talker: &str, listener: &str, heard: i64) {
+    sqlx::query(
+        "INSERT INTO traffic_links (talker, listener, width, first_seen, last_seen, heard)
+         VALUES (?, ?, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z', ?)",
+    )
+    .bind(talker)
+    .bind(listener)
+    .bind(heard)
+    .execute(context.db.pool())
+    .await
+    .unwrap();
+}
+
+async fn heard_count(context: &AppContext, talker: &str, listener: &str) -> Option<i64> {
+    sqlx::query_scalar(
+        "SELECT heard FROM traffic_links WHERE talker = ? AND listener = ? AND width = 1",
+    )
+    .bind(talker)
+    .bind(listener)
+    .fetch_optional(context.db.pool())
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn migration_3_takes_back_what_direct_packets_added() {
+    let context = context_with(serde_json::json!({ "keep_days": 30 })).await;
+
+    // What the old code wrote for: one flood packet over aa, bb, and two
+    // direct packets over the same stations.
+    insert_packet_at(&context, moment("2026-09-01T12:00:00Z"), &["aa", "bb"], 1).await;
+    for hour in ["13", "14"] {
+        let at = moment(&format!("2026-09-01T{hour}:00:00Z"));
+        insert_routed_packet_at(&context, at, 2, 2, &["aa", "bb"], 1).await;
+    }
+    // A trace: its "stations" are SNR bytes.
+    insert_routed_packet_at(&context, moment("2026-09-01T15:00:00Z"), 2, 9, &["28"], 1).await;
+    insert_link(&context, "aa", "bb", 3).await;
+    insert_link(&context, "bb", "", 3).await;
+    insert_link(&context, "28", "", 1).await;
+    // Heard before the retention period; nothing in the log to take back.
+    insert_link(&context, "dd", "", 5).await;
+
+    sqlx::raw_sql(FORGET_UNPROVEN_HEARINGS)
+        .execute(context.db.pool())
+        .await
+        .unwrap();
+
+    assert_eq!(heard_count(&context, "aa", "bb").await, Some(1));
+    assert_eq!(heard_count(&context, "bb", "").await, Some(1));
+    assert_eq!(
+        heard_count(&context, "28", "").await,
+        None,
+        "down to zero is gone"
+    );
+    assert_eq!(heard_count(&context, "dd", "").await, Some(5));
+    assert!(
+        read_packets(&context, Some("28"), &everything())
+            .await
+            .unwrap()
+            .is_empty()
     );
 }

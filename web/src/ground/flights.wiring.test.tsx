@@ -74,12 +74,12 @@ describe('vom Ereignis zum Punkt', () => {
     act(() => FakeSocket.last?.onopen?.());
   }
 
-  function packet(stations: readonly string[]) {
+  function packet(stations: readonly string[], route_type = 1) {
     return {
       type: 'module',
       module: 'traffic',
       kind: 'packet',
-      data: { payload_type: 2, route_type: 1, stations, width: 2, snr: 12, rssi: -9, size: 23 },
+      data: { payload_type: 2, route_type, stations, width: 2, snr: 12, rssi: -9, size: 23 },
     };
   }
 
@@ -103,6 +103,15 @@ describe('vom Ereignis zum Punkt', () => {
     act(() => FakeSocket.last?.deliver(packet([])));
     // A prefix that fits no known node.
     act(() => FakeSocket.last?.deliver(packet(['5555'])));
+
+    expect(screen.getByRole('status').textContent).toBe('0');
+  });
+
+  it('does not draw a direct path, which is the route ahead and not the way it came', () => {
+    show([OWN, BRIDGE]);
+
+    act(() => FakeSocket.last?.deliver(packet(['fb07'], 2)));
+    act(() => FakeSocket.last?.deliver(packet(['fb07'], 3)));
 
     expect(screen.getByRole('status').textContent).toBe('0');
   });

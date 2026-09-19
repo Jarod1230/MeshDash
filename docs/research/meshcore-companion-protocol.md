@@ -878,6 +878,50 @@ self_id.copyHashTo(&packet->path[n * packet->getPathHashSize()], packet->getPath
 packet->setPathHashCount(n + 1);
 ```
 
+### Nur ein gefluteter Pfad ist der zurückgelegte Weg
+
+Nachgelesen am 2026-09-19, `src/Mesh.cpp`, MeshCore-Commit `d929643`. Stufe
+`SOURCE`. Was der Pfad eines Pakets bedeutet, hängt am Routentyp:
+
+- **Flood** (`ROUTE_TYPE_FLOOD`, `ROUTE_TYPE_TRANSPORT_FLOOD`): Der Pfad
+  beginnt leer — `Mesh::sendFlood()` setzt `setPathHashSizeAndCount(size, 0)` —,
+  und jede weiterleitende Station hängt sich an (oben). Station `n + 1` hat
+  Station `n` gehört, der Empfänger die letzte. **Nur hier.**
+- **Direct** (`ROUTE_TYPE_DIRECT`, `ROUTE_TYPE_TRANSPORT_DIRECT`): Der Pfad ist
+  die Route, die **noch vor** dem Paket liegt. Eine Station leitet nur weiter,
+  wenn sie selbst an erster Stelle steht (`isHashMatch(pkt->path, …)`), und
+  entfernt sich vorher (`removeSelfFromPath(pkt)`, `Mesh::onRecvPacket()`).
+  Wer das gehörte Paket gesendet hat, steht also nicht mehr darin; `path[0]`
+  ist der **nächste** Empfänger. Über „wer hört wen" sagt dieser Pfad nichts
+  Beobachtetes.
+- **Zero-Hop** (`Mesh::sendZeroHop()`): direkt mit `path_len = 0`.
+- **Trace** (`PAYLOAD_TYPE_TRACE`, immer direkt): Jeder Weiterleiter hängt
+  **seinen SNR-Wert** an den Pfad, kein Präfix —
+  `pkt->path[pkt->path_len++] = (int8_t)(pkt->getSNR()*4)`. Die Stationen
+  stehen in der Nutzlast.
+
+MeshDash hat bis Migration 3 des Moduls `traffic` jeden Pfad wie einen
+gefluteten gelesen; siehe `lessons-learned.md` vom selben Tag.
+
+### Ein Advert nennt seinen Absender im Klartext
+
+Nachgelesen am 2026-09-19, `Mesh::createAdvert()` in `src/Mesh.cpp`,
+MeshCore-Commit `d929643`. Stufe `SOURCE`. Die Nutzlast eines Adverts ist nicht
+verschlüsselt, sondern signiert:
+
+| Offset | Länge | Inhalt |
+| --- | --- | --- |
+| 0 | 32 | öffentlicher Schlüssel des Absenders (`PUB_KEY_SIZE`) |
+| 32 | 4 | Zeitstempel beim Absender |
+| 36 | 64 | Signatur über Schlüssel, Zeitstempel und App-Daten (`SIGNATURE_SIZE`) |
+| 100 | bis `MAX_ADVERT_DATA_SIZE` | App-Daten (Name, Position, Typ) |
+
+Zusammen mit dem Abschnitt darüber folgt: Bei einem gefluteten Advert hat
+`path[0]` den Absender direkt gehört, bei leerem Pfad der Empfänger selbst.
+Das ist die einzige Hörbeziehung, die einen Knoten betrifft, der nie
+weiterleitet — einen Companion. Die Signatur prüft MeshDash nicht; ein
+gefälschter Advert könnte einen fremden Schlüssel nennen.
+
 **Wie breit, entscheidet der Absender.** Ein bis drei Byte, und das Paket sagt
 es selbst — die Breite steht in den oberen zwei Bits des Pfadlängenbytes. Gesetzt
 wird sie beim Fluten:

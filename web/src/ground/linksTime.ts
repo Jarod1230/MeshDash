@@ -108,8 +108,11 @@ export function writeLinksTime(
 /**
  * Builds the API path for the current choice.
  *
- * Bounds are floored to the full minute so the path only changes once a
- * minute — same reason as `useTimeRange`. Never call with `Date.now()` from
+ * Bounds sit on full minutes so the path only changes once a minute — same
+ * reason as `useTimeRange`. The window ends with the running minute, not at
+ * its start: flooring hid everything heard in the last seconds, and a live
+ * reload asked for the same stale window again. The service takes an `until`
+ * slightly in the future as it is. Never call with `Date.now()` from
  * render; pass a clock value (`useNow`).
  */
 export function trafficLinksPath(choice: LinksTimeChoice, nowMs: number): string {
@@ -120,7 +123,7 @@ export function trafficLinksPath(choice: LinksTimeChoice, nowMs: number): string
   if (hours === undefined || offset === undefined) return '/traffic/links';
 
   const minute = Math.floor(nowMs / 60_000);
-  const untilMs = (minute - offset * 60) * 60_000;
+  const untilMs = (minute + 1 - offset * 60) * 60_000;
   const sinceMs = untilMs - hours * 3_600_000;
 
   const since = new Date(sinceMs).toISOString();

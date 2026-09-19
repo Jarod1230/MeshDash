@@ -585,36 +585,101 @@ function Geography({
         ))}
       </svg>
 
-      {/* Layer switch and time controls share the bottom-left corner ADR-0011
-          gives them — time only refines the link layer, never a separate page. */}
-      <div className="absolute bottom-12 left-4 flex flex-col items-start gap-2">
-        <LinksTimeBar choice={timeChoice} onChange={onTimeChoice} />
-        <div className="flex items-center gap-2">
-          <HeardRate />
-          <button
-            type="button"
-            onClick={onToggleLinks}
-            aria-pressed={linksOn}
-            className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
-              linksOn
-                ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
-                : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
-            }`}
-          >
-            Verbindungen
-          </button>
-          <button
-            type="button"
-            onClick={onToggleRegions}
-            aria-pressed={regionsOn}
-            className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
-              regionsOn
-                ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
-                : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
-            }`}
-          >
-            Bereiche
-          </button>
+      {/* Controls and legend share one box along the bottom edge, so they
+          cannot land on each other. Two boxes pinned to opposite corners did:
+          below ~870px the legend slid over "7 Tage", and a fixed offset
+          broke again when the time bar wrapped on a phone. Narrow: legend
+          stacked above the controls. From xl: side by side, as before. */}
+      <div className="pointer-events-none absolute inset-x-4 bottom-12 flex flex-col-reverse items-end gap-2 xl:flex-row xl:justify-between">
+        {/* Layer switch and time controls share the bottom-left corner ADR-0011
+            gives them — time only refines the link layer, never a separate page. */}
+        <div className="pointer-events-auto flex flex-col items-start gap-2 self-start xl:self-end">
+          <LinksTimeBar choice={timeChoice} onChange={onTimeChoice} />
+          <div className="flex items-center gap-2">
+            <HeardRate />
+            <button
+              type="button"
+              onClick={onToggleLinks}
+              aria-pressed={linksOn}
+              className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+                linksOn
+                  ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
+                  : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
+              }`}
+            >
+              Verbindungen
+            </button>
+            <button
+              type="button"
+              onClick={onToggleRegions}
+              aria-pressed={regionsOn}
+              className={`rounded-md border px-2.5 py-1 text-xs backdrop-blur focus-visible:outline focus-visible:outline-2 focus-visible:outline-mesh-accent ${
+                regionsOn
+                  ? 'border-mesh-accent bg-mesh-surface/90 text-mesh-text'
+                  : 'border-mesh-border bg-mesh-surface/70 text-mesh-muted hover:text-mesh-text'
+              }`}
+            >
+              Bereiche
+            </button>
+          </div>
+        </div>
+        {/* Each line carries its own background rather than the block having
+            one: over a light basemap, faint text on nothing is unreadable, and
+            a single box around them all would be a grey slab across the map.
+            From xl it sits a little higher to clear "alles zeigen". */}
+        <div className="flex max-w-full min-w-0 flex-col items-end gap-1 text-right text-xs text-mesh-faint xl:mb-2 xl:max-w-[30rem] [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
+          <span>
+            Norden ist oben · <Dot className="fill-mesh-accent" /> in der letzten Stunde gehört ·{' '}
+            <Dot className="fill-mesh-muted" /> heute · <Dot className="fill-none" hollow /> länger
+            nicht
+          </span>
+          {missing > 0 && (
+            <span>
+              {missing} {missing === 1 ? 'Knoten meldet' : 'Knoten melden'} keine Position und{' '}
+              {missing === 1 ? 'fehlt' : 'fehlen'} hier.
+            </span>
+          )}
+          {labelled.size < placed.length && (
+            <span>
+              {placed.length - labelled.size}{' '}
+              {placed.length - labelled.size === 1 ? 'Name liegt' : 'Namen liegen'} zu dicht
+              beieinander und {placed.length - labelled.size === 1 ? 'steht' : 'stehen'} nur im
+              Tooltip.
+            </span>
+          )}
+          {linksOn && drawable.length > 0 && (
+            <span>Linie heißt: dieser Weg wurde beobachtet · dicker heißt besser gehört</span>
+          )}
+          {linksOn && clampNote !== null && <span>{clampNote}</span>}
+          {linksOn && mesh.length === 0 && (
+            // An empty layer without a reason reads as "there are no
+            // connections", which would be a claim about the mesh. The claim
+            // here is about what has been observed, and that is a different
+            // sentence.
+            <span>
+              {timed
+                ? 'In diesem Zeitraum wurde keine Verbindung mitgehört.'
+                : 'Noch kein Weg belegt. Ein Weg entsteht, sobald der Node eine Route zu einem Kontakt kennt oder ein „Weg messen“ ihn abläuft.'}
+            </span>
+          )}
+          {linksOn && timed && mesh.length > 0 && (
+            <span>Verbindungen nur aus dem gewählten Zeitraum (mitgehörte Pakete).</span>
+          )}
+          {linksOn && mesh.length > drawable.length && (
+            <span>
+              {mesh.length - drawable.length}{' '}
+              {mesh.length - drawable.length === 1 ? 'Verbindung führt' : 'Verbindungen führen'} zu
+              einem Knoten ohne Position und {mesh.length - drawable.length === 1 ? 'fehlt' : 'fehlen'}{' '}
+              hier.
+            </span>
+          )}
+          {regionsOn && <span>{regionsNote(bounded)}</span>}
+          {tiles !== null && !tiles.available && (
+            <span>
+              Ohne Kartenquelle. Eine lässt sich unter <span className="tabular">[modules.tiles]</span>{' '}
+              eintragen.
+            </span>
+          )}
         </div>
       </div>
 
@@ -627,64 +692,6 @@ function Geography({
         {tiles?.available === true && tiles.attribution !== '' && (
           <span className="rounded bg-mesh-surface/80 px-1.5 py-0.5 text-[11px] text-mesh-faint backdrop-blur">
             {tiles.attribution}
-          </span>
-        )}
-      </div>
-
-      {/* Each line carries its own background rather than the block having
-          one: over a light basemap, faint text on nothing is unreadable, and
-          a single box around them all would be a grey slab across the map. */}
-      <div className="pointer-events-none absolute right-4 bottom-14 flex max-w-[min(30rem,calc(100%-9rem))] flex-col items-end gap-1 text-right text-xs text-mesh-faint [&>span]:rounded [&>span]:bg-mesh-surface/80 [&>span]:px-1.5 [&>span]:py-0.5 [&>span]:backdrop-blur">
-        <span>
-          Norden ist oben · <Dot className="fill-mesh-accent" /> in der letzten Stunde gehört ·{' '}
-          <Dot className="fill-mesh-muted" /> heute · <Dot className="fill-none" hollow /> länger
-          nicht
-        </span>
-        {missing > 0 && (
-          <span>
-            {missing} {missing === 1 ? 'Knoten meldet' : 'Knoten melden'} keine Position und{' '}
-            {missing === 1 ? 'fehlt' : 'fehlen'} hier.
-          </span>
-        )}
-        {labelled.size < placed.length && (
-          <span>
-            {placed.length - labelled.size}{' '}
-            {placed.length - labelled.size === 1 ? 'Name liegt' : 'Namen liegen'} zu dicht
-            beieinander und {placed.length - labelled.size === 1 ? 'steht' : 'stehen'} nur im
-            Tooltip.
-          </span>
-        )}
-        {linksOn && drawable.length > 0 && (
-          <span>Linie heißt: dieser Weg wurde beobachtet · dicker heißt besser gehört</span>
-        )}
-        {linksOn && clampNote !== null && <span>{clampNote}</span>}
-        {linksOn && mesh.length === 0 && (
-          // An empty layer without a reason reads as "there are no
-          // connections", which would be a claim about the mesh. The claim
-          // here is about what has been observed, and that is a different
-          // sentence.
-          <span>
-            {timed
-              ? 'In diesem Zeitraum wurde keine Verbindung mitgehört.'
-              : 'Noch kein Weg belegt. Ein Weg entsteht, sobald der Node eine Route zu einem Kontakt kennt oder ein „Weg messen“ ihn abläuft.'}
-          </span>
-        )}
-        {linksOn && timed && mesh.length > 0 && (
-          <span>Verbindungen nur aus dem gewählten Zeitraum (mitgehörte Pakete).</span>
-        )}
-        {linksOn && mesh.length > drawable.length && (
-          <span>
-            {mesh.length - drawable.length}{' '}
-            {mesh.length - drawable.length === 1 ? 'Verbindung führt' : 'Verbindungen führen'} zu
-            einem Knoten ohne Position und {mesh.length - drawable.length === 1 ? 'fehlt' : 'fehlen'}{' '}
-            hier.
-          </span>
-        )}
-        {regionsOn && <span>{regionsNote(bounded)}</span>}
-        {tiles !== null && !tiles.available && (
-          <span>
-            Ohne Kartenquelle. Eine lässt sich unter <span className="tabular">[modules.tiles]</span>{' '}
-            eintragen.
           </span>
         )}
       </div>

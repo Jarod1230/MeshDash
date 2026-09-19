@@ -12,6 +12,14 @@ jedem Minor-Release ändern.
 
 ### Fixed
 
+- **Zeitraum „jetzt“ zeigt den neuesten Verkehr.** Das Fenster der
+  Verbindungsebene endete am Anfang der laufenden Minute; was in ihr
+  mitgehört wurde, fehlte — nach einem Neustart des Dienstes also alles,
+  und die Karte meldete „keine Verbindung mitgehört“. Es endet jetzt mit
+  der laufenden Minute.
+- **Die Legende der Karte liegt nicht mehr über dem Zeitraumwähler.**
+  Unterhalb von 1280 px Breite rückt sie über die Bedienelemente.
+
 - **Schreibende Anfragen ohne Node hängen nicht mehr.** War kein
   Companion verbunden, parkte der Link die Anfrage bis zum Reconnect —
   und bei dauerhaft fehlendem Node ewig. Jetzt lehnt der Link sofort mit

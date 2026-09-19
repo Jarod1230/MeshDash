@@ -55,6 +55,17 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T | null> 
 }
 
 /**
+ * Sends a request that carries nothing and expects nothing back.
+ *
+ * `PUT /alerts/watched/<key>` says everything in its path: there is no body
+ * to send and a 204 to read. `apiPut` would attach an empty JSON body and a
+ * content type for it, which is a small lie about what was sent.
+ */
+export async function apiSend(method: 'PUT' | 'DELETE', path: string): Promise<void> {
+  await request<null>(path, { method });
+}
+
+/**
  * Fetches something that is not JSON, as a URL a browser can display.
  *
  * Map tiles need this: an `<img>` cannot set an `Authorization` header, and

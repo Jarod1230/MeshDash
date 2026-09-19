@@ -97,6 +97,12 @@ bekommt keine Linie. Eine geschätzte Position gibt es nicht.
 Aussage über das Mesh; „noch kein Weg belegt, und so entsteht einer" ist eine
 über das Beobachtete. Nur die zweite ist wahr.
 
+**Warnungen stehen an zwei Stellen und sonst nirgends.** Am Knoten auf der
+Karte (Ring in der Warnfarbe) und als Zeile in der Legende, dazu die
+Browser-Benachrichtigung. Es gibt keine eigene Warnungsseite: Eine Warnung ist
+kein Bestand, den man durchblättert, sondern etwas, das auffallen muss, wo man
+ohnehin hinsieht — ADR-0021.
+
 **Der Zustand steht in der Adresse.** Ansicht als Pfad, Auswahl und
 Verfeinerung als Abfrageparameter — `?knoten=`, `?verbindung=`,
 `?verbindungen=aus`, `?bereiche=an`. Ein Link muss öffnen, was ein Klick öffnet.

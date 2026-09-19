@@ -48,6 +48,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Warnungen in der Oberfläche.** In der Knotentafel schaltet „Beobachten“
+  einen Knoten scharf; wird er still, zeigt die Karte einen Ring in der
+  Warnfarbe an ihm und eine Zeile in der Legende, die sagt, seit wann. Ein
+  getrennter eigener Node steht ebenso dort. Neue Warnungen melden sich als
+  Browser-Benachrichtigung, sobald das auf der Einstellungsseite erlaubt
+  wurde; dort stehen auch die beiden Fristen.
+
 - **Modul `alerts` (Backend).** Warnt, wenn ein ausdrücklich beobachteter
   Knoten länger als `silent_after_hours` (24) kein Advert gesendet hat, und
   wenn der eigene Node länger als `disconnected_after_minutes` (5) getrennt

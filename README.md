@@ -28,7 +28,11 @@ Karte, und perspektivisch Fernadministration von Repeatern und Room-Servern.
 > und ein Abspielen in die Vergangenheit — ohne Scrubber
 > ([ADR-0018](docs/decisions/0018-zeit-fuer-verkehrsverdichtung.md)).
 >
-> **Wohin es geht:** Warnungen und Fernadministration (Stufe D)
+> Knoten lassen sich beobachten: Wird ein beobachteter Knoten still oder der
+> eigene Node getrennt, steht die Warnung an ihm auf der Karte und meldet sich
+> im Browser ([ADR-0021](docs/decisions/0021-warnungen-wo-man-hinsieht.md)).
+>
+> **Wohin es geht:** Fernadministration (Stufe D)
 > ([ADR-0011](docs/decisions/0011-karte-als-leitansicht.md)). Der Stand und
 > der Weg dorthin: [`docs/roadmap.md`](docs/roadmap.md).
 

@@ -107,6 +107,19 @@ describe('regions', () => {
 
     expect(regions(twins, [HOME, BRIDGE, FAR], HEARINGS)).toEqual([]);
   });
+
+  it('grenzt einen Companion über den vollen Schlüssel aus seinem Advert ein', () => {
+    // Ein Companion steht in keinem Pfad. Sein Advert nennt den ganzen
+    // Schlüssel — der trifft genau einen, auch wenn das erste Byte geteilt ist.
+    const companion: Named = { key: 'cc' + '44'.repeat(31), name: 'Jarod', own: false };
+    const twin: Named = { key: 'cc' + '55'.repeat(31), name: 'zwei', own: false };
+    const hearings = [hearing(NORTH, ''), hearing(EAST, ''), hearing(companion.key, '', 4)];
+
+    const found = regions([companion, twin], [HOME, BRIDGE, FAR], hearings);
+
+    expect(found.map((region) => region.key)).toEqual([companion.key]);
+    expect(found[0]?.anchors.map((anchor) => anchor.node.key)).toEqual([OWN]);
+  });
 });
 
 describe('tightness', () => {

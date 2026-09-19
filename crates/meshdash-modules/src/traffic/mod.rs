@@ -155,6 +155,18 @@ const MIGRATIONS: &[Migration] = &[
         description: "forget hearings that direct and trace paths never proved",
         sql: FORGET_UNPROVEN_HEARINGS,
     },
+    Migration {
+        version: 4,
+        description: "who sent an advert, so the first hearing of it can be counted",
+        sql: "
+        -- The full public key of an advert's sender, lowercase hex; NULL for
+        -- every other packet. Adverts are signed, not encrypted, and name
+        -- their sender in the clear (Mesh::createAdvert, MeshCore d929643).
+        -- Packets logged before this column existed stay NULL: their payload
+        -- was never kept, so there is nothing to fill it from.
+        ALTER TABLE traffic_packets ADD COLUMN origin TEXT;
+    ",
+    },
 ];
 
 /// Takes back what direct-routed packets wrongly added to `traffic_links`.
@@ -572,8 +584,8 @@ pub async fn record_packet(
     let id = sqlx::query(
         "INSERT INTO traffic_packets
             (heard_at, route_type, payload_type, version, stations, path, path_width,
-             snr, rssi, size)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             snr, rssi, size, origin)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(Utc::now().to_rfc3339())
     .bind(i64::from(route_byte(packet.route)))
@@ -585,6 +597,7 @@ pub async fn record_packet(
     .bind(f64::from(snr))
     .bind(i64::from(rssi))
     .bind(i64::try_from(size).unwrap_or(i64::MAX))
+    .bind(packet.advert_sender().map(to_hex))
     .execute(context.db.pool())
     .await?
     .last_insert_rowid();
@@ -626,6 +639,13 @@ pub async fn record_packet(
 /// is no longer in it. A trace, always direct, carries SNR values in place of
 /// prefixes. All in `src/Mesh.cpp`, MeshCore `d929643`.
 pub async fn record_hearing(context: &AppContext, packet: &Packet<'_>) -> Result<(), sqlx::Error> {
+    let now = Utc::now().to_rfc3339();
+    let width = i64::from(packet.shape.bytes_per_station);
+
+    if let Some((sender, listener)) = first_hearing(packet) {
+        note_pair(context, &sender, &listener, width, &now).await?;
+    }
+
     if !packet.route.is_flood() {
         return Ok(());
     }
@@ -635,9 +655,6 @@ pub async fn record_hearing(context: &AppContext, packet: &Packet<'_>) -> Result
         .iter()
         .map(|station| to_hex(station.key_prefix))
         .collect();
-
-    let now = Utc::now().to_rfc3339();
-    let width = i64::from(packet.shape.bytes_per_station);
 
     for pair in stations.windows(2) {
         let (talker, listener) = (&pair[0], &pair[1]);
@@ -652,6 +669,39 @@ pub async fn record_hearing(context: &AppContext, packet: &Packet<'_>) -> Result
     }
 
     Ok(())
+}
+
+/// Who heard the sender of an advert first: `(sender, listener)`.
+///
+/// The one hearing that names a node which never forwards — a companion never
+/// appears in any path. The sender is a **full public key**, read from the
+/// advert's own payload; the listener is the first station of the path, or the
+/// empty string for this node when the path is empty.
+///
+/// Only two shapes qualify, and those are the only two an advert is ever sent
+/// in: flooded (`sendFlood`, `sendFloodScoped`), where the path starts empty
+/// and the first forwarder appends itself, and zero-hop (`sendZeroHop`), heard
+/// straight from the sender. Every advert call site in MeshCore `d929643` —
+/// companion, repeater, room server, sensor — uses one of them. A direct
+/// packet with stations left in its path is refused anyway: its path is the
+/// route ahead.
+///
+/// `width` in the summary stays the path's width: it describes how sure the
+/// listener's prefix is, and the sender needs no such caveat.
+pub fn first_hearing(packet: &Packet<'_>) -> Option<(String, String)> {
+    let sender = packet.advert_sender()?;
+
+    if !packet.route.is_flood() && !packet.path.is_empty() {
+        return None;
+    }
+
+    let listener = packet
+        .path
+        .first()
+        .map(|station| to_hex(station.key_prefix))
+        .unwrap_or_default();
+
+    Some((to_hex(sender), listener))
 }
 
 /// Counts one sighting of a pair, creating it if it is new.
@@ -948,11 +998,32 @@ pub async fn read_links_in_window(
     .fetch_all(context.db.pool())
     .await?;
 
-    Ok(aggregate_heard_pairs(rows))
+    // Adverts in the window, with whoever heard their sender first: the first
+    // station, or this node when there is none. Same rule as `first_hearing`.
+    let origins: Vec<(String, i64, String, String)> = sqlx::query_as(
+        "SELECT p.heard_at, p.path_width, p.origin, COALESCE(s.prefix, '')
+         FROM traffic_packets p
+         LEFT JOIN traffic_packet_stations s ON s.packet_id = p.id AND s.position = 0
+         WHERE p.heard_at >= ?1 AND p.heard_at <= ?2
+           AND p.origin IS NOT NULL
+           AND (p.route_type IN (0, 1) OR p.stations = 0)",
+    )
+    .bind(&since)
+    .bind(&until)
+    .fetch_all(context.db.pool())
+    .await?;
+
+    Ok(aggregate_heard_pairs(rows, origins))
 }
 
 /// Turns ordered station rows into window-scoped `HeardBy` entries.
-fn aggregate_heard_pairs(rows: Vec<(i64, String, i64, i64, String)>) -> Vec<HeardBy> {
+///
+/// `origins` are adverts as `(heard_at, width, sender, first listener)`; each
+/// counts once for its sender and whoever heard it first.
+fn aggregate_heard_pairs(
+    rows: Vec<(i64, String, i64, i64, String)>,
+    origins: Vec<(String, i64, String, String)>,
+) -> Vec<HeardBy> {
     struct Packet {
         heard_at: DateTime<Utc>,
         width: u8,
@@ -997,19 +1068,30 @@ fn aggregate_heard_pairs(rows: Vec<(i64, String, i64, i64, String)>) -> Vec<Hear
     type PairKey = (String, String, u8);
     let mut totals: HashMap<PairKey, Tally> = HashMap::new();
 
-    for packet in &packets {
-        for (talker, listener, width) in pairs_from_path(&packet.stations, packet.width) {
-            let tally = totals.entry((talker, listener, width)).or_default();
-            match tally.first_seen {
-                Some(first) if packet.heard_at >= first => {}
-                _ => tally.first_seen = Some(packet.heard_at),
-            }
-            match tally.last_seen {
-                Some(last) if packet.heard_at <= last => {}
-                _ => tally.last_seen = Some(packet.heard_at),
-            }
-            tally.heard += 1;
+    let mut count = |key: PairKey, at: DateTime<Utc>| {
+        let tally = totals.entry(key).or_default();
+        match tally.first_seen {
+            Some(first) if at >= first => {}
+            _ => tally.first_seen = Some(at),
         }
+        match tally.last_seen {
+            Some(last) if at <= last => {}
+            _ => tally.last_seen = Some(at),
+        }
+        tally.heard += 1;
+    };
+
+    for packet in &packets {
+        for pair in pairs_from_path(&packet.stations, packet.width) {
+            count(pair, packet.heard_at);
+        }
+    }
+
+    for (heard_at, width, sender, listener) in origins {
+        let Some(at) = parse_time(&heard_at) else {
+            continue;
+        };
+        count((sender, listener, width as u8), at);
     }
 
     let mut links: Vec<HeardBy> = totals

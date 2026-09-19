@@ -49,7 +49,7 @@ pub struct ModuleView {
 /// module's business, and the interface has to name the options anyway in
 /// order to explain them. A new option is added here and in the page beside
 /// it — see `docs/configuration.md`.
-const OFFERED: [&str; 2] = ["telemetry", "traffic"];
+const OFFERED: [&str; 3] = ["telemetry", "traffic", "alerts"];
 
 /// The routes, to be mounted under the API prefix.
 pub fn routes() -> axum::Router<AppContext> {
@@ -98,6 +98,12 @@ fn values_of(context: &AppContext, module: &str) -> Result<serde_json::Value, Se
                 .get::<meshdash_modules::traffic::Settings>(module)
                 .map(|settings| serde_json::to_value(settings).unwrap_or(serde_json::Value::Null)),
         ),
+        "alerts" => read(
+            context
+                .settings
+                .get::<meshdash_modules::alerts::Settings>(module)
+                .map(|settings| serde_json::to_value(settings).unwrap_or(serde_json::Value::Null)),
+        ),
         _ => Err(SettingsError::Unknown(module.to_owned())),
     }
 }
@@ -116,6 +122,11 @@ async fn change(
         "traffic" => context
             .settings
             .set::<meshdash_modules::traffic::Settings>(&module, patch)
+            .await
+            .map_err(SettingsError::Refused)?,
+        "alerts" => context
+            .settings
+            .set::<meshdash_modules::alerts::Settings>(&module, patch)
             .await
             .map_err(SettingsError::Refused)?,
         _ => return Err(SettingsError::Unknown(module)),

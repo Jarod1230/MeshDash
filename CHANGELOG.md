@@ -48,6 +48,14 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Modul `alerts` (Backend).** Warnt, wenn ein ausdrücklich beobachteter
+  Knoten länger als `silent_after_hours` (24) kein Advert gesendet hat, und
+  wenn der eigene Node länger als `disconnected_after_minutes` (5) getrennt
+  ist. Beobachtet wird per `PUT`/`DELETE /api/v1/alerts/watched/{key}` mit
+  vollem Schlüssel; der Verlauf liegt unter `/api/v1/alerts/log`, Beginn und
+  Ende gehen als Ereignis an den Browser. Keine Zustellung nach außen
+  (ADR-0021). Die Oberfläche dazu folgt.
+
 - **Wer den Absender eines Adverts gehört hat, zählt jetzt als Hörbeziehung.**
   Ein Advert nennt seinen Absender im Klartext; bei einem gefluteten hat ihn
   die erste Station im Pfad direkt gehört, bei einem Zero-Hop der eigene

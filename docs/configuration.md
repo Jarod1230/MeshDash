@@ -125,6 +125,17 @@ record = true
 # Die Verdichtung unterliegt keiner Frist; sie wächst mit dem Mesh, nicht mit
 # dem Verkehr.
 keep_days = 30
+
+[modules.alerts]
+# Wie lange ein beobachteter Knoten ohne Advert bleiben darf, bevor er als
+# still gilt. Repeater senden ihr Advert von sich aus alle paar Stunden; ein
+# Tag lässt Luft für ein, zwei verpasste. Gewarnt wird nur für Knoten, die
+# jemand ausdrücklich beobachtet — siehe ADR-0021.
+silent_after_hours = 24
+# Wie lange der eigene Node weg sein darf, bevor es eine Warnung ist. Ein
+# Neuverbinden nach gezogenem Kabel dauert Sekunden; Minuten heißen, dass
+# wirklich etwas fehlt.
+disconnected_after_minutes = 5
 ```
 
 ## Was noch fehlt

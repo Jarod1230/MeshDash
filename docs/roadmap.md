@@ -392,10 +392,17 @@ selbst hat.
 ### Stufe D — handeln, wo man es sieht
 
 - **`alerts`** — Warnung bei Ausfall; auf der Karte an dem Knoten, um den es
-  geht. Braucht die Entscheidung, wohin eine Warnung sonst noch geht.
+  geht. Entschieden am 2026-09-19 ([ADR-0021](decisions/0021-warnungen-wo-man-hinsieht.md)):
+  nur Karte und Browser, nur für ausdrücklich beobachtete Knoten, dazu der
+  getrennte eigene Node.
+  - [x] Backend: Modul `alerts` mit Beobachtungsliste, Verlauf und Ereignissen
+  - [ ] Oberfläche: „Beobachten" am Knoten, Warnung auf der Karte,
+        Browser-Benachrichtigung, Einstellungen
+  - Akkustand als Warnung ist bewusst nicht Teil davon.
 - **`admin`** — Fernadministration von Repeatern, erreichbar aus der Karte.
-  Braucht vorher die Antwort auf die Frage nach den Zugangsdaten, siehe
-  [`../SECURITY.md`](../SECURITY.md).
+  Zugangsdaten entschieden am 2026-09-19: **verschlüsselt gespeichert**, mit
+  einem Schlüssel aus Umgebungsvariable oder Konfiguration. Der ADR dazu
+  entsteht mit dem Modul.
 - ~~**Kachelvorrat vorwärmen**~~ — gestrichen am 2026-09-19 mit
   [ADR-0020](decisions/0020-kein-kachelvorrat.md): Die Kachelquelle
   OpenStreetMap verbietet Vorab-Abruf und Offline-Nutzung und sperrt ohne

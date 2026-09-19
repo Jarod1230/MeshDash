@@ -51,5 +51,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0018](0018-zeit-fuer-verkehrsverdichtung.md) | Was „vor einer Woche" für die Verkehrsverdichtung heißt | Angenommen |
 | [0019](0019-verortung-statt-triangulation.md) | Bereiche aus Hörbeziehungen statt geschätzter Punkte | Angenommen |
 | [0020](0020-kein-kachelvorrat.md) | Kein Vorwärmen von Kacheln | Angenommen |
+| [0021](0021-warnungen-wo-man-hinsieht.md) | Warnungen dort, wo man hinsieht — für beobachtete Knoten | Angenommen |
 
 Vorlage: [`template.md`](template.md).

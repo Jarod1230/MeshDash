@@ -48,6 +48,13 @@ jedem Minor-Release ändern.
 
 ### Added
 
+- **Wer den Absender eines Adverts gehört hat, zählt jetzt als Hörbeziehung.**
+  Ein Advert nennt seinen Absender im Klartext; bei einem gefluteten hat ihn
+  die erste Station im Pfad direkt gehört, bei einem Zero-Hop der eigene
+  Node. Damit tauchen erstmals Knoten in Verbindungen, Nachbarn und
+  Bereichen auf, die nie weiterleiten — Companions. Gilt für Adverts ab
+  diesem Stand; ältere sind ohne Absender geloggt.
+
 - **Kartenebene „Bereiche“.** Knoten ohne Position werden nicht geschätzt,
   sondern eingegrenzt: Um jeden verorteten Nachbarn, der sie nachweislich
   hört, liegt eine Scheibe mit der größten gemessenen Reichweite dieses

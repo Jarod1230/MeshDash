@@ -279,6 +279,34 @@ impl<'a> Packet<'a> {
     pub fn stations(&self) -> usize {
         self.path.len()
     }
+
+    /// The public key of whoever sent this advert, or `None` for anything
+    /// else.
+    ///
+    /// An advert is signed, not encrypted, and opens with the sender's key:
+    ///
+    /// ```text
+    /// offset  size  field
+    ///      0    32  public key          PUB_KEY_SIZE
+    ///     32     4  timestamp
+    ///     36    64  signature           SIGNATURE_SIZE
+    ///    100     …  app data            name, position, type
+    /// ```
+    ///
+    /// Source: `Mesh::createAdvert()` in `src/Mesh.cpp`, MeshCore commit
+    /// `d929643`. The signature is **not** checked here: this says which key
+    /// the advert names, not that its owner sent it.
+    ///
+    /// A payload shorter than a key names nobody rather than half a key.
+    pub fn advert_sender(&self) -> Option<&'a [u8]> {
+        const PUB_KEY_SIZE: usize = 32;
+
+        if self.payload_type != PayloadType::Advert {
+            return None;
+        }
+
+        self.payload.get(..PUB_KEY_SIZE)
+    }
 }
 
 #[cfg(test)]
@@ -466,5 +494,43 @@ mod tests {
 
         assert_eq!(packet.payload_type, PayloadType::Advert);
         assert!(packet.payload.is_empty());
+    }
+
+    /// A flooded advert with no stations yet and a payload opening with a key.
+    fn advert_from(key: [u8; 32]) -> Vec<u8> {
+        // route 1 (flood), type 4 (advert), version 0; no stations
+        let mut raw = vec![0b0001_0001, 0x00];
+        raw.extend_from_slice(&key);
+        // timestamp and a stand-in for the signature and app data
+        raw.extend_from_slice(&[0x11; 4 + 64 + 3]);
+        raw
+    }
+
+    #[test]
+    fn an_advert_names_its_sender() {
+        let raw = advert_from([0xC3; 32]);
+        let packet = Packet::parse(&raw).unwrap();
+
+        assert_eq!(packet.advert_sender(), Some(&[0xC3; 32][..]));
+    }
+
+    #[test]
+    fn only_an_advert_names_a_sender() {
+        // Same bytes, but a text message: the payload is encrypted and the
+        // first 32 bytes of it are nobody's key.
+        let mut raw = advert_from([0xC3; 32]);
+        raw[0] = 0b0000_1001;
+        let packet = Packet::parse(&raw).unwrap();
+
+        assert_eq!(packet.advert_sender(), None);
+    }
+
+    #[test]
+    fn a_cut_off_advert_names_nobody() {
+        let mut raw = vec![0b0001_0001, 0x00];
+        raw.extend_from_slice(&[0xC3; 31]);
+        let packet = Packet::parse(&raw).unwrap();
+
+        assert_eq!(packet.advert_sender(), None);
     }
 }

@@ -755,3 +755,106 @@ async fn migration_3_takes_back_what_direct_packets_added() {
             .is_empty()
     );
 }
+
+/// A heard advert from `sender`, with a chosen route and path.
+///
+/// The payload opens with the sender's key, as `Mesh::createAdvert` writes
+/// it; what follows stands in for timestamp, signature and app data.
+fn heard_advert(route: u8, stations: &[u8], sender: [u8; 32]) -> Vec<u8> {
+    // payload type 4 (advert) in bits 2–5, the route in bits 0–1
+    let mut raw = vec![(4 << 2) | route, stations.len() as u8];
+    raw.extend_from_slice(stations);
+    raw.extend_from_slice(&sender);
+    raw.extend_from_slice(&[0x11; 4 + 64 + 3]);
+
+    let mut frame = vec![0x88, (-3.5_f32 * 4.0) as i8 as u8, -92_i8 as u8];
+    frame.extend_from_slice(&raw);
+    frame
+}
+
+const COMPANION: [u8; 32] = [0x92; 32];
+
+fn companion_hex() -> String {
+    "92".repeat(32)
+}
+
+#[tokio::test]
+async fn the_first_station_heard_the_sender_of_a_flooded_advert() {
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard_advert(1, &[0xAA, 0xBB], COMPANION)).await;
+
+    let links = read_links(&context).await.unwrap();
+    // The path as before — bb heard aa, this node heard bb — and now also
+    // who heard the sender, which is in no path at all.
+    assert_eq!(links.len(), 3, "{links:?}");
+    let first = links
+        .iter()
+        .find(|link| link.talker == companion_hex())
+        .unwrap();
+    assert_eq!(first.listener, "aa");
+    assert_eq!(first.width, 1);
+}
+
+#[tokio::test]
+async fn a_zero_hop_advert_was_heard_by_this_node() {
+    let context = context_with(serde_json::json!({})).await;
+
+    // Direct with an empty path: `sendZeroHop`, straight from the sender.
+    feed(&context, heard_advert(2, &[], COMPANION)).await;
+
+    let links = read_links(&context).await.unwrap();
+    assert_eq!(links.len(), 1, "{links:?}");
+    assert_eq!(links[0].talker, companion_hex());
+    assert!(links[0].listener.is_empty());
+}
+
+#[tokio::test]
+async fn a_direct_advert_with_a_route_ahead_proves_nothing() {
+    // Never sent by any firmware in d929643 — but if it were, its path would
+    // be the route ahead, and its first station has heard nothing yet.
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard_advert(2, &[0xAA], COMPANION)).await;
+
+    assert!(read_links(&context).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn only_an_advert_has_a_sender() {
+    let context = context_with(serde_json::json!({})).await;
+
+    feed(&context, heard(&[0xAA])).await;
+
+    let links = read_links(&context).await.unwrap();
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].talker, "aa");
+}
+
+#[tokio::test]
+async fn timed_links_count_who_heard_an_advert_first() {
+    let context = context_with(serde_json::json!({ "keep_days": 30 })).await;
+
+    feed(&context, heard_advert(1, &[0xAA], COMPANION)).await;
+    feed(&context, heard_advert(2, &[], COMPANION)).await;
+    // Refused in the summary, so refused in the window too.
+    feed(&context, heard_advert(2, &[0xBB], COMPANION)).await;
+
+    let now = Utc::now();
+    let links = read_links_in_window(
+        &context,
+        &(now - chrono::Duration::hours(1)),
+        &(now + chrono::Duration::minutes(1)),
+    )
+    .await
+    .unwrap();
+
+    let from_sender: Vec<_> = links
+        .iter()
+        .filter(|link| link.talker == companion_hex())
+        .collect();
+    assert_eq!(from_sender.len(), 2, "{links:?}");
+    assert!(from_sender.iter().any(|link| link.listener == "aa"));
+    assert!(from_sender.iter().any(|link| link.listener.is_empty()));
+    assert!(from_sender.iter().all(|link| link.heard == 1));
+}

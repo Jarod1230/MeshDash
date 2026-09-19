@@ -919,7 +919,12 @@ verschlüsselt, sondern signiert:
 Zusammen mit dem Abschnitt darüber folgt: Bei einem gefluteten Advert hat
 `path[0]` den Absender direkt gehört, bei leerem Pfad der Empfänger selbst.
 Das ist die einzige Hörbeziehung, die einen Knoten betrifft, der nie
-weiterleitet — einen Companion. Die Signatur prüft MeshDash nicht; ein
+weiterleitet — einen Companion. Gesendet werden Adverts an allen Stellen der
+Firmware (Companion, Repeater, Room-Server, Sensor) nur geflutet
+(`sendFlood`, `sendFloodScoped`) oder als Zero-Hop (`sendZeroHop`), nie direkt
+mit Route; ein direktes Advert mit leerem Pfad kommt also vom Absender selbst.
+Umgesetzt in `meshdash_proto::packet::Packet::advert_sender` und
+`traffic::first_hearing`. Die Signatur prüft MeshDash nicht; ein
 gefälschter Advert könnte einen fremden Schlüssel nennen.
 
 **Wie breit, entscheidet der Absender.** Ein bis drei Byte, und das Paket sagt

@@ -50,5 +50,6 @@ Alternativen damals auf dem Tisch lagen.
 | [0017](0017-einstellungen-zur-laufzeit.md) | Modul-Einstellungen im Betrieb änderbar, Datei bleibt der Grund | Angenommen |
 | [0018](0018-zeit-fuer-verkehrsverdichtung.md) | Was „vor einer Woche" für die Verkehrsverdichtung heißt | Angenommen |
 | [0019](0019-verortung-statt-triangulation.md) | Bereiche aus Hörbeziehungen statt geschätzter Punkte | Angenommen |
+| [0020](0020-kein-kachelvorrat.md) | Kein Vorwärmen von Kacheln | Angenommen |
 
 Vorlage: [`template.md`](template.md).

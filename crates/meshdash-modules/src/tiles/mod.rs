@@ -25,8 +25,9 @@
 //! # The cache is a tree of files
 //!
 //! `<cache_dir>/<z>/<x>/<y>.<ext>`, which is what raster tiles are everywhere.
-//! Warming a region for a deployment without an uplink is then a matter of
-//! filling that tree, not a second architecture.
+//! It fills only with tiles somebody looked at. Warming a region ahead of time
+//! is deliberately absent: OpenStreetMap's tile policy forbids prefetching and
+//! blocks it without notice — see ADR-0020.
 
 use std::{
     path::{Path, PathBuf},

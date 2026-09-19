@@ -396,8 +396,10 @@ selbst hat.
 - **`admin`** — Fernadministration von Repeatern, erreichbar aus der Karte.
   Braucht vorher die Antwort auf die Frage nach den Zugangsdaten, siehe
   [`../SECURITY.md`](../SECURITY.md).
-- **Kachelvorrat vorwärmen** — einen Ausschnitt einmal holen und behalten, für
-  den Einsatz ohne Uplink. Nach ADR-0011 ein voller Cache, kein Umbau.
+- ~~**Kachelvorrat vorwärmen**~~ — gestrichen am 2026-09-19 mit
+  [ADR-0020](decisions/0020-kein-kachelvorrat.md): Die Kachelquelle
+  OpenStreetMap verbietet Vorab-Abruf und Offline-Nutzung und sperrt ohne
+  Vorwarnung. Der Cache füllt sich weiter nur mit Angesehenem.
 - [x] **Knoten eingrenzen statt triangulieren.** Umgesetzt als Ebene
   „Bereiche“ (`?bereiche=an`) nach
   [ADR-0019](decisions/0019-verortung-statt-triangulation.md): kein geschätzter

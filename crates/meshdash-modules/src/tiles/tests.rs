@@ -153,8 +153,7 @@ async fn fetches_a_tile_once_and_keeps_it() {
     .await;
     assert!(first.is_ok());
 
-    // On disk where a tile tree keeps tiles, so warming a region later is a
-    // matter of filling this tree rather than a second architecture.
+    // On disk where a tile tree keeps tiles: `<z>/<x>/<y>.<ext>`.
     let kept = scratch.0.join("10").join("550").join("335.png");
     assert_eq!(tokio::fs::read(&kept).await.unwrap(), b"a fake png");
 

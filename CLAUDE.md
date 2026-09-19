@@ -25,7 +25,9 @@ Abspielen für Verbindungen sowie Kontexttafeln für Knoten und Verbindungen.
 Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`, die Adresse in
 `0014`, der Verzicht auf Leaflet in `0015`, die Zeitbedeutung in `0018`. Der
 Weg steht als **Stufen A bis D** in `docs/roadmap.md`: A, B und C sind
-erledigt. D ist unangetastet.
+erledigt. In D sind die Bereiche für Knoten ohne Position gebaut (`0019`) und
+das Vorwärmen von Kacheln gestrichen (`0020`); offen sind `alerts` und
+`admin`, beide warten auf eine Entscheidung des Betreibers.
 
 Wer an der Oberfläche baut, liest **`docs/frontend.md`** zuerst — sonst
 entsteht eine weitere Seite neben der Karte statt einer Ebene auf ihr.

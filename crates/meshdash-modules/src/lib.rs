@@ -13,6 +13,7 @@
 //! The test for a good cut: removing a module means touching two registration
 //! lists and nothing else. See `docs/module-system.md`.
 
+pub mod alerts;
 pub mod messages;
 pub mod nodes;
 pub mod query;

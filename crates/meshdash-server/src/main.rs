@@ -4,10 +4,9 @@
 //! configuration, storage, the connection to the node, the modules, then the
 //! HTTP surface.
 //!
-//! # What it does not do yet
-//!
-//! All four modules of step 6 are registered. The dashboard is still a
-//! placeholder page — that is step 7 of `docs/roadmap.md`.
+//! Seven modules are registered below: `system`, `nodes`, `messages`,
+//! `telemetry`, `tiles`, `traffic` and `alerts`. The interface is embedded
+//! with the `embed-frontend` feature — see `docs/development.md`.
 
 use std::{net::ToSocketAddrs, process::ExitCode};
 
@@ -107,6 +106,9 @@ async fn serve(config: Config) -> anyhow::Result<()> {
     registry
         .register(Box::new(meshdash_modules::traffic::TrafficModule))
         .context("registering the traffic module")?;
+    registry
+        .register(Box::new(meshdash_modules::alerts::AlertsModule))
+        .context("registering the alerts module")?;
 
     registry
         .start_all(&context)

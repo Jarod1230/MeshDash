@@ -13,8 +13,8 @@ bereit. Ausgeliefert wird ein einzelnes Binary mit eingebettetem Frontend.
 **Projektstand (2026-09-06): Dienst und Oberfläche laufen.** Protokoll-Codec,
 Transport mit Reconnect, Kern mit Datenbank, Event-Bus und zur Laufzeit
 änderbaren Einstellungen, HTTP-Server mit Authentifizierung und WebSocket sowie
-**sechs Module** — `system`, `nodes`, `messages`, `telemetry`, `tiles`,
-`traffic`.
+**sieben Module** — `system`, `nodes`, `messages`, `telemetry`, `tiles`,
+`traffic`, `alerts` (bei `alerts` bisher nur das Backend).
 
 **Die Karte ist die Leitansicht.** MeshDash öffnet auf der Fläche mit den
 Knoten darauf; die Seiten liegen als Blende darüber und die Fläche wird nie
@@ -26,8 +26,9 @@ Entschieden in `docs/decisions/0011-karte-als-leitansicht.md`, die Adresse in
 `0014`, der Verzicht auf Leaflet in `0015`, die Zeitbedeutung in `0018`. Der
 Weg steht als **Stufen A bis D** in `docs/roadmap.md`: A, B und C sind
 erledigt. In D sind die Bereiche für Knoten ohne Position gebaut (`0019`) und
-das Vorwärmen von Kacheln gestrichen (`0020`); offen sind `alerts` und
-`admin`, beide warten auf eine Entscheidung des Betreibers.
+das Vorwärmen von Kacheln gestrichen (`0020`); für `alerts` steht das Backend
+(`0021`), die Oberfläche fehlt; `admin` ist offen (Zugangsdaten verschlüsselt
+speichern, entschieden 2026-09-19).
 
 Wer an der Oberfläche baut, liest **`docs/frontend.md`** zuerst — sonst
 entsteht eine weitere Seite neben der Karte statt einer Ebene auf ihr.
